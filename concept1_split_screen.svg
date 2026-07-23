@@ -1,0 +1,92 @@
+<svg width="1080" height="1920" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+
+  <!-- ============ LAYER 1: BASE BACKGROUND ============ -->
+  <g id="layer-background">
+    <rect width="1080" height="1920" fill="#0a0a0f"/>
+    <!-- left half subtle cool wash -->
+    <rect x="0" y="0" width="540" height="1920" fill="#0d1b2a"/>
+    <!-- right half subtle danger wash -->
+    <rect x="540" y="0" width="540" height="1920" fill="#1a0a0d"/>
+  </g>
+
+  <!-- ============ LAYER 2: LEFT PANEL "SAYS" (calm/safe) ============ -->
+  <g id="layer-left-says">
+    <!-- vignette glow -->
+    <radialGradient id="glowBlue" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#1b7fd1" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#1b7fd1" stop-opacity="0"/>
+    </radialGradient>
+    <rect x="0" y="0" width="540" height="1920" fill="url(#glowBlue)"/>
+
+    <!-- padlock icon -->
+    <g transform="translate(270,760)" stroke="#eaf4ff" stroke-width="14" fill="none" stroke-linecap="round">
+      <rect x="-70" y="0" width="140" height="120" rx="18" fill="#eaf4ff"/>
+      <path d="M -42 0 v -35 a 42 42 0 0 1 84 0 v 35"/>
+      <circle cx="0" cy="55" r="16" fill="#0d1b2a" stroke="none"/>
+      <rect x="-8" y="55" width="16" height="34" rx="8" fill="#0d1b2a" stroke="none"/>
+    </g>
+
+    <!-- Google wordmark (clean) -->
+    <text x="270" y="990" font-size="60" font-weight="bold" text-anchor="middle" letter-spacing="1">
+      <tspan fill="#4285F4">G</tspan><tspan fill="#EA4335">o</tspan><tspan fill="#FBBC05">o</tspan><tspan fill="#4285F4">g</tspan><tspan fill="#34A853">l</tspan><tspan fill="#EA4335">e</tspan>
+    </text>
+
+    <text x="270" y="1075" font-size="40" fill="#9ec7f0" text-anchor="middle" font-style="italic">"Your data is</text>
+    <text x="270" y="1125" font-size="40" fill="#9ec7f0" text-anchor="middle" font-style="italic">safe with us."</text>
+  </g>
+
+  <!-- ============ LAYER 3: RIGHT PANEL "DOES" (leak/danger) ============ -->
+  <g id="layer-right-does">
+    <radialGradient id="glowRed" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#e0263a" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#e0263a" stop-opacity="0"/>
+    </radialGradient>
+    <rect x="540" y="0" width="540" height="1920" fill="url(#glowRed)"/>
+
+    <!-- broken/glitched Google logo (identical tspan structure = identical width) -->
+    <g transform="translate(810,910)" font-size="60" font-weight="bold" text-anchor="middle">
+      <!-- red offset copy -->
+      <text transform="translate(5,0)" opacity="0.5"><tspan fill="#ff2d55">G</tspan><tspan fill="#ff2d55">o</tspan><tspan fill="#ff2d55">o</tspan><tspan fill="#ff2d55">g</tspan><tspan fill="#ff2d55">l</tspan><tspan fill="#ff2d55">e</tspan></text>
+      <!-- cyan offset copy -->
+      <text transform="translate(-5,0)" opacity="0.45"><tspan fill="#00e5ff">G</tspan><tspan fill="#00e5ff">o</tspan><tspan fill="#00e5ff">o</tspan><tspan fill="#00e5ff">g</tspan><tspan fill="#00e5ff">l</tspan><tspan fill="#00e5ff">e</tspan></text>
+      <!-- main coloured wordmark -->
+      <text><tspan fill="#4285F4">G</tspan><tspan fill="#EA4335">o</tspan><tspan fill="#FBBC05">o</tspan><tspan fill="#4285F4">g</tspan><tspan fill="#34A853">l</tspan><tspan fill="#EA4335">e</tspan></text>
+    </g>
+
+    <!-- leaking data chips spilling downward -->
+    <g font-size="22" font-weight="bold">
+      <g transform="translate(690,1020) rotate(-8)"><rect x="-70" y="-22" width="140" height="40" rx="8" fill="#e0263a"/><text x="0" y="6" fill="#fff" text-anchor="middle">PASSWORD</text></g>
+      <g transform="translate(880,1050) rotate(10)"><rect x="-58" y="-22" width="116" height="40" rx="8" fill="#c81e30"/><text x="0" y="6" fill="#fff" text-anchor="middle">EMAILS</text></g>
+      <g transform="translate(740,1130) rotate(6)"><rect x="-70" y="-22" width="140" height="40" rx="8" fill="#e0263a"/><text x="0" y="6" fill="#fff" text-anchor="middle">LOCATION</text></g>
+      <g transform="translate(900,1180) rotate(-6)"><rect x="-60" y="-22" width="120" height="40" rx="8" fill="#c81e30"/><text x="0" y="6" fill="#fff" text-anchor="middle">PHOTOS</text></g>
+      <g transform="translate(700,1230) rotate(-12)"><rect x="-52" y="-22" width="104" height="40" rx="8" fill="#e0263a"/><text x="0" y="6" fill="#fff" text-anchor="middle">CARDS</text></g>
+      <g transform="translate(860,1290) rotate(8)"><rect x="-72" y="-22" width="144" height="40" rx="8" fill="#c81e30"/><text x="0" y="6" fill="#fff" text-anchor="middle">MESSAGES</text></g>
+    </g>
+  </g>
+
+  <!-- ============ LAYER 4: CENTER SEAM (glowing divider) ============ -->
+  <g id="layer-seam">
+    <rect x="536" y="0" width="8" height="1920" fill="#ffffff"/>
+    <rect x="530" y="0" width="20" height="1920" fill="#ffffff" opacity="0.25"/>
+    <rect x="520" y="0" width="40" height="1920" fill="#7fdcff" opacity="0.12"/>
+  </g>
+
+  <!-- ============ LAYER 5: TOP HEADLINE ============ -->
+  <g id="layer-headline">
+    <text x="270" y="330" font-size="66" font-weight="900" fill="#eaf4ff" text-anchor="middle">WHAT</text>
+    <text x="270" y="405" font-size="66" font-weight="900" fill="#eaf4ff" text-anchor="middle">GOOGLE</text>
+    <text x="270" y="480" font-size="66" font-weight="900" fill="#7fdcff" text-anchor="middle">SAYS</text>
+
+    <text x="810" y="330" font-size="66" font-weight="900" fill="#ffe3e3" text-anchor="middle">WHAT</text>
+    <text x="810" y="405" font-size="66" font-weight="900" fill="#ffe3e3" text-anchor="middle">GOOGLE</text>
+    <text x="810" y="480" font-size="66" font-weight="900" fill="#ff5a6a" text-anchor="middle">DOES</text>
+  </g>
+
+  <!-- ============ LAYER 6: BOTTOM HOOK LINE ============ -->
+  <g id="layer-hook">
+    <rect x="90" y="1560" width="900" height="230" rx="26" fill="#000000" opacity="0.55"/>
+    <text x="540" y="1650" font-size="58" font-weight="800" fill="#ffffff" text-anchor="middle">They said it was private.</text>
+    <text x="540" y="1730" font-size="64" font-weight="900" fill="#ff5a6a" text-anchor="middle">It wasn't.</text>
+  </g>
+
+</svg>
