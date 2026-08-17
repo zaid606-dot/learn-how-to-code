@@ -37,18 +37,37 @@ The mark works four ways instead of hiding in a corner:
 - **Type:** Lora (serif display + wordmark, every punchline) · Albert Sans (labels / UI / scaffolding)
 - Green is reserved for the single payoff line per square.
 
+## Formats
+
+- **1080 × 1080** (square) — feed, X, LinkedIn, Threads → files in this folder
+- **1080 × 1920** (9:16 Reels) — Reels, Stories, TikTok, Shorts → `reels/` folder
+
+The Reels versions are rebuilt for the vertical frame (bigger type, layouts reflowed,
+"same picture" panels stacked), not stretched. Copy sits in the center safe zone, clear
+of Instagram's top bar and bottom caption / action column.
+
 ## Files
 
-- `strech-meme-0*.svg` — editable source (text, color, layout stay live; scale infinitely)
-- `strech-meme-0*.png` — 1080×1080 export, ready to post
-- `showcase.html` — self-contained gallery + strategy write-up
-- `generate.py` — regenerates all SVGs; run `python3 generate.py` from this folder
+- `strech-meme-0*.svg` / `.png` — 1080×1080 editable source + export
+- `reels/strech-reel-0*.svg` / `.png` — 1080×1920 editable source + export
+- `generate.py` — regenerates the square SVGs
+- `generate_reels.py` — regenerates the 9:16 SVGs
+- `showcase.html` — self-contained gallery + strategy write-up (both formats)
 
-## Regenerate
+## Edit the copy / layout
 
-```bash
-cd memes-v2
-python3 generate.py            # writes the six SVGs
-```
+Two ways, both easy in Cursor:
 
-To re-export PNGs, render each SVG at 1080×1080 (any SVG→PNG tool, or a headless browser).
+1. **Fastest — edit the SVG directly.** Open any `strech-meme-0*.svg` (square) or
+   `reels/strech-reel-0*.svg` (Reels). The headline, sub-line, colors, and coordinates
+   are plain `<text>` / hex values — change the words in place and save.
+2. **Regenerate from source.** Edit the copy strings in `generate.py` (square) or
+   `generate_reels.py` (Reels), then:
+
+   ```bash
+   cd memes-v2
+   python3 generate.py          # rewrites the square SVGs
+   python3 generate_reels.py    # rewrites the reels/ SVGs
+   ```
+
+To re-export PNGs, render each SVG at its native size (any SVG→PNG tool or headless browser).
