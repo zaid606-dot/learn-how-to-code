@@ -88,3 +88,40 @@ for that combination is the one everyone gets, on any phone, instead of asking t
   `KV_REST_API_TOKEN`; redeploy. The server stores only a hash as the name and the verdict
   encrypted with a key made from the conversation, so it can't read either. Without it, `/api/verdicts`
   answers 404 and each phone keeps its own verdicts.
+
+### Accounts
+
+Optional email + password accounts on the website (Settings › Account) save chats and settings
+and sync them across phones. They use the same Upstash storage as the verdict vault, so they
+switch on with it. Passwords are stored only as salted scrypt hashes; sessions are random tokens
+in an HttpOnly cookie, stored server-side only as hashes. Delete account (Settings › Account)
+erases the account, its chats and settings, and every session.
+
+- **Forgot password** needs an email service: create a free [Resend](https://resend.com) account,
+  add `RESEND_API_KEY` (and `MAIL_FROM`, e.g. `Arguably <hello@yourdomain.com>` once your domain is
+  verified in Resend) and `APP_URL` (e.g. `https://arguably-gold.vercel.app`) in Vercel, redeploy.
+  Without it, the app tells people to email support.
+
+## The iPhone app (App Store)
+
+`ios-app/` wraps the live website in a native iPhone shell (Capacitor). Inside it the website
+switches to App Store mode by itself: hard paywall ($9.99/mo, $29.99/yr with a 3-day trial),
+purchases through Apple via RevenueCat (checked at every launch, so ended subscriptions end Pro),
+and the iPhone share sheet. Accounts, sync, the vault and the AI work exactly as on the website.
+
+1. **Apple** — [Apple Developer Program](https://developer.apple.com/programs/) ($99/yr). In
+   App Store Connect create the app (bundle ID `app.arguably.ios`) and a subscription group with
+   `arguably.pro.monthly` ($9.99) and `arguably.pro.yearly` ($29.99, introductory offer: 3-day free
+   trial). Add Privacy Policy and Support URLs.
+2. **RevenueCat** (free until $2.5k/mo) — new project → iOS app with your App Store Connect key →
+   entitlement **`pro`** → attach both products → an offering with both packages. Copy the
+   **public iOS SDK key** (starts with `appl_`) into Vercel as `REVENUECAT_IOS_KEY`, redeploy.
+3. **Build** on a Mac with Xcode: `cd ios-app && bash setup.sh`, then `npx cap open ios`. In
+   Xcode: your Team under Signing & Capabilities, add **In-App Purchase**, set the app icon
+   (1024×1024), then Product › Archive → TestFlight.
+4. **Before submitting** — test a sandbox purchase, restore and cancel in TestFlight; fill in App
+   Privacy (User Content and Photos, used for App Functionality, not linked for tracking; email
+   if accounts are on); age rating 13+ or higher; point the support email at a real inbox.
+
+The app loads `https://arguably-gold.vercel.app` (see `ios-app/capacitor.config.json`); switch it
+to your own domain once you have one.

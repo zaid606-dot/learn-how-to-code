@@ -1,0 +1,20 @@
+{
+  "name": "arguably-ios",
+  "private": true,
+  "description": "The Arguably iPhone app: a native shell around the Arguably website, with In-App Purchase (RevenueCat), the iOS share sheet and file access.",
+  "scripts": {
+    "setup": "bash setup.sh",
+    "sync": "npx cap sync ios",
+    "open": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "latest",
+    "@capacitor/ios": "latest",
+    "@capacitor/share": "latest",
+    "@capacitor/filesystem": "latest",
+    "@revenuecat/purchases-capacitor": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest"
+  }
+}

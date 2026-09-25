@@ -1,0 +1,14 @@
+{
+  "appId": "app.arguably.ios",
+  "appName": "Arguably",
+  "webDir": "www",
+  "server": {
+    "url": "https://arguably-gold.vercel.app",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#FFF7F3",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}
