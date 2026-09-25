@@ -833,3 +833,10 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 #messageInput::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .share-btn { min-height: 44px; }
 .plan-title b, .pw-links button, .pw-links a { white-space: nowrap; }
+/* Home demo: arguments take turns. */
+.demo-phones { cursor: pointer; }
+.demo > * { transition: opacity 240ms var(--ease-out); }
+.demo.swapping > * { opacity: 0; }
+.demo-dots { display: flex; justify-content: center; gap: 6px; margin-top: 12px; }
+.demo-dots i { width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--sand-300); transition: width var(--dur-md) var(--ease-out); }
+.demo-dots i.on { width: 18px; background: var(--ember-500); }

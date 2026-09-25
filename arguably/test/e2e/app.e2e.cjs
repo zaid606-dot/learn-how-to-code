@@ -78,6 +78,26 @@ test("home screen: loads cleanly and fits phones", async () => {
   }
 });
 
+test("home demo: arguments take turns, and tapping the phones skips ahead", async () => {
+  const { page, errors } = await openApp({});
+  const label = () => page.locator(".demo-phone.maya .demo-label").innerText();
+  assert.equal(await label(), "Maya's phone");
+  await page.click(".demo-phones");
+  await page.waitForFunction(() => document.querySelector(".demo-phone.maya .demo-label")?.innerText === "Priya's phone");
+  assert.match(await page.locator(".dv-title").innerText(), /Priya has the stronger case/);
+  // On its own after about 8 seconds.
+  await page.waitForFunction(() => document.querySelector(".demo-phone.maya .demo-label")?.innerText === "Ava's phone", null, { timeout: 12000 });
+  for (let i = 0; i < 4; i++) {
+    await page.waitForTimeout(2600); // let the animation land
+    await page.locator(".demo").screenshot({ path: path.join(OUT, `demo-${i}.png`) });
+    assert.deepEqual(await layoutProblems(page), []);
+    await page.click(".demo-phones");
+    await page.waitForTimeout(400);
+  }
+  assert.equal(await page.locator(".demo-dots i").count(), 4);
+  assert.deepEqual(errors, []);
+});
+
 test("home screen: signed out shows the notice and the example still works", async () => {
   const { page } = await openApp({ noClaude: true });
   assert.match(await page.locator("#thread").innerText(), /Open Arguably on claude\.ai/);

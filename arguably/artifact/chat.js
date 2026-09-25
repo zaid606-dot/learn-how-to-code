@@ -662,6 +662,88 @@ const svg = (d, size = 22) =>
 let homeShownAt = 0;
 let showAllRecent = false;
 
+// The home demo: a few everyday arguments that take turns. Each shows both phones, the
+// receipts Arguably flags, and who wins. Left phone = person A (ember), right = person B (navy).
+// A bubble is [side, text, stamp?]; stamp is [kind, label] with kind fallacy | grudge | shot.
+const DEMOS = [
+  {
+    a: "Maya", b: "Jordan",
+    left: [["out", "So you were 'asleep' but liking Brianna's pics at 2am? 👀"], ["in", "You literally left me on read for 6 hours yesterday", ["fallacy", "Whataboutism"]], ["out", "This is literally the same thing that happened in March", ["grudge", "Grudge"]]],
+    right: [["in", "This is literally the same thing that happened in March"], ["out", "Wow ok sorry I'm not perfect like you 🙄", ["shot", "Personal shot"]]],
+    winner: "a", scores: [72, 41], chips: ["3 fallacies", "2 personal shots", "1 grudge"],
+  },
+  {
+    a: "Priya", b: "Sam",
+    left: [["out", "Did you eat my leftovers again?"], ["in", "There wasn't even a name on it though", ["fallacy", "Deflection"]], ["out", "That's the third time this month", ["grudge", "Grudge"]]],
+    right: [["in", "That's the third time this month"], ["out", "Maybe just cook more food then 🙃", ["shot", "Personal shot"]]],
+    winner: "a", scores: [78, 44], chips: ["2 fallacies", "1 personal shot", "1 grudge"],
+  },
+  {
+    a: "Ava", b: "Leo",
+    left: [["out", "You skipped my birthday for a video game??"], ["in", "I said I MIGHT come, not that I would", ["fallacy", "Backpedaling"]], ["out", "Same thing you did at Jess's party", ["grudge", "Grudge"]]],
+    right: [["in", "Same thing you did at Jess's party"], ["out", "You're being so dramatic about this lol", ["shot", "Personal shot"]]],
+    winner: "a", scores: [81, 37], chips: ["2 fallacies", "1 personal shot", "1 grudge"],
+  },
+  {
+    a: "Zoe", b: "Noah",
+    left: [["out", "You still owe me $40 from dinner"], ["in", "I covered the Uber AND drinks. Check Venmo 🧾"], ["out", "Everyone knows you're cheap with money", ["fallacy", "Bandwagon"]]],
+    right: [["in", "Everyone knows you're cheap with money", ["shot", "Personal shot"]], ["out", "Everyone? Name one person 😂"]],
+    winner: "b", scores: [39, 74], chips: ["1 fallacy", "1 personal shot", "Receipts win"],
+  },
+];
+let demoIndex = 0;
+function demoHTML(demo) {
+  const d = (ms) => ` style="--d:${ms}ms"`;
+  const bubbles = (list, start) =>
+    list
+      .map(([side, text, stamp], i) => `<span class="bub ${side}"${d(start + i * 350)}>${esc(text)}${stamp ? `<b class="stamp ${stamp[0]}"${d(start + i * 350 + 850)}>${esc(stamp[1])}</b>` : ""}</span>`)
+      .join("");
+  const [sa, sb] = demo.scores;
+  const win = demo.winner === "a" ? demo.a : demo.b;
+  return `
+      <div class="demo-phones" aria-hidden="true" data-action="demo-next">
+        <div class="demo-phone maya">
+          <span class="demo-label"><i></i>${esc(demo.a)}'s phone</span>
+          <span class="demo-chat">${esc(demo.b)}</span>
+          ${bubbles(demo.left, 150)}
+        </div>
+        <div class="demo-phone jordan">
+          <span class="demo-label"><i></i>${esc(demo.b)}'s phone</span>
+          <span class="demo-chat">${esc(demo.a)}</span>
+          ${bubbles(demo.right, 700)}
+          <span class="bub in typing"${d(1250)}><i></i><i></i><i></i></span>
+        </div>
+      </div>
+      <button class="demo-verdict" type="button" data-action="example" aria-label="${esc(win)} has the stronger case. See a full example verdict"${d(1800)}>
+        <span class="dv-top"><span class="dv-eyebrow">Verdict</span><span class="dv-tag">Example</span></span>
+        <span class="dv-title">${esc(win)} has the stronger case.</span>
+        <span class="dv-bar"><i style="flex:${sa};--d:2000ms"></i><i style="flex:${sb};--d:2000ms"></i></span>
+        <span class="dv-scores"><span><i class="dot maya"></i>${esc(demo.a)} ${sa}</span><span>${esc(demo.b)} ${sb}<i class="dot jordan"></i></span></span>
+        <span class="dv-chips"${d(2300)}>${demo.chips.map((c) => `<span>${esc(c)}</span>`).join("")}<span class="ok">${svg(ICON.check, 13)}Quotes checked</span></span>
+      </button>
+      <div class="demo-dots" aria-hidden="true">${DEMOS.map((_, i) => `<i${i === demoIndex ? ' class="on"' : ""}></i>`).join("")}</div>`;
+}
+// Next argument: fade the old one out, then play the new one from the start.
+function nextDemo() {
+  const el = document.querySelector(".demo");
+  if (!el || chat || page) return;
+  el.classList.add("swapping");
+  setTimeout(() => {
+    demoIndex = (demoIndex + 1) % DEMOS.length;
+    homeShownAt = performance.now();
+    const now = document.querySelector(".demo");
+    if (!now || chat || page) return;
+    now.outerHTML = `<div class="demo" data-play="" style="--t0:0ms">${demoHTML(DEMOS[demoIndex])}</div>`;
+  }, 260);
+}
+// Changes every 8 seconds while the home screen is showing (not when motion is reduced).
+setInterval(() => {
+  if (document.visibilityState !== "visible" || chat || page) return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (performance.now() - homeShownAt < 7500) return; // let a tapped-in demo finish
+  nextDemo();
+}, 1000);
+
 function homeHTML() {
   const recent = showAllRecent ? chats : chats.slice(0, 8);
   const notice = claudeChecked && !sampler
@@ -671,38 +753,13 @@ function homeHTML() {
   homeShownAt ||= performance.now();
   const since = Math.round(performance.now() - homeShownAt);
   const play = since < 3500 ? ` data-play="" style="--t0:-${since}ms"` : "";
-  const d = (ms) => ` style="--d:${ms}ms"`;
   return `<section class="home">
     ${notice}
     <div class="home-hero">
       <h1>Who's <em>actually</em> right?</h1>
       <p>Drop in the screenshots from both phones. Get a fair verdict, with receipts.</p>
     </div>
-    <div class="demo"${play}>
-      <div class="demo-phones" aria-hidden="true">
-        <div class="demo-phone maya">
-          <span class="demo-label"><i></i>Maya's phone</span>
-          <span class="demo-chat">Jordan</span>
-          <span class="bub out"${d(150)}>So you were 'asleep' but liking Brianna's pics at 2am? 👀</span>
-          <span class="bub in"${d(500)}>You literally left me on read for 6 hours yesterday<b class="stamp fallacy"${d(1350)}>Whataboutism</b></span>
-          <span class="bub out"${d(850)}>This is literally the same thing that happened in March<b class="stamp grudge"${d(1500)}>Grudge</b></span>
-        </div>
-        <div class="demo-phone jordan">
-          <span class="demo-label"><i></i>Jordan's phone</span>
-          <span class="demo-chat">Maya</span>
-          <span class="bub in"${d(700)}>This is literally the same thing that happened in March</span>
-          <span class="bub out"${d(1050)}>Wow ok sorry I'm not perfect like you 🙄<b class="stamp shot"${d(1650)}>Personal shot</b></span>
-          <span class="bub in typing"${d(1250)}><i></i><i></i><i></i></span>
-        </div>
-      </div>
-      <button class="demo-verdict" type="button" data-action="example" aria-label="See an example verdict: Maya has the stronger case"${d(1800)}>
-        <span class="dv-top"><span class="dv-eyebrow">Verdict</span><span class="dv-tag">Example</span></span>
-        <span class="dv-title">Maya has the stronger case.</span>
-        <span class="dv-bar"><i style="flex:72;--d:2000ms"></i><i style="flex:41;--d:2000ms"></i></span>
-        <span class="dv-scores"><span><i class="dot maya"></i>Maya 72</span><span>Jordan 41<i class="dot jordan"></i></span></span>
-        <span class="dv-chips"${d(2300)}><span>3 fallacies</span><span>2 personal shots</span><span>1 grudge</span><span class="ok">${svg(ICON.check, 13)}Quotes checked</span></span>
-      </button>
-    </div>
+    <div class="demo"${play}>${demoHTML(DEMOS[demoIndex])}</div>
     <ul class="proof">
       <li>${svg(ICON.phones, 20)}<span><strong>Both phones</strong> merged in order</span></li>
       <li>${svg(ICON.people, 20)}<span><strong>You confirm</strong> who's who first</span></li>
@@ -2348,6 +2405,7 @@ $("thread").addEventListener("click", (e) => {
     return $("fileInput").click();
   }
   if (action === "next") return goStep(onboardStep + 1);
+  if (action === "demo-next") return nextDemo();
   const shareBtn = t.closest("[data-share]");
   if (shareBtn) return openShare(chat?.messages.find((m) => m.id === shareBtn.dataset.share)?.verdict);
   if (action === "share-image") return shareImage();
