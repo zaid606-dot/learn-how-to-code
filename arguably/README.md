@@ -30,7 +30,7 @@ To open it on your phone, run it on your computer and visit `http://<your-comput
 
 ## Use it without a server (claude.ai Artifact)
 
-`node scripts/build-artifact.mjs` builds `dist/arguably.html`, a single self-contained page that calls Claude through the Artifact `sample` capability. Published as a claude.ai Artifact with `capabilities: {sample: {}}`, it runs on the signed-in viewer's own Claude plan, so no API key or hosting is needed. Tall screenshots are cut into overlapping slices so text stays readable.
+`node scripts/build-artifact.mjs` builds `dist/arguably.html` from `artifact/` (chat UI) plus the shared styles, schema and prompt. It's a chat app: send screenshots or paste the conversation, get the verdict as a message, then ask follow-ups (who should apologize, draft a reply, and so on). It talks to Claude through the Artifact `sample` capability, so published as a claude.ai Artifact with `capabilities: {sample: {}}` it runs on the signed-in viewer's own Claude plan with no API key or hosting. Tall screenshots are cut into overlapping slices so the text stays readable.
 
 ## How it works
 
