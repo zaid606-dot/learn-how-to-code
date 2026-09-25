@@ -32,8 +32,8 @@ export const sampleVerdict = {
       },
       {
         speaker: "Maya",
-        quote: "This is exactly what you did with your ex",
-        why: "Pulled his last relationship in, turning one night into a pattern.",
+        quote: "This is literally the same thing that happened in March",
+        why: "Pulled in an old incident, turning one night into a pattern.",
       },
       {
         speaker: "Jordan",
@@ -62,7 +62,7 @@ export const sampleVerdict = {
     {
       topic: "How they argued",
       positions: [
-        { participant: "Maya", position: "Asked a clear question, then escalated with his ex and 'liar'.", strength: "mixed" },
+        { participant: "Maya", position: "Asked a clear question, then escalated with March and 'liar'.", strength: "mixed" },
         { participant: "Jordan", position: "Deflected, minimized, then went sarcastic.", strength: "weak" },
       ],
       edge: "Maya",
@@ -73,13 +73,13 @@ export const sampleVerdict = {
     is_draw: false,
     confidence: 71,
     reasoning:
-      "Maya asked a fair, specific question and Jordan never answered it. Being left on read may be a real hurt, but he used it to dodge. Maya loses points for bringing up his ex and calling him a liar.",
+      "Maya asked a fair, specific question and Jordan never answered it. Being left on read may be a real hurt, but he used it to dodge. Maya loses points for dragging in March and calling him a liar.",
     scores: [
       {
         participant: "Maya",
         score: 72,
         strengths: ["Asked a specific, direct question", "Said what she actually wants: a straight answer"],
-        weaknesses: ["Brought up his ex", "Called him a liar"],
+        weaknesses: ["Brought up March", "Called him a liar"],
       },
       {
         participant: "Jordan",
@@ -93,8 +93,8 @@ export const sampleVerdict = {
     {
       holder: "Maya",
       target: "Jordan",
-      grudge: "How things went with his ex.",
-      evidence_quote: "This is exactly what you did with your ex",
+      grudge: "A similar late-night incident back in March.",
+      evidence_quote: "This is literally the same thing that happened in March",
       severity: "medium",
     },
   ],
@@ -124,8 +124,8 @@ export const sampleVerdict = {
     {
       speaker: "Maya",
       fallacy: "Hasty generalization",
-      quote: "This is exactly what you did with your ex",
-      explanation: "One night of likes doesn't show he's repeating his last relationship.",
+      quote: "This is literally the same thing that happened in March",
+      explanation: "One night in March and one night now don't make a pattern on their own.",
     },
     {
       speaker: "Jordan",
@@ -135,6 +135,6 @@ export const sampleVerdict = {
     },
   ],
   takeaway:
-    "Jordan: answer the question first, then bring up the read receipts on their own. Maya: leave his ex out of it. You both want the same thing, which is to feel the other person is being straight with you.",
+    "Jordan: answer the question first, then bring up the read receipts on their own. Maya: leave March out of it. You both want the same thing, which is to feel the other person is being straight with you.",
   safety_note: "",
 };

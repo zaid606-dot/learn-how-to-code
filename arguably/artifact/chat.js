@@ -89,7 +89,7 @@ const SAMPLE_TRANSCRIPT = [
   ["Jordan", "", "It's literally just a like, why is this a whole thing"],
   ["Maya", "", "Honestly you're such a liar"],
   ["Jordan", "", "You literally left me on read for 6 hours yesterday"],
-  ["Maya", "11:52 PM", "This is exactly what you did with your ex"],
+  ["Maya", "11:52 PM", "This is literally the same thing that happened in March"],
   ["Jordan", "", "Wow ok sorry I'm not perfect like you 🙄"],
   ["Maya", "", "I just want a straight answer"],
 ].map(([sender, time, text], i) => ({ id: "m" + (i + 1), sender, time, text, kind: "text", shots: [i < 4 ? 1 : 2] }));
@@ -482,12 +482,12 @@ function homeHTML() {
           <span class="demo-chat">Jordan</span>
           <span class="bub out"${d(150)}>So you were 'asleep' but liking Brianna's pics at 2am? 👀</span>
           <span class="bub in"${d(500)}>You literally left me on read for 6 hours yesterday<b class="stamp fallacy"${d(1350)}>Whataboutism</b></span>
-          <span class="bub out"${d(850)}>This is exactly what you did with your ex<b class="stamp grudge"${d(1500)}>Grudge</b></span>
+          <span class="bub out"${d(850)}>This is literally the same thing that happened in March<b class="stamp grudge"${d(1500)}>Grudge</b></span>
         </div>
         <div class="demo-phone jordan">
           <span class="demo-label"><i></i>Jordan's phone</span>
           <span class="demo-chat">Maya</span>
-          <span class="bub in"${d(700)}>This is exactly what you did with your ex</span>
+          <span class="bub in"${d(700)}>This is literally the same thing that happened in March</span>
           <span class="bub out"${d(1050)}>Wow ok sorry I'm not perfect like you 🙄<b class="stamp shot"${d(1650)}>Personal shot</b></span>
           <span class="bub in typing"${d(1250)}><i></i><i></i><i></i></span>
         </div>
