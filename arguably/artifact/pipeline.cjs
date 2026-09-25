@@ -29,6 +29,14 @@ function similarity(a, b) {
   return 1 - prev[b.length] / Math.max(a.length, b.length);
 }
 
+// Words and numbers that flip or change a message's meaning. Fuzzy matching may forgive a
+// reading slip, but never a difference in these ("did" vs "didn't", "at 5" vs "at 6").
+const MEANING = /^(?:not|no|nope|never|nothing|nobody|none|nor|dont|didnt|doesnt|isnt|wasnt|arent|werent|cant|cannot|wont|wouldnt|shouldnt|couldnt|aint|havent|hasnt|hadnt|\d+\S*)$/;
+function meaningWords(normalized) {
+  return normalized.split(" ").filter((w) => MEANING.test(w)).sort().join(" ");
+}
+const sameMeaning = (x, y) => meaningWords(x) === meaningWords(y);
+
 // Same message text, tolerating small differences from reading two different screenshots.
 function sameMessage(a, b) {
   const x = normText(a);
@@ -36,6 +44,7 @@ function sameMessage(a, b) {
   if (!x || !y) return false;
   if (x === y) return true;
   if (Math.min(x.length, y.length) < 8) return false;
+  if (!sameMeaning(x, y)) return false;
   // Allow the few character slips that come from reading two different screenshots.
   const edits = Math.round((1 - similarity(x, y)) * Math.max(x.length, y.length));
   return edits <= Math.max(2, Math.floor(0.08 * Math.max(x.length, y.length)));
@@ -190,29 +199,67 @@ function quotesWithSpeakers(v) {
     .map((x) => ({ quote: x.quote, who: typeof x.who === "string" ? x.who.trim() : "" }));
 }
 
+// A quote's identity for marking it in the verdict: the same words attributed to two people
+// are two different claims.
+const quoteKey = (who, quote) => `${normText(who)}\u0000${quote}`;
+// "Maya (you)" and "Maya" are the same person; "you"/"me" can't be checked.
+const speakerOf = (who) => normText(String(who || "").replace(/\([^)]*\)/g, ""));
+
+// Pasted conversations as messages when they're written "Name: text", one per line.
+function pastedMessages(raw) {
+  const out = [];
+  for (const line of String(raw || "").split(/\n+/)) {
+    const m = line.match(/^\s*([^:\n]{1,30}):\s*(.+)$/);
+    if (m) out.push({ sender: m[1].trim(), text: m[2] });
+    else if (out.length && line.trim()) out[out.length - 1].text += " " + line.trim();
+  }
+  return out;
+}
+
 // Quotes in the verdict that can't be found in what was actually read, or that are pinned on
-// the wrong person. A quote may trim a message, but not add to it.
+// the wrong person. A quote may trim a message (and skip words with "..."), but not add to it
+// or change its meaning. Returns quoteKey(who, quote) for each one.
 function unverifiedQuotes(verdict, messages, raw) {
-  const read = (messages || []).filter((m) => m.kind !== "gap").map((m) => ({ text: normText(m.text), sender: normText(m.sender || "") }));
-  const pairs = read.slice(1).map((t, i) => ({ text: read[i].text + " " + t.text, senders: [read[i].sender, t.sender] }));
-  const rawNorm = raw ? normText(raw) : "";
+  const fromScreens = (messages || []).filter((m) => m.kind !== "gap");
+  const pasted = pastedMessages(raw);
+  const all = [...fromScreens, ...pasted].map((m) => ({ text: normText(m.text), sender: speakerOf(m.sender || "") }));
+  const pairs = all.slice(1).map((t, i) => ({ text: all[i].text + " " + t.text, senders: [all[i].sender, t.sender] }));
+  // Unstructured paste: only a whole-word match anywhere will do, with no speaker check.
+  const loose = pasted.length ? "" : raw ? ` ${normText(raw)} ` : "";
   const bad = new Set();
+  const contains = (hay, piece) => ` ${hay} `.includes(` ${piece} `);
+  // The quote's pieces (split at "...") appear in order, as whole words, in this text.
+  const inOrder = (hay, pieces) => {
+    let at = 0;
+    const padded = ` ${hay} `;
+    for (const p of pieces) {
+      const i = padded.indexOf(` ${p} `, at);
+      if (i < 0) return false;
+      at = i + p.length + 1;
+    }
+    return true;
+  };
   for (const { quote, who } of quotesWithSpeakers(verdict)) {
-    const nq = normText(quote.replace(/\.\.\.|…/g, " "));
+    const pieces = quote.split(/\.\.\.|…/).map(normText).filter(Boolean);
+    const nq = pieces.join(" ");
     if (!nq) continue;
-    if (rawNorm && rawNorm.includes(nq)) continue;
-    const fits = (t) => t.includes(nq) || (t.length >= 12 && nq.includes(t) && nq.length <= t.length * 1.15 + 3) || (nq.length >= 8 && similarity(t, nq) >= 0.85);
-    const hits = read.filter((m) => fits(m.text));
+    if (loose && inOrder(loose.trim(), pieces)) continue;
+    const fits = (t) =>
+      inOrder(t, pieces) ||
+      (pieces.length === 1 && t.length >= 12 && contains(nq, t) && nq.length <= t.length * 1.15 + 3) ||
+      (pieces.length === 1 && nq.length >= 8 && similarity(t, nq) >= 0.85 && sameMeaning(t, nq));
+    const hits = all.filter((m) => fits(m.text));
     // A quote spanning two messages in a row counts only when no single message holds it.
-    const pairHits = hits.length ? [] : pairs.filter((p) => p.text.includes(nq));
+    const pairHits = hits.length ? [] : pairs.filter((p) => inOrder(p.text, pieces));
     if (!hits.length && !pairHits.length) {
-      bad.add(quote);
+      bad.add(quoteKey(who, quote));
       continue;
     }
     // Found, but written by someone else: a misattributed quote is flagged too.
-    const w = normText(who);
+    const w = speakerOf(who);
+    if (!w || w === "you" || w === "me") continue;
     const senders = [...hits.map((m) => m.sender), ...pairHits.flatMap((p) => p.senders)].filter(Boolean);
-    if (w && senders.length && !senders.includes(w)) bad.add(quote);
+    if (senders.length && !senders.includes(w)) bad.add(quoteKey(who, quote));
   }
   return [...bad];
 }
@@ -492,21 +539,41 @@ function parseOcrReply(text) {
 // Returns null when there's no usable winner, so the caller can treat it as a bad reply.
 function normalizeVerdict(v) {
   if (!v || typeof v !== "object" || !v.winner || typeof v.winner !== "object" || !v.origin || typeof v.origin !== "object") return null;
-  const objs = (x) => (Array.isArray(x) ? x.filter((i) => i && typeof i === "object") : []);
-  const strs = (x) => (Array.isArray(x) ? x.filter((i) => typeof i === "string") : []);
+  const objs = (x) => (Array.isArray(x) ? x.filter((i) => i && typeof i === "object" && !Array.isArray(i)) : []);
   const str = (x) => (typeof x === "string" ? x : typeof x === "number" ? String(x) : "");
+  const strs = (x) => (Array.isArray(x) ? x.filter((i) => typeof i === "string") : []);
+  // Clean the named text fields of an object in place.
+  const clean = (o, keys) => {
+    for (const k of keys) o[k] = str(o[k]);
+    return o;
+  };
   v.title = str(v.title).trim() || "Verdict";
-  v.participants = objs(v.participants).map((p) => ({ ...p, name: str(p.name).trim() || "Someone" }));
-  for (const k of ["subjects", "grudges", "personal_shots", "fallacies"]) v[k] = objs(v[k]);
-  v.subjects.forEach((s) => (s.positions = objs(s.positions)));
-  v.origin.escalation_points = objs(v.origin.escalation_points);
+  v.takeaway = str(v.takeaway);
+  v.safety_note = str(v.safety_note);
+  v.participants = objs(v.participants).map((p) => clean({ ...p, name: str(p.name).trim() || "Someone" }, ["name_source", "evidence", "overall_tone"]));
+  clean(v.origin, ["summary", "spark_quote", "spark_speaker", "root_cause"]);
+  v.origin.escalation_points = objs(v.origin.escalation_points).map((e) => clean(e, ["speaker", "quote", "why"]));
+  v.subjects = objs(v.subjects).map((sj) => ({ ...clean(sj, ["topic", "edge"]), positions: objs(sj.positions).map((ps) => clean(ps, ["participant", "position", "strength"])) }));
+  v.grudges = objs(v.grudges).map((g) => clean(g, ["holder", "target", "grudge", "evidence_quote", "severity"]));
+  v.personal_shots = objs(v.personal_shots).map((x) => clean(x, ["from", "to", "quote", "why_its_personal", "severity"]));
+  v.fallacies = objs(v.fallacies).map((f) => clean(f, ["speaker", "fallacy", "quote", "explanation"]));
   const w = v.winner;
   w.is_draw = w.is_draw === true;
   w.name = str(w.name).trim();
+  w.reasoning = str(w.reasoning);
+  // A safety note is never thrown away: that verdict is shown without a winner or scores.
+  if (v.safety_note.trim()) {
+    w.is_draw = true;
+    w.name = "";
+    w.confidence = 0;
+  }
   if (!w.is_draw && !w.name) return null;
   const n = Number(w.confidence);
   w.confidence = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50;
-  w.scores = objs(w.scores).map((s) => ({ ...s, participant: str(s.participant), strengths: strs(s.strengths), weaknesses: strs(s.weaknesses) }));
+  w.scores = objs(w.scores).map((sc) => {
+    const score = Number(sc.score);
+    return { ...sc, participant: str(sc.participant), score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0, strengths: strs(sc.strengths), weaknesses: strs(sc.weaknesses) };
+  });
   return v;
 }
 
@@ -514,6 +581,6 @@ if (typeof module !== "undefined") {
   module.exports = {
     normText, similarity, sameMessage, joinSlices, phoneGroups, defaultMapping,
     resolveSender, mergeSequences, buildTranscript, transcriptText, verdictQuotes, unverifiedQuotes, parseTsv, ocrBlock,
-    cleanOcr, headerOf, linesToMessages, readingQuality, parseOcrReply, normalizeVerdict,
+    cleanOcr, headerOf, linesToMessages, readingQuality, parseOcrReply, normalizeVerdict, quoteKey, sameMeaning,
   };
 }

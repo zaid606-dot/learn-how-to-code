@@ -102,7 +102,7 @@ test("unverifiedQuotes flags quotes that aren't in the transcript", () => {
     personal_shots: [{ quote: "You're so lazy" }],
     fallacies: [],
   };
-  assert.deepEqual(P.unverifiedQuotes(verdict, messages), ["You're so lazy"]);
+  assert.deepEqual(P.unverifiedQuotes(verdict, messages), [P.quoteKey("", "You're so lazy")]);
   assert.deepEqual(P.unverifiedQuotes(verdict, [], "Jordan: You're so lazy\n" + messages.map((m) => m.text).join("\n")), []);
 });
 
@@ -370,7 +370,40 @@ test("unverifiedQuotes flags padded quotes and quotes pinned on the wrong person
   const v = (shots) => ({ ...base, personal_shots: shots });
   assert.deepEqual(P.unverifiedQuotes(v([{ from: "Jordan", quote: "Wow ok sorry I'm not perfect like you" }]), messages), []);
   assert.deepEqual(P.unverifiedQuotes(v([{ from: "Jordan", quote: "not perfect like you" }]), messages), [], "trimming is fine");
-  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Maya", quote: "Wow ok sorry I'm not perfect like you" }]), messages), ["Wow ok sorry I'm not perfect like you"], "wrong speaker");
+  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Maya", quote: "Wow ok sorry I'm not perfect like you" }]), messages), [P.quoteKey("Maya", "Wow ok sorry I'm not perfect like you")], "wrong speaker");
   const padded = "Wow ok sorry I'm not perfect like you, you controlling psycho";
-  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Jordan", quote: padded }]), messages), [padded], "added words");
+  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Jordan", quote: padded }]), messages), [P.quoteKey("Jordan", padded)], "added words");
+});
+
+test("quote check: meaning flips, whole words, ellipsis cuts, pasted speakers", () => {
+  const messages = [
+    { sender: "Maya", text: "I did do the dishes yesterday", kind: "text" },
+    { sender: "Jordan", text: "You said you'd do the dishes last night? You didn't even start them", kind: "text" },
+    { sender: "Maya", text: "look at the time", kind: "text" },
+  ];
+  const v = (shots) => ({ origin: {}, grudges: [], fallacies: [], personal_shots: shots });
+  const bad = (q, who) => P.unverifiedQuotes(v([{ from: who, quote: q }]), messages).length > 0;
+  assert.ok(bad("I didn't do the dishes yesterday", "Maya"), "negation flip is caught");
+  assert.ok(bad("ok", "Maya"), "no match inside another word (l-ok)");
+  assert.ok(!bad("You said... you didn't even start them", "Jordan"), "ellipsis cut is fine");
+  assert.ok(!bad("I did do the dishes yesterday", "Maya (you)"), "'(you)' is the same person");
+  const raw = "Maya: you're late again\nJordan: traffic was insane";
+  const pv = (who) => P.unverifiedQuotes(v([{ from: who, quote: "traffic was insane" }]), [], raw);
+  assert.deepEqual(pv("Jordan"), []);
+  assert.equal(pv("Maya").length, 1, "pasted quotes are checked against the speaker too");
+});
+
+test("normalizeVerdict: non-string text fields are made safe; safety notes are never dropped", () => {
+  const v = P.normalizeVerdict({ title: "T", safety_note: 1, takeaway: { x: 1 }, origin: { summary: ["a"] }, winner: { name: "", is_draw: false }, grudges: [{ grudge: 5, severity: "toString" }] });
+  assert.equal(v.safety_note, "1");
+  assert.equal(v.winner.is_draw, true, "a safety note makes it a no-score verdict");
+  assert.equal(v.takeaway, "");
+  assert.equal(v.origin.summary, "");
+  assert.equal(v.grudges[0].grudge, "5");
+});
+
+test("sameMessage never merges messages whose meaning differs", () => {
+  assert.equal(P.sameMessage("I'll be there at 5 tonight", "I'll be there at 6 tonight"), false);
+  assert.equal(P.sameMessage("you did it again and again", "you didn't it again and again"), false);
+  assert.equal(P.sameMessage("You said you'd do the dishes last night?", "You said youd do the dishes last night"), true);
 });

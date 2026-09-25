@@ -737,3 +737,111 @@ test("Notifications update while you're looking at them", async () => {
   await page.click("#inboxBtn");
   await waitUntil(page, () => /Verdict ready/.test(document.querySelector(".inbox")?.innerText || ""));
 });
+
+// ---------- Batch 3 regressions: verdicts and paywall ----------
+test("a verdict with odd field types still renders, and the chat reopens after reload", async () => {
+  const { page, errors } = await openApp({ images: true });
+  await page.evaluate(() => { window.__STUB.sampleVerdict = { ...window.__STUB.sampleVerdict, safety_note: 1, takeaway: { x: 1 } }; });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict.has-safety", { timeout: 10000 });
+  await page.reload();
+  await page.click(".recent [data-chat]");
+  assert.ok(await page.locator(".msg.verdict").isVisible());
+  assert.match(await page.locator("#thread").innerText(), /Note on safety|A note on safety/);
+  assert.deepEqual(errors, []);
+});
+
+test("a long typed question isn't judged as a pasted conversation", async () => {
+  const { page, calls } = await openApp({ images: true });
+  await page.locator(HOME_PASTE).first().click();
+  await page.fill("#messageInput", "Can you help me figure out whether I was the one in the wrong in the fight with my sister yesterday?");
+  await page.click("#sendBtn");
+  await waitUntil(page, () => !!document.querySelector(".msg.reply"));
+  const kinds = (await calls()).map((c) => c.kind);
+  assert.ok(!kinds.includes("verdict"), "no verdict");
+  assert.ok(kinds.includes("chat"));
+});
+
+test("long non-Latin conversations fit the size limit and keep their opening", async () => {
+  const { page, calls } = await openApp({ images: true });
+  const lines = Array.from({ length: 900 }, (_, i) => `${i % 2 ? "李" : "王"}: ${i === 0 ? "开头的第一句话" : "这是一个很长的争论消息，内容重复"}${i}`);
+  await page.locator(HOME_PASTE).first().click();
+  await page.evaluate((t) => { document.getElementById("messageInput").value = t; document.getElementById("messageInput").dispatchEvent(new Event("input")); }, lines.join("\n"));
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  const v = (await calls()).find((c) => c.kind === "verdict");
+  assert.ok(v.bytes <= 65536, `prompt is ${v.bytes} bytes`);
+  assert.match(v.input, /开头的第一句话/, "the opening survives trimming");
+});
+
+test("screenshots added after a paste are judged together with the pasted text", async () => {
+  const { page, calls } = await openApp({
+    images: true,
+    shots: { 1: { header: "Jordan", msgs: [["right", "You said you'd do the dishes last night?"], ["left", "Ok and you left your laundry in the dryer for 3 days so"]] } },
+  });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.locator("#suggestions [data-pick]").click()]);
+  await chooser.setFiles([fixtures.mayaPhone]);
+  await page.waitForFunction(() => /ready/.test(document.getElementById("toast")?.textContent || ""));
+  await page.click("#sendBtn");
+  await waitUntil(page, () => !!document.querySelector(".msg.who:not(.done)"));
+  await page.click("[data-confirm]");
+  await waitUntil(page, () => document.querySelectorAll(".msg.verdict").length === 2);
+  const second = (await calls()).filter((c) => c.kind === "verdict")[1];
+  assert.match(second.input, /dishes last night/);
+  assert.match(second.input, /asleep but liking pics/, "the pasted text is still part of the case");
+});
+
+test("App Store build: follow-up questions and reading need Pro; nothing reaches the AI", async () => {
+  const { page, calls } = await openApp({ images: true, store: true });
+  await page.locator(HOME_PASTE).first().click();
+  await page.fill("#messageInput", "Who is right here?");
+  await page.click("#sendBtn");
+  await page.waitForSelector(".paywall");
+  await page.click('[data-action="paywall-close"]');
+  assert.equal(await page.inputValue("#messageInput"), "Who is right here?", "your question is kept");
+  assert.equal((await calls()).length, 0);
+});
+
+test("App Store build: a fair-use card becomes 'Get the verdict' after the month resets", async () => {
+  const { page } = await openApp({ images: true, store: true, prefs: { pro: { plan: "yearly", since: 1 }, proUsage: { month: "2026-09", n: 50 } } });
+  await page.evaluate(() => { prefs.proUsage = { month: monthKey(), n: 50 }; });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.resume.fair");
+  await page.evaluate(() => { prefs.proUsage = { month: "1999-01", n: 50 }; render(); });
+  assert.equal(await page.locator(".msg.resume [data-resume]").innerText(), "Get the verdict");
+  await page.click(".msg.resume [data-resume]");
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+});
+
+test("App Store build: tapping Purchase twice starts one purchase", async () => {
+  const { page } = await openApp({ images: true, store: true });
+  await page.evaluate(() => {
+    window.__posts = 0;
+    window.webkit = { messageHandlers: { storekit: { postMessage: (m) => { window.__posts++; setTimeout(() => window.ArguablyStore.reply(m.id, { ok: true, plan: "yearly" }), 300); } } } };
+  });
+  await page.click("#settingsBtn");
+  await page.click('[data-action="paywall"]');
+  await page.click('[data-action="purchase"]');
+  await page.click('[data-action="purchase"]', { force: true }).catch(() => {});
+  await page.waitForTimeout(500);
+  assert.equal(await page.evaluate(() => window.__posts), 1);
+});
+
+test("replies never show internal message ids", async () => {
+  const { page } = await openApp({ images: true });
+  const out = await page.evaluate(() => formatReply("As [m2 and m3] show (m4), Jordan [M2] dodged [m1"));
+  assert.doesNotMatch(out, /\[?\(?m\d/i);
+});
+
+test("the 21st chat says which old chat made room", async () => {
+  const { page } = await openApp({ images: true });
+  await page.evaluate(() => {
+    const old = Array.from({ length: 20 }, (_, i) => ({ id: "c" + i, title: "Old " + i, createdAt: i, updatedAt: i, messages: [{ id: "u", role: "user", text: "hi" }], readings: [], groups: [], you: "", transcript: [], raw: "", shotTotal: 0 }));
+    localStorage.setItem("arguably.chats.v2", JSON.stringify(old.reverse()));
+  });
+  await page.reload();
+  await pasteConversation(page);
+  await page.waitForFunction(() => /oldest chat/.test(document.getElementById("toast")?.textContent || ""), null, { timeout: 5000 });
+});

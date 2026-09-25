@@ -159,7 +159,8 @@ function relTime(ts) {
 function formatReply(text) {
   const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   return String(text)
-    .replace(/\s*\[m\d+(?:[,\s–-]+m?\d+)*\]/g, "")
+    .replace(/\s*[\[(]\s*m\d+(?:\s*(?:[,–-]|and|&|to)\s*m?\d+)*\s*[\])]/gi, "")
+    .replace(/\s*\[m?\d*$/i, "") // a reference still streaming in
     .trim()
     .split(/\n{2,}/)
     .map((block) => {
@@ -177,12 +178,19 @@ function formatReply(text) {
 let chats = storage(() => JSON.parse(localStorage.getItem(STORE_KEY)) || JSON.parse(localStorage.getItem("arguably.chats.v1")) || [], []);
 if (!Array.isArray(chats)) chats = [];
 chats = chats.filter((c) => c && typeof c === "object" && Array.isArray(c.messages));
+// Saved verdicts from older versions (or damaged storage) are cleaned the same way as new ones.
+for (const c of chats) {
+  c.messages = c.messages.filter((m) => m && typeof m === "object" && (m.kind !== "verdict" || (m.verdict = normalizeVerdict(m.verdict))));
+  for (const k of ["transcript", "readings", "groups"]) if (!Array.isArray(c[k])) c[k] = [];
+  if (typeof c.raw !== "string") c.raw = "";
+}
 let chat = null; // null = home screen
 let page = null; // null, "onboarding", "settings" or "inbox": a full page shown instead of home/chat
 let pending = []; // screenshots attached to the next message: {id, url, key}
 let busy = null; // {ctl, chatId}: one reading/verdict/reply job at a time; it keeps running if you leave the chat
 const live = new Map(); // chat id -> chat object with a job in progress, so reopening it shows the progress
 let sampler = null;
+let maxPromptBytes = 65536; // updated from the host's limits
 let claudeChecked = false; // until the connection check finishes, don't claim you're signed out
 let maxImages = 0;
 
@@ -192,7 +200,10 @@ const INBOX_KEY = "arguably.inbox.v1";
 const DEFAULT_PREFS = { onboarded: false, policy: null, photos: false, aiConsent: false, freeUsed: 0, pro: null, proUsage: { month: "", n: 0 }, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
 const savedPrefs = storage(() => JSON.parse(localStorage.getItem(PREFS_KEY)) || {}, {});
 let prefs = { ...DEFAULT_PREFS, ...savedPrefs, notify: { ...DEFAULT_PREFS.notify, ...(savedPrefs.notify || {}) } };
+if (!prefs.proUsage || typeof prefs.proUsage !== "object") prefs.proUsage = { month: "", n: 0 };
+if (!Number.isFinite(prefs.freeUsed)) prefs.freeUsed = 0;
 let inbox = storage(() => JSON.parse(localStorage.getItem(INBOX_KEY)) || [], []);
+if (!Array.isArray(inbox)) inbox = [];
 let onboardStep = 0;
 let onboardDir = 1; // 1 = moving forward, -1 = back; sets which way the next step slides in
 let docReturn = null; // {page, chat}: where a policy or help page goes back to
@@ -247,14 +258,26 @@ function saveChats(c = chat) {
   c.updatedAt = Date.now();
   // Screenshots stay in memory only; saved chats keep text, transcript and verdicts.
   const clean = { ...c, messages: c.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)) };
-  chats = [clean, ...chats.filter((x) => x.id !== c.id)].slice(0, MAX_CHATS);
+  // Screenshot readings are only needed until who's who is confirmed.
+  const waiting = new Set(c.messages.filter((m) => m.kind === "who" && m.status === "pending").flatMap((m) => m.readingNs || []));
+  clean.readings = (c.readings || []).filter((r) => waiting.has(r.n));
+  const all = [clean, ...chats.filter((x) => x.id !== c.id)];
+  chats = all.slice(0, MAX_CHATS);
+  let dropped = all.slice(MAX_CHATS);
   let saved = storage(() => (localStorage.setItem(STORE_KEY, JSON.stringify(chats)), true), false);
-  // Out of room: drop the oldest chats until it fits, and say so.
+  // Out of room: drop the oldest chats until it fits.
   while (!saved && chats.length > 1) {
+    dropped = [chats.at(-1), ...dropped];
     chats = chats.slice(0, -1);
     saved = storage(() => (localStorage.setItem(STORE_KEY, JSON.stringify(chats)), true), false);
-    if (saved) toast("Storage is full, so the oldest chat was removed.");
   }
+  if (dropped.length) {
+    const ids = new Set(dropped.map((x) => x.id));
+    inbox = inbox.filter((n) => !ids.has(n.chatId));
+    saveInbox();
+    toast(dropped.length === 1 ? `To make room, your oldest chat (“${dropped[0].title}”) was removed.` : `To make room, your ${dropped.length} oldest chats were removed.`);
+  }
+  if (!saved) toast("This chat is too big to save on this device. It stays open until you leave.");
 }
 
 // Leaving a chat doesn't stop its work: the result is saved and shows up in Notifications.
@@ -316,27 +339,26 @@ function colorMap(v) {
   };
 }
 
-function sourceLabel(src) {
-  return (
-    {
-      contact_header: "Contact name",
-      signed_or_self_named: "Named themselves",
-      mentioned_by_other: "Named by the other person",
-      bubble_side_only: "No name visible",
-    }[src] || "Source unknown"
-  );
-}
+const SOURCE_LABELS = {
+  contact_header: "Contact name",
+  signed_or_self_named: "Named themselves",
+  mentioned_by_other: "Named by the other person",
+  bubble_side_only: "No name visible",
+};
+const sourceLabel = (src) => (Object.hasOwn(SOURCE_LABELS, src) ? SOURCE_LABELS[src] : "Source unknown");
 
 function verdictHTML(m, c) {
   const v = m.verdict;
   const unverified = new Set(m.unverified || []);
+  // Older chats stored plain quote text; newer ones key each quote by who it's attributed to.
+  const isUnverified = (text, who) => unverified.has(quoteKey(who || "", text)) || unverified.has(text);
   const color = colorMap(v);
   const person = (n) => `<span class="person"><span class="dot" style="background:${color(n).bg}"></span>${esc(n)}</span>`;
   const quote = (text, who) =>
     `<div class="quote" style="box-shadow: inset 3px 0 0 ${color(who).bg}">“${esc(text)}”${
-      unverified.has(text) ? '<span class="tag unverified">Couldn’t verify</span>' : ""
+      isUnverified(text, who) ? '<span class="tag unverified">Couldn’t verify</span>' : ""
     }</div>`;
-  const tag = (value, labels) => `<span class="tag ${esc(value)}">${esc(labels[value] || value)}</span>`;
+  const tag = (value, labels) => `<span class="tag ${esc(value)}">${esc(Object.hasOwn(labels, value) ? labels[value] : value)}</span>`;
   const sev = (s) => tag(s, { low: "Low", medium: "Medium", high: "High" });
   const strength = (s) => tag(s, { strong: "Strong", mixed: "Mixed", weak: "Weak" });
   const empty = (msg) => `<p class="empty">${msg}</p>`;
@@ -350,7 +372,7 @@ function verdictHTML(m, c) {
   const conf = Math.max(0, Math.min(100, Number(w.confidence) || 0));
   const scores = [...(w.scores || [])].sort((a, b) => b.score - a.score);
   const o = v.origin || {};
-  const transcript = m.transcript || c.transcript || [];
+  const transcript = m.transcript || (m.source === "paste" ? [] : c.transcript || []);
 
   return `
     ${c.example ? '<span class="tag example-tag">Example verdict</span>' : ""}
@@ -659,7 +681,7 @@ function homeHTML() {
             .map((c) => {
               const v = verdictsOf(c).at(-1);
               const names = v ? (v.participants || []).map((p) => p.name).slice(0, 2) : [];
-              const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.winner?.is_draw ? "Even match" : `${esc(v.winner?.name)} won`) : "No verdict yet";
+              const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.safety_note?.trim() ? "Note on safety" : v.winner?.is_draw ? "Even match" : `${esc(v.winner?.name)} won`) : "No verdict yet";
               return `<li><button type="button" data-chat="${esc(c.id)}">
                 <span class="pair" aria-hidden="true">${(names.length ? names : ["?"])
                   .map((n, i) => `<span style="background:${PALETTE[i].bg};color:${PALETTE[i].fg}">${esc(String(n).trim().charAt(0).toUpperCase())}</span>`)
@@ -1600,7 +1622,10 @@ function confirmWho(id) {
 
 // Every verdict starts here. A verdict that can't run yet (stopped, failed, or waiting on Pro)
 // leaves a "resume" card in the chat, which is saved, so it survives leaving and reloading.
-const monthKey = () => new Date().toISOString().slice(0, 7);
+const monthKey = () => {
+  const d = new Date(); // the 1st in the person's own time zone, not UTC
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
 function verdictBlock() {
   if (!STORE_BUILD) return "";
   if (!prefs.pro) return prefs.freeUsed >= FREE_VERDICTS ? "locked" : "";
@@ -1666,17 +1691,20 @@ function countVerdict() {
 }
 
 function resumeHTML(m) {
+  // A card saved as "locked" or "fair" becomes runnable once Pro is bought or the month resets.
+  const reason = (m.reason === "locked" || m.reason === "fair") && !verdictBlock() ? "ready" : m.reason;
   const copy = {
+    ready: ["Your verdict is ready to run", "Your screenshots are already read."],
     stopped: ["Verdict stopped", "Pick up where you left off. Your screenshots are already read."],
     consent: ["Your verdict is waiting", `Allow sending chats to ${AI_NAME} to get it. Your screenshots are already read.`],
     failed: ["The verdict didn't come through", m.error || "Something went wrong on the way. Your screenshots are already read."],
     locked: ["Your verdict is one tap away", `Start your ${PLANS.yearly.trialDays}-day free trial to see who's right.`],
     fair: ["You've hit this month's fair-use limit", `Pro includes ${PRO_FAIR_USE} verdicts a month. It resets on the 1st.`],
-  }[m.reason] || ["Verdict didn't finish", ""];
-  const button = m.reason === "fair" ? "" : m.reason === "locked"
+  }[reason] || ["Verdict didn't finish", ""];
+  const button = reason === "fair" ? "" : reason === "locked"
     ? `<button class="cta" type="button" data-action="paywall" data-resume="${m.id}">See Pro</button>`
-    : `<button class="cta" type="button" data-resume="${m.id}">Try again</button>`;
-  return `<div class="msg resume ${m.reason}" role="status"><div class="resume-text"><strong>${esc(copy[0])}</strong><span>${esc(copy[1])}</span></div>${button}</div>`;
+    : `<button class="cta" type="button" data-resume="${m.id}">${reason === "ready" ? "Get the verdict" : "Try again"}</button>`;
+  return `<div class="msg resume ${reason}" role="status"><div class="resume-text"><strong>${esc(copy[0])}</strong><span>${esc(copy[1])}</span></div>${button}</div>`;
 }
 
 const TONES = {
@@ -1684,14 +1712,36 @@ const TONES = {
   gentle: "Tone: gentle. Lead with what each person got right, soften how criticism is worded, and make the takeaway especially kind.",
 };
 
+// Fit text into a byte budget (not characters: non-Latin text is 2-3 bytes a character),
+// keeping the opening (where arguments start) and the latest part.
+const byteLen = (s) => new TextEncoder().encode(s).length;
+function fitBytes(text, budget) {
+  if (byteLen(text) <= budget) return text;
+  const gap = "\n[...middle of the conversation omitted...]\n";
+  let head = Math.floor(text.length * 0.25);
+  let tail = Math.floor(text.length * 0.5);
+  while (head + tail > 0 && byteLen(text.slice(0, head) + gap + text.slice(-tail)) > budget) {
+    head = Math.floor(head * 0.9);
+    tail = Math.floor(tail * 0.9);
+  }
+  return text.slice(0, head) + gap + text.slice(-tail);
+}
+// The whole conversation this chat holds: screenshots and pasted text together.
+function conversationText(chat) {
+  const screens = chat.transcript.length ? transcriptText(chat.transcript) : "";
+  if (screens && chat.raw) return `${screens}\n\n(Also pasted as text:)\n${chat.raw}`;
+  return screens || chat.raw || "";
+}
+
 function verdictPrompt(chat, note) {
   const earlier = verdictsOf(chat).at(-1);
-  const convo = chat.transcript.length ? transcriptText(chat.transcript) : chat.raw;
+  const convo = conversationText(chat);
   let p = SYSTEM_PROMPT;
   p += chat.transcript.length
     ? "\n\nThe screenshots have already been read for you. Below is the full transcript, with both phones merged and speakers confirmed by the person who uploaded them. Work only from this transcript and quote messages exactly as written in it."
     : "\n\nThe conversation was pasted as text instead of screenshots. Quote messages exactly as written in it.";
-  p += `\n\n<conversation>\n${convo.slice(-45000)}\n</conversation>`;
+  const rest = byteLen(p) + 6000; // everything else in the prompt, with room to spare
+  p += `\n\n<conversation>\n${fitBytes(convo, maxPromptBytes - rest)}\n</conversation>`;
   // Who uploaded it stays out of the verdict prompt so it can't tilt the result.
   p += "\n\nWrite about everyone in the third person, and address the takeaway to both sides.";
   if (earlier) p += `\n\nYou gave an earlier verdict in this chat ("${earlier.title}"). New screenshots were added since; judge the whole conversation as it stands now.`;
@@ -1718,7 +1768,8 @@ async function runVerdict(c, note) {
     c.messages.push({
       id: uid(), role: "assistant", kind: "verdict", verdict,
       unverified: unverifiedQuotes(verdict, c.transcript, c.raw),
-      transcript: c.transcript.length ? c.transcript.slice() : undefined,
+      transcript: c.transcript.length ? c.transcript.map((t) => ({ ...t })) : undefined,
+      source: c.transcript.length ? (c.raw ? "both" : "screens") : "paste",
     });
     c.title = verdict.title || c.title;
     countVerdict();
@@ -1736,8 +1787,7 @@ async function runVerdict(c, note) {
 
 function chatTurns(chat) {
   const verdicts = verdictsOf(chat).slice(-2);
-  let convo = chat.transcript.length ? transcriptText(chat.transcript) : chat.raw;
-  if (convo.length > 30000) convo = convo.slice(0, 4000) + "\n[...middle of the conversation omitted...]\n" + convo.slice(-26000);
+  const convo = fitBytes(conversationText(chat), Math.min(30000, maxPromptBytes / 2));
   const context =
     CHAT_RULES +
     `\n\n${TONES[prefs.tone] || TONES.straight}` +
@@ -1753,7 +1803,9 @@ function chatTurns(chat) {
       if (content) turns.push({ role: "user", content: content.slice(0, 4000) });
     } else if (m.kind === "verdict") {
       const w = m.verdict.winner || {};
-      turns.push({ role: "assistant", content: `I gave my verdict "${m.verdict.title}": ${w.is_draw ? "an even match" : `${w.name} made the stronger case`} (${w.confidence}% confidence). Full details are in the verdict JSON above.` });
+      turns.push({ role: "assistant", content: m.verdict.safety_note?.trim()
+        ? `I didn't score "${m.verdict.title}". I gave a note on safety instead, because the messages showed threats, control or abuse. Full details are in the verdict JSON above.`
+        : `I gave my verdict "${m.verdict.title}": ${w.is_draw ? "an even match" : `${w.name} made the stronger case`} (${w.confidence}% confidence). Full details are in the verdict JSON above.` });
     } else if (m.text) {
       turns.push({ role: "assistant", content: m.text });
     }
@@ -1763,7 +1815,13 @@ function chatTurns(chat) {
   const size = () => new TextEncoder().encode(context + JSON.stringify(recent)).length;
   while (recent.length > 1 && size() > 60000) recent = recent.slice(1);
   while (recent.length && recent[0].role !== "user") recent = recent.slice(1);
-  return [{ role: "user", content: context }, ...recent];
+  // Turns must alternate: fold back-to-back turns from the same side into one.
+  const out = [];
+  for (const t of [{ role: "user", content: context }, ...recent]) {
+    if (out.length && out.at(-1).role === t.role) out.at(-1).content += "\n\n" + t.content;
+    else out.push({ ...t });
+  }
+  return out;
 }
 
 async function runChat(c) {
@@ -1778,6 +1836,7 @@ async function runChat(c) {
       signal,
       onText: ({ text }) => {
         streamed = text;
+        Object.assign(reply, { kind: "text", text, transient: true }); // a re-render keeps the text so far
         const el = document.getElementById(reply.id);
         if (!el) return;
         // Follow the reply only if you're already at the bottom; reading back up isn't interrupted.
@@ -1802,6 +1861,8 @@ async function runPasted(c, text) {
   return startVerdict(c, "");
 }
 
+// A pasted conversation has at least two "Name: message" lines. A long question doesn't.
+const speakerLines = (text) => (String(text).match(/^[^:\n]{1,30}:\s*\S/gm) || []).length;
 async function send(textOverride) {
   if (busy && !busyHere()) return toast("Arguably is finishing another argument. You'll get a notification when it's done.");
   if (busy || !sampler || pendingWho()) return;
@@ -1810,6 +1871,14 @@ async function send(textOverride) {
   const text = (textOverride ?? input.value).trim();
   const shots = pending.slice();
   if (!text && !shots.length) return;
+  const isPaste = !shots.length && speakerLines(text) >= 2 && !verdictsOf(chat).length;
+  // App Store build: reading screenshots and follow-up questions use the AI too, so they're
+  // Pro like verdicts. (A pasted conversation goes on to the verdict, which has its own gate.)
+  if (STORE_BUILD && !isPaste && (!prefs.pro || verdictBlock() === "fair")) {
+    if (prefs.pro) return toast(`You've used this month's ${PRO_FAIR_USE} Pro verdicts. It resets on the 1st.`);
+    paywallFor = null;
+    return openPage("paywall"); // the screenshots and the typed text stay where they are
+  }
   if (chat?.example && !shots.length) {
     const ex = chat;
     chat = { ...newChatObject(), title: ex.title, transcript: ex.transcript.slice(), you: "", messages: ex.messages.filter((m) => m.kind !== "nudge") };
@@ -1823,9 +1892,7 @@ async function send(textOverride) {
   $("toast").hidden = true;
   const c = chat;
   if (shots.length) return runImport(c, shots, text);
-  // A long paste before any verdict is treated as the conversation itself.
-  const speakerLines = (text.match(/^[^:\n]{1,30}:\s*\S/gm) || []).length;
-  if (!verdictsOf(c).length && (text.length >= 80 || speakerLines >= 2)) return runPasted(c, text);
+  if (isPaste) return runPasted(c, text);
   return runChat(c);
 }
 
@@ -1895,7 +1962,9 @@ function paywallHTML() {
 const storeBridge = () => window.webkit?.messageHandlers?.storekit || null;
 function storeCall(msg) {
   const bridge = storeBridge();
-  if (!bridge) return Promise.resolve(msg.type === "purchase" ? { ok: true, plan: msg.plan, preview: true } : { ok: false });
+  // Purchases are only simulated in a browser preview. Inside the native app a missing
+  // StoreKit bridge is an error, never free Pro.
+  if (!bridge) return Promise.resolve(msg.type === "purchase" && !window.webkit ? { ok: true, plan: msg.plan, preview: true } : { ok: false });
   return new Promise((resolve) => {
     const id = uid();
     (window.ArguablyStore ||= { pending: {}, reply: (rid, res) => { window.ArguablyStore.pending[rid]?.(res); delete window.ArguablyStore.pending[rid]; } });
@@ -1903,9 +1972,18 @@ function storeCall(msg) {
     bridge.postMessage({ ...msg, id });
   });
 }
+let purchasing = false;
 async function purchase() {
+  if (purchasing) return;
+  purchasing = true;
+  document.querySelector(".pw-cta")?.setAttribute("aria-busy", "true");
   const plan = PLANS[paywallPlan];
-  const res = await storeCall({ type: "purchase", plan: paywallPlan, productId: plan.id });
+  let res;
+  try {
+    res = await storeCall({ type: "purchase", plan: paywallPlan, productId: plan.id });
+  } finally {
+    purchasing = false;
+  }
   if (!res?.ok) return res?.cancelled ? undefined : toast("The purchase didn't go through. You weren't charged.");
   unlockPro(res.plan || paywallPlan, res.preview ? "Preview: purchase simulated. You're Pro." : "You're Pro. Welcome in.");
 }
@@ -2390,6 +2468,7 @@ render();
     sampler = window.claude ? await window.claude.use("sample") : null;
     const limits = sampler ? await sampler.limits().catch(() => null) : null;
     maxImages = limits?.images?.maxCount || 0;
+    if (limits?.maxPromptBytes > 20000) maxPromptBytes = limits.maxPromptBytes;
   } catch {
     sampler = null;
   }

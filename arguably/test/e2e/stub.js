@@ -70,6 +70,8 @@
         tier: opts.modelTier,
         transcript: (input.match(/^\[m\d+\] .*$/gm) || []),
         you: (input.match(/The person asking is ([^.]+)\./) || [])[1] || "",
+        bytes: new TextEncoder().encode(input).length,
+        input,
       });
       return stub.sampleVerdict;
     }
