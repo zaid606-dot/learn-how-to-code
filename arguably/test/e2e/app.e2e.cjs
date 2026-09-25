@@ -222,7 +222,11 @@ test("settings: name, tone, on-phone reading and delete all change real behavior
   await page.click('[data-action="delete-all"]');
   assert.match(await page.locator(".confirm-row").innerText(), /can't be undone/);
   await page.click('[data-action="delete-confirm"]');
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2")).length), 0);
+  // Delete all data erases everything the app keeps; you aren't sent back through the intro.
+  assert.equal(await page.evaluate(() => localStorage.getItem("arguably.chats.v2")), null);
+  const after = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")));
+  assert.equal(after.name, "");
+  assert.equal(after.onboarded, true);
   assert.deepEqual(errors, []);
 });
 
@@ -247,5 +251,69 @@ test("notifications: a verdict that finishes while you're home shows up with a b
   await page.locator(".note", { hasText: "Verdict ready" }).first().click();
   await waitUntil(page, () => !!document.querySelector(".msg.verdict"));
   assert.ok(await page.locator("#inboxBadge").isHidden() || /^\d+$/.test(await page.locator("#inboxBadge").innerText()));
+  assert.deepEqual(errors, []);
+});
+
+test("nothing goes to Claude until the viewer allows it", async () => {
+  const { page, errors, calls } = await openApp({ images: true, prefs: { aiConsent: false } });
+  await page.locator(HOME_PASTE).first().click();
+  await page.fill("#messageInput", "Maya: So you were asleep but liking pics at 2am?\nJordan: You literally left me on read for 6 hours yesterday\nMaya: This is literally the same thing that happened in March");
+  await page.click("#sendBtn");
+  await page.waitForSelector(".doc", { timeout: 5000 });
+  assert.equal(await page.locator(".doc .page-title").innerText(), "How AI is used");
+  assert.equal((await calls()).length, 0, "no Claude call before consent");
+  await page.click('[data-action="consent"]');
+  await page.waitForSelector(".msg.verdict", { timeout: 15000 });
+  assert.ok((await calls()).some((c) => c.kind === "verdict"), "the held request goes through after consent");
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).aiConsent), true);
+  assert.deepEqual(errors, []);
+});
+
+test("onboarding asks for consent explicitly and 'Not now' respects it", async () => {
+  const { page } = await openApp({ firstRun: true });
+  await page.click('[data-action="next"]');
+  assert.match(await page.locator(".ob-fine").innerText(), /Anthropic/);
+  await page.click('.onboard [data-action="next"]'); // Not now
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1") || "{}").aiConsent || false), false);
+});
+
+test("the example ends by sending you to grab your own argument", async () => {
+  const { page, errors } = await openApp({ images: true });
+  await page.click('.sheet-btn[data-action="example"]');
+  await page.waitForSelector(".msg.nudge");
+  await shot(page, "example-nudge");
+  assert.equal(await page.locator(".msg.nudge li").count(), 7);
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('.msg.nudge [data-action="import"]')]);
+  assert.ok(chooser);
+  await page.click('.msg.nudge [data-action="paste-new"]');
+  assert.equal(await page.evaluate(() => document.activeElement.id), "messageInput");
+  assert.deepEqual(errors, []);
+});
+
+test("settings: store-ready pages, export and support links", async () => {
+  const { page, errors } = await openApp({ images: true });
+  await page.click("#settingsBtn");
+  for (const [doc, title] of [["privacy", "Privacy Policy"], ["ai", "How AI is used"], ["terms", "Terms of Use"], ["safety", "Staying safe"], ["licenses", "Open-source licenses"]]) {
+    await page.click(`[data-doc="${doc}"]`);
+    assert.equal(await page.locator(".doc .page-title").innerText(), title);
+    assert.deepEqual(await layoutProblems(page), [], doc);
+    await page.click("#backBtn");
+    assert.ok(await page.locator(".settings").isVisible(), `back from ${doc} returns to Settings`);
+  }
+  assert.match(await page.getAttribute('a[href^="mailto:"]', "href"), /^mailto:.+@/);
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click('[data-action="export"]')]);
+  assert.match(download.suggestedFilename(), /^arguably-export-.*\.json$/);
+  assert.deepEqual(errors, []);
+});
+
+test("the first notification asks for an App Store rating", async () => {
+  const { page, errors } = await openApp({ firstRun: true });
+  await page.click("#skipBtn");
+  await page.click("#inboxBtn");
+  assert.match(await page.locator(".note").first().innerText(), /welcome to Arguably[\s\S]*rating on the App Store/);
+  await shot(page, "inbox-rate");
+  assert.deepEqual(await layoutProblems(page), []);
+  await page.click(".note");
+  assert.equal(await page.locator(".note.unread").count(), 0);
   assert.deepEqual(errors, []);
 });

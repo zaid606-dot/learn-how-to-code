@@ -11,6 +11,11 @@
 /*__CONSTANTS__*/
 
 const MAX_IMAGES = 30;
+// Shown in Settings > Support. Replace with the real support inbox before App Store submission.
+const SUPPORT_EMAIL = "support@arguably.app";
+// Set to the numeric App Store ID once the listing exists; the rating notification links to it.
+const APP_STORE_ID = "";
+const APP_VERSION = "1.0";
 const MAX_EDGE = 2000;
 const STORE_KEY = "arguably.chats.v2";
 const MAX_CHATS = 20;
@@ -168,7 +173,7 @@ let maxImages = 0;
 // Preferences and the notification inbox live on this device only.
 const PREFS_KEY = "arguably.prefs.v1";
 const INBOX_KEY = "arguably.inbox.v1";
-const DEFAULT_PREFS = { onboarded: false, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
+const DEFAULT_PREFS = { onboarded: false, aiConsent: false, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
 const savedPrefs = storage(() => JSON.parse(localStorage.getItem(PREFS_KEY)) || {}, {});
 let prefs = { ...DEFAULT_PREFS, ...savedPrefs, notify: { ...DEFAULT_PREFS.notify, ...(savedPrefs.notify || {}) } };
 let inbox = storage(() => JSON.parse(localStorage.getItem(INBOX_KEY)) || [], []);
@@ -186,7 +191,7 @@ const unreadCount = () => inbox.filter((n) => !n.read).length;
 
 // Add a notification. It's marked read straight away if you're already looking at that chat.
 function notify(kind, title, body, chatId) {
-  if (!prefs.notify[kind]) return;
+  if (kind !== "rate" && !prefs.notify[kind]) return;
   const seen = !page && chatId && chat?.id === chatId && document.visibilityState === "visible";
   inbox.unshift({ id: uid(), kind, title, body, chatId: chatId || "", at: Date.now(), read: !!seen });
   inbox = inbox.slice(0, 50);
@@ -217,6 +222,7 @@ function goHome() {
   render();
 }
 
+let consentReturn = null;
 function openPage(name) {
   page = name;
   confirmingDelete = false;
@@ -487,12 +493,36 @@ function messageHTML(m) {
   }
   if (m.kind === "verdict") return `<article class="msg verdict">${verdictHTML(m, chat)}</article>`;
   if (m.kind === "who") return whoHTML(m);
+  if (m.kind === "nudge") return nudgeHTML();
   if (m.kind === "error") return `<div class="msg error"><p class="banner" role="alert">${esc(m.text)}</p></div>`;
   if (m.kind === "thinking")
     return `<div class="msg reply" id="${m.id}"><div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="step">${esc(m.text)}</span></div>${
       m.progress != null ? `<div class="progress" aria-hidden="true"><i style="width:${Math.round(m.progress * 100)}%"></i></div>` : ""
     }</div>`;
   return `<div class="msg reply" id="${m.id || ""}">${formatReply(m.text)}${m.interrupted ? '<p class="interrupted">Reply stopped before it finished.</p>' : ""}</div>`;
+}
+
+// Closes the example: gets people thinking about their own last argument, then sends them to grab it.
+const JOGGERS = [
+  ["💬", "The one you replayed in the shower"],
+  ["🌙", "The late-night text you almost didn't send"],
+  ["👀", "The one where they said “whatever”"],
+  ["🧾", "The one they swear went differently"],
+];
+function nudgeHTML() {
+  return `<section class="msg nudge" aria-labelledby="nudgeTitle">
+    <span class="nudge-eyebrow">Your turn</span>
+    <h2 id="nudgeTitle">Think of your last argument.</h2>
+    <p>You know the one. It's probably still sitting in your messages.</p>
+    <ul class="joggers">${JOGGERS.map(([e, t]) => `<li><span aria-hidden="true">${e}</span>${t}</li>`).join("")}</ul>
+    <ol class="grab">
+      <li><b>1</b>Open that chat and scroll to where it started.</li>
+      <li><b>2</b>Screenshot down to the last message.</li>
+      <li><b>3</b>Got their side too? Add those. Any order works.</li>
+    </ol>
+    <button class="cta" type="button" data-action="import">${svg(ICON.upload, 20)}Import my screenshots</button>
+    <button class="nudge-alt" type="button" data-action="paste-new">Or paste the text instead</button>
+  </section>`;
 }
 
 const ICON = {
@@ -547,8 +577,8 @@ function homeHTML() {
       <button class="demo-verdict" type="button" data-action="example" aria-label="See an example verdict: Maya has the stronger case"${d(1800)}>
         <span class="dv-top"><span class="dv-eyebrow">Verdict</span><span class="dv-tag">Example</span></span>
         <span class="dv-title">Maya has the stronger case.</span>
-        <span class="dv-bar"><i style="flex:64;--d:2000ms"></i><i style="flex:36;--d:2000ms"></i></span>
-        <span class="dv-scores"><span><i class="dot maya"></i>Maya 64</span><span>Jordan 36<i class="dot jordan"></i></span></span>
+        <span class="dv-bar"><i style="flex:72;--d:2000ms"></i><i style="flex:41;--d:2000ms"></i></span>
+        <span class="dv-scores"><span><i class="dot maya"></i>Maya 72</span><span>Jordan 41<i class="dot jordan"></i></span></span>
         <span class="dv-chips"${d(2300)}><span>3 fallacies</span><span>2 personal shots</span><span>1 grudge</span><span class="ok">${svg(ICON.check, 13)}Quotes checked</span></span>
       </button>
     </div>
@@ -558,6 +588,7 @@ function homeHTML() {
       <li>${svg(ICON.quote, 20)}<span><strong>Every quote</strong> checked</span></li>
     </ul>
     <div class="home-sheet">
+      <p class="sheet-prompt">Still thinking about your last argument? <span>Start there.</span></p>
       <button class="import-btn" type="button" data-action="import">${svg(ICON.upload, 22)}Import screenshots</button>
       <p class="import-note">Both phones · any order · up to ${MAX_IMAGES}</p>
       <div class="sheet-row">
@@ -587,6 +618,7 @@ function homeHTML() {
 }
 
 const PAGE_ICON = {
+  star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
   bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   device: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
@@ -601,7 +633,7 @@ const pageSvg = (d, size = 22) =>
 function onboardingHTML() {
   const dots = `<div class="ob-dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i === onboardStep ? "on" : ""}"></i>`).join("")}</div>`;
   const steps = [
-    `<div class="ob-art ob-logo"><img src="${$("homeBtn").querySelector("img").src}" alt="" width="96" height="96"></div>
+    `<div class="ob-art ob-logo"><img src="${MARK_URI}" alt="" width="84" height="77"></div>
      <h1>Settle it.<br><em>With receipts.</em></h1>
      <p>Import screenshots of any argument, yours or someone else's. See where it started, who made the stronger case, and every cheap shot along the way.</p>
      ${dots}
@@ -611,10 +643,14 @@ function onboardingHTML() {
      <ul class="ob-list">
        <li>${pageSvg(PAGE_ICON.device)}<span><strong>Screenshots aren't saved.</strong> They're read, then let go.</span></li>
        <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Chats stay on this device.</strong> Delete them anytime in Settings.</span></li>
-       <li>${pageSvg(PAGE_ICON.spark)}<span><strong>Verdicts run on your Claude account.</strong> Nobody else sees your chats.</span></li>
+       <li>${pageSvg(PAGE_ICON.spark)}<span><strong>Runs on your Claude account.</strong> Verdicts use your Claude plan. No subscription here.</span></li>
      </ul>
+     <p class="ob-fine">Verdicts are written by Claude, an AI by Anthropic. Allowing sends the conversation you import, and nothing else, to Claude. Change it anytime in Settings.</p>
      ${dots}
-     <div class="ob-actions"><button class="cta" type="button" data-action="next">Next</button></div>`,
+     <div class="ob-actions">
+       <button class="cta" type="button" data-action="consent-next">Allow and continue</button>
+       <button class="ob-secondary" type="button" data-action="next">Not now</button>
+     </div>`,
     `<div class="ob-art">${pageSvg(PAGE_ICON.who, 40)}</div>
      <h1>What should we call you?</h1>
      <p>So we can spot you in screenshots. Leave it blank if you're mostly judging other people's arguments.</p>
@@ -628,69 +664,173 @@ function onboardingHTML() {
   return `<section class="onboard" aria-live="polite">${steps[onboardStep]}</section>`;
 }
 
+const SET_ICON = {
+  person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  tone: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  claude: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+  phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+  heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  flag: '<path d="M4 22V4M4 4h13l-2 4 2 4H4"/>',
+  replay: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  play: '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/>',
+  code: '<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
+};
+const tile = (icon, tint) => `<span class="tile ${tint}" aria-hidden="true">${pageSvg(SET_ICON[icon], 17)}</span>`;
+const chev = `<span class="set-chev" aria-hidden="true">${svg(ICON.chevron, 16)}</span>`;
+const DOC_PAGES = ["privacy", "ai", "terms", "safety", "licenses"];
+
 function settingsHTML() {
-  const sw = (key, on, title, sub) => `<button class="set-row switch-row" type="button" role="switch" aria-checked="${on}" data-toggle="${key}">
-      <span class="set-text"><span class="set-title">${title}</span><span class="set-sub">${sub}</span></span>
-      <span class="switch${on ? " on" : ""}" aria-hidden="true"><i></i></span></button>`;
+  const text = (title, sub) => `<span class="set-text"><span class="set-title">${title}</span>${sub ? `<span class="set-sub">${sub}</span>` : ""}</span>`;
+  const sw = (key, on, icon, tint, title, sub) => `<button class="set-row" type="button" role="switch" aria-checked="${on}" data-toggle="${key}">
+      ${tile(icon, tint)}${text(title, sub)}<span class="switch${on ? " on" : ""}" aria-hidden="true"><i></i></span></button>`;
+  const link = (attrs, icon, tint, title, sub = "", extra = "") => `<button class="set-row" type="button" ${attrs}>${tile(icon, tint)}${text(title, sub)}${extra}${chev}</button>`;
+  const mail = (subject, icon, tint, title, sub) =>
+    `<a class="set-row" href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}">${tile(icon, tint)}${text(title, sub)}${chev}</a>`;
   const saved = chats.length;
   return `<section class="settings">
+    <h1 class="page-title">Settings</h1>
     <div class="set-group">
-      <h2>You</h2>
-      <label class="set-card field"><span>Your name</span>
-        <input id="setName" type="text" autocomplete="given-name" maxlength="40" value="${esc(prefs.name)}" placeholder="Add your name">
-        <small>Used to spot you in screenshots and fill in who's who. Leave blank if you mostly judge other people's arguments.</small></label>
+      <label class="set-card profile">
+        <span class="avatar" aria-hidden="true">${esc((prefs.name || "?").charAt(0).toUpperCase())}</span>
+        <span class="profile-main"><span class="set-sub">Your name</span>
+        <input id="setName" type="text" autocomplete="given-name" maxlength="40" value="${esc(prefs.name)}" placeholder="Add your name"></span>
+      </label>
+      <p class="set-foot">Used to spot you in screenshots. Leave it blank if you mostly judge other people's arguments.</p>
     </div>
+
     <div class="set-group">
       <h2>Verdicts</h2>
       <div class="set-card">
-        <div class="set-text"><span class="set-title">Tone</span><span class="set-sub">How Arguably talks in verdicts and replies.</span></div>
-        <div class="segmented" role="radiogroup" aria-label="Verdict tone">
+        <div class="set-row static">${tile("tone", "ember")}${text("Tone", "How Arguably talks to you.")}</div>
+        <div class="seg-wrap"><div class="segmented" role="radiogroup" aria-label="Verdict tone">
           <button type="button" role="radio" aria-checked="${prefs.tone === "straight"}" data-tone="straight" class="${prefs.tone === "straight" ? "on" : ""}">Straight talk</button>
           <button type="button" role="radio" aria-checked="${prefs.tone === "gentle"}" data-tone="gentle" class="${prefs.tone === "gentle" ? "on" : ""}">Gentle</button>
-        </div>
+        </div></div>
       </div>
     </div>
+
     <div class="set-group">
-      <h2>Screenshots</h2>
-      <div class="set-card flush">${sw("readOnPhone", prefs.readOnPhone, "Always read on this phone", "Claude sees the text, never the images. A little less accurate with photos and emoji.")}</div>
+      <h2>AI &amp; screenshots</h2>
+      <div class="set-card">
+        ${sw("aiConsent", prefs.aiConsent, "claude", "navy", "Send chats to Claude", "Needed for verdicts. Claude is an AI by Anthropic.")}
+        ${sw("readOnPhone", prefs.readOnPhone, "phone", "sand", "Read screenshots on this phone", "Claude gets the text, never the images.")}
+        ${link('data-doc="ai"', "info", "blue", "How AI is used")}
+      </div>
     </div>
+
     <div class="set-group">
       <h2>Notifications</h2>
-      <div class="set-card flush">
-        ${sw("verdict", prefs.notify.verdict, "Verdict ready", "When a verdict finishes while you're somewhere else.")}
-        ${sw("who", prefs.notify.who, "Screenshots read", "When it's time to check who's who.")}
-        ${sw("tips", prefs.notify.tips, "Tips", "Occasional ways to get fairer verdicts.")}
-        <button class="set-row link-row" type="button" data-action="inbox"><span class="set-title">See notifications</span>${svg(ICON.chevron, 18)}</button>
+      <div class="set-card">
+        ${sw("verdict", prefs.notify.verdict, "bell", "ember", "Verdict ready", "When a verdict finishes while you're elsewhere.")}
+        ${sw("who", prefs.notify.who, "bell", "blue", "Screenshots read", "When it's time to check who's who.")}
+        ${sw("tips", prefs.notify.tips, "bell", "green", "Tips", "Now and then. Never marketing.")}
+        ${link('data-action="inbox"', "bell", "sand", "All notifications")}
       </div>
     </div>
+
     <div class="set-group">
-      <h2>Your data</h2>
+      <h2>Privacy &amp; data</h2>
       <div class="set-card">
-        <div class="set-text"><span class="set-title">${plural(saved, "chat")} saved on this device</span><span class="set-sub">Screenshots are never saved. Only the text, who's who and verdicts.</span></div>
+        ${link('data-doc="privacy"', "shield", "green", "Privacy Policy")}
+        ${link('data-action="export"', "download", "blue", "Export my data", `${plural(saved, "chat")} on this device`)}
         ${
           confirmingDelete
-            ? `<div class="confirm-row" role="alert"><span>Delete ${plural(saved, "chat")}? This can't be undone.</span>
-                 <button class="danger-btn" type="button" data-action="delete-confirm">Delete</button>
-                 <button class="ghost-btn" type="button" data-action="delete-cancel">Cancel</button></div>`
-            : `<button class="danger-link" type="button" data-action="delete-all"${saved ? "" : " disabled"}>${pageSvg(PAGE_ICON.trash, 18)}Delete all chats</button>`
+            ? `<div class="confirm-row" role="alert"><span>Erase all chats, notifications and settings on this device? This can't be undone.</span>
+                 <button class="ghost-btn" type="button" data-action="delete-cancel">Cancel</button>
+                 <button class="danger-btn" type="button" data-action="delete-confirm">Erase everything</button></div>`
+            : `<button class="set-row danger-row" type="button" data-action="delete-all">${tile("trash", "red")}${text("Delete all data")}</button>`
         }
       </div>
+      <p class="set-foot">No account. No ads. No tracking. Screenshots are never saved.</p>
     </div>
+
     <div class="set-group">
-      <h2>Help</h2>
-      <div class="set-card flush">
-        <button class="set-row link-row" type="button" data-action="replay"><span class="set-title">Replay the intro</span>${svg(ICON.chevron, 18)}</button>
-        <button class="set-row link-row" type="button" data-action="example"><span class="set-title">See an example verdict</span>${svg(ICON.chevron, 18)}</button>
+      <h2>Support</h2>
+      <div class="set-card">
+        ${link('data-doc="safety"', "heart", "red", "If an argument doesn't feel safe")}
+        ${mail("Arguably support", "mail", "blue", "Contact support")}
+        ${mail("Report a verdict", "flag", "ember", "Report a verdict", "Wrong, unfair or harmful? Tell us.")}
+        ${link('data-action="example"', "play", "navy", "See an example verdict")}
+        ${link('data-action="replay"', "replay", "sand", "Replay the intro")}
       </div>
-      <p class="set-about">Arguably · Verdicts by Claude, using your Claude account.</p>
+    </div>
+
+    <div class="set-group">
+      <h2>About</h2>
+      <div class="set-card">
+        ${link('data-doc="terms"', "doc", "sand", "Terms of Use")}
+        ${link('data-doc="licenses"', "code", "sand", "Open-source licenses")}
+        <div class="set-row static">${tile("info", "sand")}${text("Version")}<span class="set-value">${APP_VERSION}</span></div>
+      </div>
+      <p class="set-about"><img src="${MARK_URI}" alt="" width="22" height="20">Arguably · Verdicts by Claude</p>
     </div>
   </section>`;
 }
 
+// In-app policy pages. Drafts: have them reviewed before submission.
+const DOCS = {
+  privacy: {
+    title: "Privacy Policy",
+    body: () => `<p class="doc-lede">Short version: your arguments stay yours. No account, no ads, no tracking.</p>
+      <h2>What we collect</h2><p>Nothing on our servers. Arguably keeps your chats (the text, who's who and verdicts), your name if you add one, and your settings on this device only.</p>
+      <h2>What leaves your device</h2><p>When you ask for a verdict, the conversation text, and the screenshots unless “Read screenshots on this phone” is on, is sent to Claude, an AI made by Anthropic, to write the verdict. It's sent only after you allow it, and only to answer you.</p>
+      <h2>Screenshots</h2><p>Screenshots are read, then let go. They're never saved on your device or anywhere else by Arguably.</p>
+      <h2>Tracking</h2><p>Arguably doesn't track you across apps or websites, doesn't show ads, and doesn't sell or share data with data brokers.</p>
+      <h2>Your choices</h2><p>Turn off “Send chats to Claude” anytime. Export or delete everything from Settings › Privacy &amp; data. Deleting is immediate and permanent.</p>
+      <h2>Children</h2><p>Arguably isn't made for children under 13.</p>
+      <h2>Contact</h2><ul class="help-list"><li><a href="mailto:${SUPPORT_EMAIL}">Email us<span>${SUPPORT_EMAIL}</span></a></li></ul>`,
+  },
+  ai: {
+    title: "How AI is used",
+    body: () => `<p class="doc-lede">Arguably uses Claude, an AI made by Anthropic, to read arguments and write verdicts.</p>
+      <h2>What Claude gets</h2><ul><li>The conversation text from your screenshots or paste</li><li>The screenshots themselves, unless “Read screenshots on this phone” is on</li><li>Names you confirm on the who's-who step, and any note you add</li></ul>
+      <h2>What Claude doesn't get</h2><ul><li>Your contacts, photo library or location</li><li>Other chats on this device</li></ul>
+      <h2>What to keep in mind</h2><p>Verdicts are an AI's opinion, not a fact or professional advice. Every quote in a verdict is checked against the conversation, and anything that doesn't match is flagged. If a verdict looks wrong or unfair, report it from Settings.</p>
+      ${prefs.aiConsent ? `<p class="doc-state ok">${svg(ICON.check, 16)}You've allowed sending chats to Claude.</p>` : `<button class="cta" type="button" data-action="consent">Allow sending chats to Claude</button>`}`,
+  },
+  terms: {
+    title: "Terms of Use",
+    body: () => `<p class="doc-lede">By using Arguably you agree to these terms.</p>
+      <h2>For fun and perspective</h2><p>Verdicts are AI opinions for entertainment and reflection. They aren't legal, medical, mental-health or relationship advice.</p>
+      <h2>Your content</h2><p>Only import conversations you have the right to share. Don't use Arguably to harass, shame or threaten anyone.</p>
+      <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
+      <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
+      <h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>`,
+  },
+  safety: {
+    title: "Staying safe",
+    body: () => `<p class="doc-lede">Some arguments aren't about who's right. If someone threatens you, controls who you see or what you do, or you feel afraid, that matters more than any verdict.</p>
+      <h2>Talk to someone now</h2><ul class="help-list">
+        <li><a href="https://findahelpline.com" target="_blank" rel="noopener">Find a free, confidential helpline in your country<span>findahelpline.com</span></a></li>
+        <li><a href="tel:988">988 Suicide &amp; Crisis Lifeline (US)<span>Call or text 988</span></a></li>
+        <li><a href="https://www.thehotline.org" target="_blank" rel="noopener">National Domestic Violence Hotline (US)<span>1-800-799-7233 · text START to 88788</span></a></li>
+      </ul>
+      <p>In immediate danger, call your local emergency number.</p>`,
+  },
+  licenses: {
+    title: "Open-source licenses",
+    body: () => `<p class="doc-lede">Arguably is built with open-source software. Thank you to its authors.</p>
+      <h2>Tesseract OCR</h2><p>tesseract.js-core and tessdata_fast English data. Apache License 2.0. Copyright Google Inc. and the Tesseract contributors.</p>
+      <ul class="help-list"><li><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0<span>apache.org</span></a></li></ul>`,
+  },
+};
+function docHTML(name) {
+  const d = DOCS[name];
+  return `<article class="doc"><h1 class="page-title">${d.title}</h1>${d.body()}</article>`;
+}
+
 function inboxHTML() {
   const unread = unreadCount();
-  const icon = { verdict: PAGE_ICON.scale, who: PAGE_ICON.who, tips: PAGE_ICON.spark };
+  const icon = { verdict: PAGE_ICON.scale, who: PAGE_ICON.who, tips: PAGE_ICON.spark, rate: PAGE_ICON.star };
   return `<section class="inbox">
+    <h1 class="page-title">Notifications</h1>
     <div class="inbox-top">
       <p>${unread ? `${plural(unread, "new notification")}` : "You're all caught up."}</p>
       ${unread ? '<button class="ghost-btn" type="button" data-action="read-all">Mark all as read</button>' : ""}
@@ -719,7 +859,7 @@ function emptyChatHTML() {
   </section>`;
 }
 
-const PAGE_TITLES = { settings: "Settings", inbox: "Notifications", onboarding: "" };
+const PAGE_TITLES = { settings: "Settings", inbox: "Notifications", onboarding: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Licenses" };
 
 function renderHeader() {
   const onHome = !chat && !page;
@@ -750,6 +890,8 @@ function render() {
       ? settingsHTML()
       : page === "inbox"
         ? inboxHTML()
+        : DOC_PAGES.includes(page)
+          ? docHTML(page)
         : onHome
           ? homeHTML()
           : chat.messages.length
@@ -765,10 +907,11 @@ function render() {
   renderComposer();
   // New verdicts and who's-who cards open at their top; everything else follows the latest message.
   requestAnimationFrame(() => {
-    const last = !onHome && chat?.messages.at(-1);
+    const trail = !onHome && chat?.messages.at(-1)?.kind === "nudge";
+    const last = !onHome && chat?.messages.at(trail ? -2 : -1);
     let top = last ? document.documentElement.scrollHeight : 0;
     if (last && (last.kind === "verdict" || last.kind === "who")) {
-      const el = thread.lastElementChild;
+      const el = trail ? thread.lastElementChild?.previousElementSibling : thread.lastElementChild;
       if (el) top = el.getBoundingClientRect().top + window.scrollY - $("thread").offsetTop + 8;
     }
     window.scrollTo({ top });
@@ -1320,7 +1463,7 @@ function chatTurns(chat) {
     (verdicts.length ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n") : "\n\nNo verdict has been given yet.");
   const turns = [];
   for (const m of chat.messages) {
-    if (m.transient || m.kind === "error" || m.kind === "thinking" || m.kind === "who") continue;
+    if (m.transient || m.kind === "error" || m.kind === "thinking" || m.kind === "who" || m.kind === "nudge") continue;
     if (m.role === "user") {
       const n = m.shotCount || m.shots?.length;
       const content = ((n ? `(imported ${plural(n, "screenshot")}) ` : "") + (m.text || "")).trim();
@@ -1377,6 +1520,10 @@ async function runPasted(c, text) {
 async function send(textOverride) {
   if (busy && !busyHere()) return toast("Arguably is finishing another argument. You'll get a notification when it's done.");
   if (busy || !sampler || pendingWho()) return;
+  if (!prefs.aiConsent) {
+    consentReturn = chat;
+    return openPage("ai");
+  }
   const input = $("messageInput");
   const text = (textOverride ?? input.value).trim();
   const shots = pending.slice();
@@ -1407,6 +1554,7 @@ function openExample() {
       { id: uid(), role: "user", text: "Who's right here? We've been dating a year.", shotCount: 2 },
       { id: uid(), role: "assistant", kind: "who", status: "done", groups: [{ me: "Maya", them: "Jordan" }], you: "Maya" },
       { id: uid(), role: "assistant", kind: "verdict", verdict: SAMPLE_VERDICT, unverified: [], transcript: SAMPLE_TRANSCRIPT },
+      { id: uid(), role: "assistant", kind: "nudge" },
     ],
   };
   render();
@@ -1482,6 +1630,33 @@ $("thread").addEventListener("click", (e) => {
     return render();
   }
   if (action === "replay") return openPage("onboarding");
+  if (action === "consent-next") {
+    prefs.aiConsent = true;
+    savePrefs();
+    onboardStep = Math.min(onboardStep + 1, 2);
+    return render();
+  }
+  if (action === "consent") {
+    prefs.aiConsent = true;
+    savePrefs();
+    if (consentReturn) {
+      page = null;
+      chat = consentReturn;
+      consentReturn = null;
+      render();
+      return send();
+    }
+    return render();
+  }
+  if (action === "export") return exportData();
+  if (action === "paste-new") {
+    chat = null;
+    ensureChat();
+    render();
+    return $("messageInput").focus();
+  }
+  const doc = t.closest("[data-doc]");
+  if (doc) return openPage(doc.dataset.doc);
   if (action === "inbox") return openPage("inbox");
   if (action === "read-all") {
     inbox.forEach((n) => (n.read = true));
@@ -1497,14 +1672,15 @@ $("thread").addEventListener("click", (e) => {
     return render();
   }
   if (action === "delete-confirm") {
-    const n = chats.length;
-    chats = chats.filter((c) => live.has(c.id));
-    storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
-    inbox = inbox.filter((x) => !x.chatId || live.has(x.chatId));
-    saveInbox();
+    if (busy) busy.ctl.abort();
+    chats = [];
+    inbox = [];
+    storage(() => [STORE_KEY, INBOX_KEY, PREFS_KEY, "arguably.chats.v1"].forEach((k) => localStorage.removeItem(k)));
+    prefs = { ...DEFAULT_PREFS, onboarded: true, notify: { ...DEFAULT_PREFS.notify } };
+    savePrefs();
     confirmingDelete = false;
     render();
-    return toast(`Deleted ${plural(n, "chat")}.`);
+    return toast("Everything on this device is erased.");
   }
   const tone = t.closest("[data-tone]");
   if (tone) {
@@ -1515,7 +1691,7 @@ $("thread").addEventListener("click", (e) => {
   const toggle = t.closest("[data-toggle]");
   if (toggle) {
     const key = toggle.dataset.toggle;
-    if (key === "readOnPhone") prefs.readOnPhone = !prefs.readOnPhone;
+    if (key === "readOnPhone" || key === "aiConsent") prefs[key] = !prefs[key];
     else prefs.notify[key] = !prefs.notify[key];
     savePrefs();
     return render();
@@ -1526,6 +1702,11 @@ $("thread").addEventListener("click", (e) => {
     if (!n) return;
     n.read = true;
     saveInbox();
+    if (n.kind === "rate") {
+      if (APP_STORE_ID) window.open(`https://apps.apple.com/app/id${APP_STORE_ID}?action=write-review`, "_blank", "noopener");
+      else toast("Ratings open once Arguably is on the App Store. Thank you!");
+      return render();
+    }
     if (n.chatId) return openChat(n.chatId);
     return render();
   }
@@ -1565,6 +1746,31 @@ $("thread").addEventListener("keydown", (e) => {
   }
 });
 
+// Settings › Export my data: everything Arguably keeps, as one JSON file.
+async function exportData() {
+  const data = { app: "Arguably", version: APP_VERSION, exportedAt: new Date().toISOString(), settings: prefs, chats, notifications: inbox };
+  const json = JSON.stringify(data, null, 2);
+  const name = `arguably-export-${new Date().toISOString().slice(0, 10)}.json`;
+  try {
+    const file = new File([json], name, { type: "application/json" });
+    if (navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], title: "Arguably export" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(file), download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast("Export downloaded.");
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    try {
+      await navigator.clipboard.writeText(json);
+      toast("Couldn't save a file here, so your data was copied instead.");
+    } catch {
+      toast("Couldn't export here. Try from a browser.");
+    }
+  }
+}
+
 function finishOnboarding() {
   if (prefs.onboarded) {
     if (page === "onboarding") page = null;
@@ -1573,7 +1779,7 @@ function finishOnboarding() {
   prefs.onboarded = true;
   savePrefs();
   page = null;
-  notify("tips", "Tip: use screenshots from both phones", "Arguably merges them in order, so each side's messages count. You can also judge arguments you're not in.");
+  notify("rate", "Hey, welcome to Arguably!", "Give us a rating on the App Store. It helps more people settle it.");
   render();
 }
 $("newBtn").addEventListener("click", () => {
@@ -1583,7 +1789,15 @@ $("newBtn").addEventListener("click", () => {
   ensureChat();
   render();
 });
-$("backBtn").addEventListener("click", goHome);
+$("backBtn").addEventListener("click", () => {
+  if (consentReturn) {
+    page = null;
+    chat = consentReturn;
+    consentReturn = null;
+    return render();
+  }
+  return DOC_PAGES.includes(page) ? openPage("settings") : goHome();
+});
 $("homeBtn").addEventListener("click", goHome);
 $("inboxBtn").addEventListener("click", () => openPage("inbox"));
 $("settingsBtn").addEventListener("click", () => openPage("settings"));

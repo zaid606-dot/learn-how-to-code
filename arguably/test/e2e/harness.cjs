@@ -33,7 +33,7 @@ function wrappedPage(stubConfig) {
 <style>[hidden]{display:none!important}body{margin:0}</style></head><body>
 <script>window.__STUB_CONFIG = ${JSON.stringify(stubConfig || {})};
 // Returning user by default; pass { firstRun: true } to see onboarding.
-try { if (!window.__STUB_CONFIG.firstRun) localStorage.setItem("arguably.prefs.v1", JSON.stringify(Object.assign({ onboarded: true }, window.__STUB_CONFIG.prefs || {}))); else localStorage.clear(); } catch {}</script>
+try { if (!window.__STUB_CONFIG.firstRun) localStorage.setItem("arguably.prefs.v1", JSON.stringify(Object.assign({ onboarded: true, aiConsent: true }, window.__STUB_CONFIG.prefs || {}))); else localStorage.clear(); } catch {}</script>
 <script>${stub}</script>
 ${page}
 <script>if (window.__STUB) window.__STUB.sampleVerdict = SAMPLE_VERDICT;</script>
