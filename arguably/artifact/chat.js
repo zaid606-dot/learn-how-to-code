@@ -294,8 +294,15 @@ function welcomeHTML() {
   return `<section class="welcome">
     <h1>Who's <em>actually</em> right?</h1>
     <p>Add screenshots from both sides of a text argument, or paste the conversation. Arguably finds where it started, who made the stronger case, and every grudge, personal shot and logical fallacy. Then ask it anything about the argument.</p>
+    <label class="dropzone import-zone" for="fileInput">
+      <span class="dz-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+      </span>
+      <span class="dz-title">Import screenshots</span>
+      <span class="dz-sub">From your photos, both sides of the conversation</span>
+    </label>
     <ol class="steps">
-      <li><b>1</b><span>Tap the image button and pick your screenshots, oldest first.</span></li>
+      <li><b>1</b><span>Import your screenshots, oldest first.</span></li>
       <li><b>2</b><span>Add a line of background if it helps, then send.</span></li>
       <li><b>3</b><span>Ask follow-ups: who should apologize, what to say back, what you might be missing.</span></li>
     </ol>
@@ -319,7 +326,8 @@ function render() {
   thread.innerHTML = chat?.messages.length ? chat.messages.map(messageHTML).join("") : welcomeHTML();
   renderSuggestions();
   renderComposer();
-  requestAnimationFrame(() => window.scrollTo({ top: document.documentElement.scrollHeight }));
+  const top = chat?.messages.length ? document.documentElement.scrollHeight : 0;
+  requestAnimationFrame(() => window.scrollTo({ top }));
 }
 
 function renderSuggestions() {
@@ -327,7 +335,10 @@ function renderSuggestions() {
   const last = chat?.messages.at(-1);
   const show = !busy && last?.kind === "verdict" && sampler;
   box.hidden = !show;
-  box.innerHTML = show ? SUGGESTIONS.map((s) => `<button type="button" data-say="${esc(s)}">${esc(s)}</button>`).join("") : "";
+  box.innerHTML = show
+    ? '<label class="import-chip" for="fileInput">Import more screenshots</label>' +
+      SUGGESTIONS.map((s) => `<button type="button" data-say="${esc(s)}">${esc(s)}</button>`).join("")
+    : "";
 }
 
 function renderComposer() {
@@ -346,12 +357,12 @@ function renderComposer() {
   const hasInput = pending.length > 0 || $("messageInput").value.trim().length > 0;
   $("sendBtn").disabled = !busy && (!sampler || !hasInput);
   $("sendBtn").setAttribute("aria-label", busy ? "Stop" : "Send");
-  $("attachBtn").classList.toggle("disabled", !sampler || !maxImages || !!busy);
-  $("messageInput").placeholder = verdictsOf(chat).length
-    ? "Ask about this argument"
-    : maxImages
-      ? "Add screenshots or paste the conversation"
-      : "Paste the conversation as text";
+  $("attachBtn").classList.toggle("disabled", !!busy);
+  $("messageInput").placeholder = pending.length
+    ? "Add a note, or just send"
+    : verdictsOf(chat).length
+      ? "Ask about this argument"
+      : "Or paste the conversation";
   document.documentElement.style.setProperty("--composer-h", form.offsetHeight + "px");
 }
 
@@ -382,8 +393,8 @@ async function fileToShot(file) {
 
 async function addFiles(fileList) {
   const files = [...fileList].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
-  if (!files.length || !maxImages) return;
-  const limit = Math.min(MAX_IMAGES, maxImages);
+  if (!files.length) return;
+  const limit = Math.min(MAX_IMAGES, maxImages || MAX_IMAGES);
   const room = limit - pending.length;
   if (room <= 0) return toast(`You can send up to ${limit} screenshots at a time.`);
   if (files.length > room) toast(`Added ${room}. The limit is ${limit} screenshots at a time.`);
@@ -397,6 +408,7 @@ async function addFiles(fileList) {
     renderComposer();
   }
   if (failed) toast(`We couldn't open ${failed} image${failed > 1 ? "s" : ""}. Try PNG or JPEG.`);
+  else if (pending.length) toast(`${pending.length} screenshot${pending.length > 1 ? "s" : ""} ready. Tap send for the verdict.`);
 }
 
 // Claude sees images at about 1.2 megapixels, so tall screenshots are cut into
@@ -581,7 +593,7 @@ $("fileInput").addEventListener("change", async (e) => {
 });
 document.addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.files || [])];
-  if (files.length && maxImages && !busy) {
+  if (files.length && !busy) {
     e.preventDefault();
     addFiles(files);
   }
