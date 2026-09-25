@@ -251,7 +251,7 @@ function notify(kind, title, body, chatId) {
 }
 
 function newChatObject(saved = {}) {
-  return { id: uid(), title: "New argument", createdAt: Date.now(), updatedAt: Date.now(), messages: [], readings: [], groups: [], you: "", transcript: [], raw: "", shotTotal: 0, ...saved };
+  return { id: uid(), title: "New argument", createdAt: Date.now(), updatedAt: Date.now(), messages: [], readings: [], groups: [], you: "", transcript: [], raw: "", shotTotal: 0, shotKeys: [], ...saved };
 }
 
 // Write the chat list. true = saved, false = storage is full, null = storage can't be used here.
@@ -413,7 +413,7 @@ function verdictHTML(m, c) {
 
   return `
     ${c.example ? '<span class="tag example-tag">Example verdict</span>' : ""}
-    ${m.repeat ? '<p class="checked repeat" role="note">You’ve judged this conversation before. Same conversation, same verdict.</p>' : ""}
+    ${m.repeat ? '<p class="checked repeat" role="note">This conversation was judged before. Same screenshots, same verdict, every time.</p>' : ""}
     <h2 class="v-title">${esc(v.title)}</h2>
     ${
       unverified.size
@@ -1844,6 +1844,7 @@ async function runImport(c, shots, note) {
     const messageCount = readings.reduce((a, r) => a + r.msgs.filter((m) => m.side !== "center").length, 0);
     if (!messageCount) throw { code: "no_messages" };
     c.shotTotal += shots.length;
+    c.shotKeys = [...(c.shotKeys || []), ...shots.map((s) => s.key).filter(Boolean)]; // what the verdict is locked to
     c.readings.push(...readings);
     const groups = defaultMapping(phoneGroups(readings), c.groups);
     // Your name from Settings stands in for "Me" on your own phone's screenshots.
@@ -1940,29 +1941,90 @@ function hash(text) {
   return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
 }
 const JUDGE_VERSION = hash(SYSTEM_PROMPT + JSON.stringify(VERDICT_SCHEMA));
-function fingerprint(c, note) {
-  const convo = conversationText(c).replace(/\s+/g, " ").trim();
-  return hash([JUDGE_VERSION, AI_NAME, prefs.tone || "straight", note.trim(), convo].join("\u0000"));
+// What a verdict is locked to. Screenshots are identified by their pixels (not by how the AI
+// happened to read them), plus the names confirmed in who's who; pasted text by its words.
+// Anything that shapes the verdict (note, tone, the judge's instructions) is part of it too.
+function verdictKeys(c, note) {
+  const common = [JUDGE_VERSION, AI_NAME, prefs.tone || "straight", note.trim()].join("\u0000");
+  const raw = (c.raw || "").replace(/\s+/g, " ").trim();
+  const keys = [];
+  if (c.shotKeys?.length) {
+    const shots = [...new Set(c.shotKeys)].sort().join(",");
+    const names = (c.groups || []).map((g) => `${String(g.me || "").trim().toLowerCase()}>${String(g.them || "").trim().toLowerCase()}`).sort().join(",");
+    keys.push(`screens\u0000${common}\u0000${shots}\u0000${names}\u0000${raw}`);
+  }
+  keys.push(`text\u0000${common}\u0000${conversationText(c).replace(/\s+/g, " ").trim()}`);
+  return keys;
 }
-function judgedBefore(fp) {
-  for (const chat of chats) for (const m of chat.messages) if (m.kind === "verdict" && m.fp === fp && m.verdict) return m.verdict;
+function judgedBefore(fps) {
+  for (const chat of chats)
+    for (const m of chat.messages)
+      if (m.kind === "verdict" && m.verdict && (m.fps || [m.fp]).some((f) => fps.includes(f))) return m.verdict;
   return null;
 }
-function reuseVerdict(c, note) {
-  const fp = fingerprint(c, note);
-  const earlier = judgedBefore(fp);
-  if (!earlier) return false;
-  const verdict = JSON.parse(JSON.stringify(earlier));
+function pushVerdict(c, verdict, extra = {}) {
   c.messages.push({
-    id: uid(), role: "assistant", kind: "verdict", verdict, fp, repeat: true,
+    id: uid(), role: "assistant", kind: "verdict", verdict, ...extra,
     unverified: unverifiedQuotes(verdict, c.transcript, c.raw),
     transcript: c.transcript.length ? c.transcript.map((t) => ({ ...t })) : undefined,
     source: c.transcript.length ? (c.raw ? "both" : "screens") : "paste",
   });
   c.title = verdict.title || c.title;
+}
+function reuseVerdict(c, note) {
+  const fps = verdictKeys(c, note).map(hash);
+  const earlier = judgedBefore(fps);
+  if (!earlier) return false;
+  pushVerdict(c, JSON.parse(JSON.stringify(earlier)), { fp: fps[0], fps, repeat: true });
   saveChats(c);
   render();
   return true;
+}
+
+// ---------- the verdict vault (website) ----------
+// The first verdict for a conversation is stored on the server, encrypted with a key made from
+// the conversation itself; the server gets only a hash as its name. Anyone who uploads the same
+// screenshots later, on any phone, gets that same verdict back instead of a new one.
+const VAULT = HOSTED && !!crypto?.subtle;
+const sha256 = async (text) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
+const hex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+async function vaultKey(canonical) {
+  const [id, raw] = await Promise.all([sha256("arguably-vault-id\u0000" + canonical), sha256("arguably-vault-key\u0000" + canonical)]);
+  return { id: hex(id), key: await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]) };
+}
+async function vaultOpen(k, blob) {
+  try {
+    const bytes = unb64url(blob);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.subarray(0, 12) }, k.key, bytes.subarray(12));
+    return normalizeVerdict(JSON.parse(new TextDecoder().decode(plain)));
+  } catch {
+    return null;
+  }
+}
+async function vaultFetch(path, init) {
+  try {
+    const res = await fetch(path, { ...init, signal: AbortSignal.timeout(6000) });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+async function vaultGet(canonical) {
+  if (!VAULT) return null;
+  const k = await vaultKey(canonical);
+  const data = await vaultFetch(`/api/verdicts?id=${k.id}`);
+  return typeof data?.blob === "string" ? vaultOpen(k, data.blob) : null;
+}
+// Store this verdict; if someone got there first, theirs is the verdict (returned instead).
+async function vaultPut(canonical, verdict) {
+  if (!VAULT) return verdict;
+  const k = await vaultKey(canonical);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k.key, new TextEncoder().encode(JSON.stringify(verdict))));
+  const blob = b64url(new Uint8Array([...iv, ...sealed]));
+  const data = await vaultFetch("/api/verdicts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: k.id, blob }) });
+  if (typeof data?.blob !== "string" || data.blob === blob) return verdict;
+  return (await vaultOpen(k, data.blob)) || verdict;
 }
 
 function startVerdict(c, note = "") {
@@ -2074,18 +2136,22 @@ async function runVerdict(c, note) {
     step = Math.min(step + 1, VERDICT_STEPS.length - 1);
     updateThinking(thinking, VERDICT_STEPS[step]);
   }, 7000);
-  const fp = fingerprint(c, note);
+  const keys = verdictKeys(c, note);
+  const fps = keys.map(hash);
   try {
-    const verdict = normalizeVerdict(await sampler.json(verdictPrompt(c, note), { modelTier: "complex", signal }));
+    // Judged before, on any phone: that verdict, not a new one.
+    const locked = await vaultGet(keys[0]);
+    if (signal.aborted) throw { code: "cancelled" };
+    if (locked) {
+      c.messages = c.messages.filter((m) => m !== thinking);
+      pushVerdict(c, locked, { fp: fps[0], fps, repeat: true });
+      return;
+    }
+    let verdict = normalizeVerdict(await sampler.json(verdictPrompt(c, note), { modelTier: "complex", signal }));
     if (!verdict) throw { code: "invalid_json" };
+    verdict = await vaultPut(keys[0], verdict); // lock it in (or take the one locked a moment ago)
     c.messages = c.messages.filter((m) => m !== thinking);
-    c.messages.push({
-      id: uid(), role: "assistant", kind: "verdict", verdict, fp,
-      unverified: unverifiedQuotes(verdict, c.transcript, c.raw),
-      transcript: c.transcript.length ? c.transcript.map((t) => ({ ...t })) : undefined,
-      source: c.transcript.length ? (c.raw ? "both" : "screens") : "paste",
-    });
-    c.title = verdict.title || c.title;
+    pushVerdict(c, verdict, { fp: fps[0], fps });
     countVerdict();
     const win = winnerOf(verdict);
     notify("verdict", `Verdict ready: ${c.title}`, verdict.safety_note?.trim() ? "There's a note on safety." : `${win.name} wins${win.margin ? ` ${byPoints(win.margin)}` : ""}.`, c.id);

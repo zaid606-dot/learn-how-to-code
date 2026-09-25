@@ -553,6 +553,24 @@ test("every verdict names a winner and the margin; the same conversation gets th
   assert.deepEqual(errors, []);
 });
 
+test("a verdict is locked to the screenshots' pixels and the confirmed names, not to how they were read", async () => {
+  const { page } = await openApp({ images: true });
+  const keys = await page.evaluate(() => {
+    const base = { raw: "", transcript: [{ sender: "Maya", text: "hi" }], groups: [{ me: "Maya", them: "Jordan" }] };
+    const k = (c) => verdictKeys({ ...base, ...c }, "")[0];
+    return {
+      same: k({ shotKeys: ["a", "b"] }) === k({ shotKeys: ["b", "a", "a"], transcript: [{ sender: "Maya", text: "hi!" }] }),
+      names: k({ shotKeys: ["a", "b"] }) === k({ shotKeys: ["a", "b"], groups: [{ me: "Jordan", them: "Maya" }] }),
+      shots: k({ shotKeys: ["a", "b"] }) === k({ shotKeys: ["a", "c"] }),
+      paste: k({ raw: "Maya: hi" }).startsWith("text"),
+    };
+  });
+  assert.equal(keys.same, true, "order and re-reading don't matter");
+  assert.equal(keys.names, false, "swapping who's who is a different verdict");
+  assert.equal(keys.shots, false, "different screenshots, different verdict");
+  assert.equal(keys.paste, true, "pasted text is keyed by its words");
+});
+
 test("share a verdict: card image, hide names, back to the chat", async () => {
   const { page, errors } = await openApp({ images: true });
   await pasteConversation(page);

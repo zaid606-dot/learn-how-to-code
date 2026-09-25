@@ -75,3 +75,16 @@ Every verdict is billed to that key. Set a spending limit in the provider consol
 the built-in per-visitor rate limit is a brake, not a budget.
 
 Build it locally: `node scripts/build-artifact.mjs --web` → `web-dist/`.
+
+### Same screenshots, same verdict (the verdict vault)
+
+A verdict is locked to what it judged: the screenshots' pixels (in any order), the names confirmed
+in who's who, any pasted text, the note, the tone and the judge's instructions. The first verdict
+for that combination is the one everyone gets, on any phone, instead of asking the AI again.
+
+- On each phone, verdicts are reused from the chats saved there (always on).
+- Across phones (website only), turn on the vault: in Vercel, open the project → Storage →
+  Upstash for Redis (free plan) → connect it to this project. That adds `KV_REST_API_URL` and
+  `KV_REST_API_TOKEN`; redeploy. The server stores only a hash as the name and the verdict
+  encrypted with a key made from the conversation, so it can't read either. Without it, `/api/verdicts`
+  answers 404 and each phone keeps its own verdicts.

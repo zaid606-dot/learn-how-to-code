@@ -14,7 +14,17 @@ const xaiCalls = [];
 
 // Fake xAI: reading requests get a transcript, verdict requests the sample verdict, chat streams.
 const realFetch = globalThis.fetch;
+// Fake Upstash Redis for the verdict vault.
+const redis = new Map();
+async function fakeRedis(init) {
+  const [cmd, key, value, nx] = JSON.parse(init.body);
+  if (cmd === "GET") return Response.json({ result: redis.get(key) ?? null });
+  if (nx === "NX" && redis.has(key)) return Response.json({ result: null });
+  redis.set(key, value);
+  return Response.json({ result: "OK" });
+}
 async function fakeXai(input, init) {
+  if (String(input).startsWith("https://fake-redis.test")) return fakeRedis(init);
   if (!String(input).startsWith("https://api.groq.com/")) return realFetch(input, init);
   const body = JSON.parse(init.body);
   const prompt = typeof body.messages[0].content === "string" ? body.messages.at(-1).content : body.messages[0].content[0].text;
@@ -42,11 +52,14 @@ async function fakeXai(input, init) {
 before(async () => {
   execSync("node scripts/build-artifact.mjs --web", { cwd: ROOT, stdio: "pipe" });
   process.env.GROQ_API_KEY = "test-key";
+  process.env.KV_REST_API_URL = "https://fake-redis.test";
+  process.env.KV_REST_API_TOKEN = "tok";
   globalThis.fetch = fakeXai;
   handlers = {
     "/api/json": (await import(path.join(ROOT, "api/json.js"))).default,
     "/api/chat": (await import(path.join(ROOT, "api/chat.js"))).default,
     "/api/limits": (await import(path.join(ROOT, "api/limits.js"))).default,
+    "/api/verdicts": (await import(path.join(ROOT, "api/verdicts.js"))).default,
   };
   server = http.createServer((req, res) => {
     const p = new URL(req.url, "http://x").pathname;
@@ -158,4 +171,43 @@ test("website build: a shared link opens the full verdict for someone new, then 
   await page.waitForFunction(() => /didn't open/.test(document.body.innerText));
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+test("website build: the same screenshots get the same verdict on a different phone, without asking the AI again", async () => {
+  const phone = async () => {
+    const context = await browser.newContext(devices["iPhone 13"]);
+    await context.addInitScript(() => localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25", at: 1 }, aiConsent: true })));
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(url);
+    return { context, page, errors };
+  };
+  const judge = async (page, files) => {
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('#thread [data-action="import"]')]);
+    await chooser.setFiles(files);
+    await page.click("#sendBtn");
+    await page.waitForSelector(".msg.who:not(.done)", { timeout: 30000 });
+    await page.click("[data-confirm]");
+    await page.waitForSelector(".msg.verdict", { timeout: 30000 });
+    return { title: await page.locator(".v-title").innerText(), winner: await page.locator(".winner-name").innerText(), margin: await page.locator(".winner-margin").innerText(), reasoning: await page.locator(".winner-card p").innerText() };
+  };
+  const verdictCalls = () => xaiCalls.filter((c) => !c.stream && c.prompt.startsWith("You are Arguably")).length;
+  const before = verdictCalls();
+
+  const a = await phone();
+  const first = await judge(a.page, [fixtures.mayaPhone, fixtures.jordanPhone]);
+  assert.equal(verdictCalls(), before + 1, "judged once");
+  assert.equal(redis.size >= 1, true, "locked in the vault");
+  assert.ok([...redis.values()].every((v) => !/Maya|Jordan|2 a\.m/.test(v)), "the server only holds ciphertext");
+
+  // A different phone, screenshots in the other order: the exact same verdict, no AI call.
+  const b = await phone();
+  const second = await judge(b.page, [fixtures.jordanPhone, fixtures.mayaPhone]);
+  assert.deepEqual(second, first);
+  assert.equal(verdictCalls(), before + 1, "the AI wasn't asked again");
+  assert.ok(await b.page.locator(".msg.verdict .repeat").isVisible(), "labelled as judged before");
+  assert.deepEqual([...a.errors, ...b.errors], []);
+  await a.context.close();
+  await b.context.close();
 });
