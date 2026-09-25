@@ -329,7 +329,7 @@ function verdictHTML(m, c) {
           ? `<p class="checked"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Every quote checked against the ${transcript.length ? "screenshots" : "conversation"}</p>`
           : ""
     }
-    ${v.safety_note?.trim() ? `<section class="card safety" role="note"><h2>A note on safety</h2><p>${esc(v.safety_note)}</p></section>` : ""}
+    ${v.safety_note?.trim() ? `<section class="card safety" role="note"><h2>A note on safety</h2><p>${esc(v.safety_note)}</p><button class="cta" type="button" data-doc="safety">Find support</button><p class="safety-fine">Arguably doesn't score conversations like this one.</p></section>` : ""}
     <section class="card winner-card">
       <div class="winner-head">
         <div class="ring" style="--p:${conf}" role="img" aria-label="${conf}% confidence"><span>${conf}%</span></div>
@@ -513,7 +513,7 @@ function messageHTML(m) {
         : "";
     return `<div class="msg user">${shots}${m.text ? `<div class="u-text">${esc(m.text.length > 600 ? m.text.slice(0, 600) + "…" : m.text)}</div>` : ""}</div>`;
   }
-  if (m.kind === "verdict") return `<article class="msg verdict">${verdictHTML(m, chat)}</article>`;
+  if (m.kind === "verdict") return `<article class="msg verdict${m.verdict?.safety_note?.trim() ? " has-safety" : ""}">${verdictHTML(m, chat)}</article>`;
   if (m.kind === "who") return whoHTML(m);
   if (m.kind === "nudge") return nudgeHTML();
   if (m.kind === "resume") return resumeHTML(m);
@@ -1500,9 +1500,8 @@ function verdictPrompt(chat, note) {
     ? "\n\nThe screenshots have already been read for you. Below is the full transcript, with both phones merged and speakers confirmed by the person who uploaded them. Work only from this transcript and quote messages exactly as written in it."
     : "\n\nThe conversation was pasted as text instead of screenshots. Quote messages exactly as written in it.";
   p += `\n\n<conversation>\n${convo.slice(-45000)}\n</conversation>`;
-  p += chat.you
-    ? `\n\nThe person asking is ${chat.you}. Judge both sides by the same standard regardless.`
-    : "\n\nThe person asking isn't part of this conversation (or didn't say). Write about everyone in the third person, and address the takeaway to both sides.";
+  // Who uploaded it stays out of the verdict prompt so it can't tilt the result.
+  p += "\n\nWrite about everyone in the third person, and address the takeaway to both sides.";
   if (earlier) p += `\n\nYou gave an earlier verdict in this chat ("${earlier.title}"). New screenshots were added since; judge the whole conversation as it stands now.`;
   if (note) p += `\n\nNote from the person who uploaded this (background, not evidence):\n${note.slice(0, 2000)}`;
   p += `\n\n${TONES[prefs.tone] || TONES.straight}`;
@@ -1532,7 +1531,7 @@ async function runVerdict(c, note) {
     c.title = verdict.title || c.title;
     countVerdict();
     const w = verdict.winner || {};
-    notify("verdict", `Verdict ready: ${c.title}`, w.is_draw ? "It's an even match." : `${w.name} has the stronger case.`, c.id);
+    notify("verdict", `Verdict ready: ${c.title}`, verdict.safety_note?.trim() ? "There's a note on safety." : w.is_draw ? "It's an even match." : `${w.name} has the stronger case.`, c.id);
   } catch (err) {
     c.messages = c.messages.filter((m) => m !== thinking);
     const stopped = err?.code === "cancelled";
