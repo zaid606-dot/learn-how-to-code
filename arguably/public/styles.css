@@ -1,5 +1,10 @@
 /* Arguably, styled with the EMBER brand system v1.0 */
 :root {
+  /* Logo colors (from the Arguably mark). Used for the logo and for the two sides of an argument. */
+  --logo-coral: #FF5A47;
+  --logo-navy:  #252668;
+  --logo-tile:  #F5F5F0;
+
   /* Core palette */
   --ember-950: #24100E; /* Coal */
   --ember-900: #3A1411; /* Cinder */
@@ -72,15 +77,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
   position: sticky; top: 0; z-index: 20;
   height: calc(var(--safe-t) + var(--bar-h)); display: flex; align-items: center;
   padding: var(--safe-t) 16px 0;
-  background: var(--ember-950);
-  color: var(--white);
+  background: var(--white);
+  border-bottom: 1px solid var(--sand-300);
+  color: var(--logo-navy);
 }
 .brand {
   display: inline-flex; align-items: center; gap: 8px;
   min-height: 44px; background: none; border: 0; padding: 0 4px 0 0; border-radius: var(--radius-sm);
-  font: 700 20px/1 var(--font-display); letter-spacing: -0.01em; color: var(--white);
+  font: 700 22px/1 var(--font-display); letter-spacing: -0.01em; color: var(--logo-navy);
 }
-.brand-mark { width: 24px; height: 24px; flex: none; }
+.brand-mark { width: 32px; height: 32px; flex: none; }
 
 .view {
   max-width: 560px; margin: 0 auto;
@@ -219,7 +225,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ---------- Loading ---------- */
 .loading { min-height: 60dvh; display: grid; place-content: center; justify-items: center; text-align: center; gap: 8px; }
-.loading .pulse { width: 64px; height: 64px; }
+.loading .pulse { width: 72px; height: auto; }
 .loading .pulse { animation: glow 1.6s ease-in-out infinite alternate; }
 @keyframes glow { from { opacity: .45; } to { opacity: 1; } }
 .loading h2 { font: 700 24px/1.2 var(--font-display); color: var(--ember-950); margin: 16px 0 0; min-height: 1.2em; }

@@ -1,12 +1,13 @@
 const MAX_IMAGES = 12;
 const MAX_EDGE = 2000; // px, long edge after resize
 const HISTORY_KEY = "arguably.history.v1";
-// EMBER-derived person colors. `fg` is the text color used on top of `bg`.
+// Person colors. The first two are the logo's two speech bubbles.
+// `fg` is the text color used on top of `bg`.
 const PALETTE = [
+  { bg: "#FF5A47", fg: "#24100E" }, // logo coral (white text fails contrast on it)
+  { bg: "#252668", fg: "#FFFFFF" }, // logo navy
   { bg: "#9E321F", fg: "#FFFFFF" }, // ember-600
-  { bg: "#1F1B1A", fg: "#FFFFFF" }, // ink-900
   { bg: "#266B8C", fg: "#FFFFFF" }, // info
-  { bg: "#E7A18A", fg: "#24100E" }, // ember-300
   { bg: "#665B57", fg: "#FFFFFF" }, // ink-600
   { bg: "#A86112", fg: "#FFFFFF" }, // warning
 ];

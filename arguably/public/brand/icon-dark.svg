@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="400 280 470 430">
-  <defs><clipPath id="r-l"><rect x="300" y="200" width="340" height="600"/></clipPath></defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="355 205 575 575"><rect x="355" y="205" width="575" height="575" rx="130" fill="#252668"/>
+  <defs><clipPath id="d-l"><rect x="300" y="200" width="340" height="600"/></clipPath></defs>
   <g fill="#FFFFFF"><rect x="418" y="305" width="300" height="290" rx="42" transform="rotate(-6 568 450)"/><path d="M462 560 L455 645 L535 590 Z" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round"/></g>
   <g fill="#252668" stroke="#252668" stroke-width="20" stroke-linejoin="round"><rect x="588" y="360" width="290" height="288" rx="42" transform="rotate(5 733 504)"/><path d="M790 630 L834 694 L840 598 Z"/></g>
   <g fill="#FFFFFF" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round"><rect x="588" y="360" width="290" height="288" rx="42" transform="rotate(5 733 504)"/><path d="M790 630 L834 694 L840 598 Z"/></g>
-  <g fill="#FFFFFF" clip-path="url(#r-l)"><rect x="418" y="305" width="300" height="290" rx="42" transform="rotate(-6 568 450)"/></g>
+  <g fill="#FFFFFF" clip-path="url(#d-l)"><rect x="418" y="305" width="300" height="290" rx="42" transform="rotate(-6 568 450)"/></g>
   <g fill="none" stroke="#252668" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
     <path d="M548 422 L735 402"/>
     <path d="M548 428 L522 492 M548 428 L576 490"/>

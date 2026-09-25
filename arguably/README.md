@@ -11,7 +11,7 @@ Drop in screenshots of a text argument (from one or both people's phones). An AI
 - **Logical fallacies**: named, quoted, and explained
 - **Fix it**: a practical way to resolve it
 
-Mobile-first web app, installable to the home screen (PWA), styled with the EMBER brand system (tokens live at the top of `public/styles.css`; logo marks and icon variants in `public/brand/`). Screenshots are resized in the browser before upload and are not stored. The last 10 verdicts (text only) are kept in the browser's localStorage.
+Mobile-first web app, installable to the home screen (PWA), styled with the EMBER brand system (tokens live at the top of `public/styles.css`; logo marks and icon variants in `public/brand/`). The logo is two overlapping speech bubbles (coral `#FF5A47`, navy `#252668`) with a balance scale; the app reuses those two colors for the two sides of an argument. Screenshots are resized in the browser before upload and are not stored. The last 10 verdicts (text only) are kept in the browser's localStorage.
 
 ## Run it
 

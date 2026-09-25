@@ -1,1 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill-rule="evenodd" fill="#1F1B1A" d="M12.6 1.6C15.9 5.3 20 9.4 20 14.6a8 8 0 0 1-16 0c0-3.7 2.1-6.5 4.3-8.7.2 1.9.9 3.2 2.1 4C10.6 7.1 11.3 4.2 12.6 1.6z M12 10.1c1.7 1.6 4.4 3.9 4.4 6.4a4.4 4.4 0 0 1-8.8 0c0-2.5 2.7-4.8 4.4-6.4z"/><path fill="#1F1B1A" d="M12 12.3c1.1 1 2.7 2.5 2.7 4.1a2.7 2.7 0 0 1-5.4 0c0-1.6 1.6-3.1 2.7-4.1z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="400 280 470 430">
+  <defs><clipPath id="k2-l"><rect x="300" y="200" width="340" height="600"/></clipPath></defs>
+  <g fill="#1F1B1A"><rect x="418" y="305" width="300" height="290" rx="42" transform="rotate(-6 568 450)"/><path d="M462 560 L455 645 L535 590 Z" stroke="#1F1B1A" stroke-width="6" stroke-linejoin="round"/></g>
+  <g fill="#FFFFFF" stroke="#FFFFFF" stroke-width="20" stroke-linejoin="round"><rect x="588" y="360" width="290" height="288" rx="42" transform="rotate(5 733 504)"/><path d="M790 630 L834 694 L840 598 Z"/></g>
+  <g fill="#1F1B1A" stroke="#1F1B1A" stroke-width="4" stroke-linejoin="round"><rect x="588" y="360" width="290" height="288" rx="42" transform="rotate(5 733 504)"/><path d="M790 630 L834 694 L840 598 Z"/></g>
+  <g fill="#1F1B1A" clip-path="url(#k2-l)"><rect x="418" y="305" width="300" height="290" rx="42" transform="rotate(-6 568 450)"/></g>
+  <g fill="none" stroke="#FFFFFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M548 422 L735 402"/>
+    <path d="M548 428 L522 492 M548 428 L576 490"/>
+    <path d="M720 412 L694 486 M720 412 L748 484"/>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="640" cy="410" r="15" stroke="#FFFFFF" stroke-width="8" paint-order="stroke"/>
+    <path d="M514 488 H584 A35 30 0 0 1 514 488 Z"/>
+    <path d="M686 482 H756 A35 30 0 0 1 686 482 Z"/>
+    <path d="M632 410 H648 V580 C648 590 668 594 690 598 V612 H590 V598 C612 594 632 590 632 580 Z"/>
+  </g>
+</svg>

@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Arguably</title>
   <meta name="description" content="Add screenshots of an argument. See where it started, who made the stronger case, and how to move forward.">
-  <meta name="theme-color" content="#24100E">
+  <meta name="theme-color" content="#FFFFFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Arguably">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -19,16 +19,9 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="mark" viewBox="0 0 24 24">
-      <path fill-rule="evenodd" fill="currentColor" d="M12.6 1.6C15.9 5.3 20 9.4 20 14.6a8 8 0 0 1-16 0c0-3.7 2.1-6.5 4.3-8.7.2 1.9.9 3.2 2.1 4C10.6 7.1 11.3 4.2 12.6 1.6z M12 10.1c1.7 1.6 4.4 3.9 4.4 6.4a4.4 4.4 0 0 1-8.8 0c0-2.5 2.7-4.8 4.4-6.4z"/>
-      <path class="spark" fill="var(--spark, currentColor)" d="M12 12.3c1.1 1 2.7 2.5 2.7 4.1a2.7 2.7 0 0 1-5.4 0c0-1.6 1.6-3.1 2.7-4.1z"/>
-    </symbol>
-  </svg>
-
   <header class="topbar">
     <button class="brand" id="homeBtn" type="button" aria-label="Arguably, go to start">
-      <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>Arguably
+      <img class="brand-mark" src="/icon.svg" alt="" width="32" height="32">Arguably
     </button>
   </header>
 
@@ -74,7 +67,7 @@
   <!-- Loading -->
   <main id="loadingView" class="view" hidden>
     <div class="loading" role="status" aria-live="polite">
-      <svg class="pulse" style="color:var(--ember-500);--spark:var(--ember-300)" aria-hidden="true"><use href="#mark"/></svg>
+      <img class="pulse" src="/brand/mark.svg" alt="" width="72" height="66">
       <h2 id="loadingText">Reading the screenshots</h2>
       <p>This usually takes under a minute.</p>
     </div>
