@@ -871,3 +871,5 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
   .sheet-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; gap: 8px; }
   .sheet-btn { font-size: 14px; }
 }
+.auth-fine .text-btn, .auth-switch .text-btn { display: inline-flex; min-height: 44px; vertical-align: middle; }
+.account .page-title:focus { outline: none; }

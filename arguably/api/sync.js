@@ -75,6 +75,7 @@ export default async function handler(req, res) {
         const ids = flat.filter((_, i) => i % 2 === 0);
         if (ids.length) await redis(["SADD", gone, ...ids]);
         await redis(["DEL", key]);
+        await redis(["DEL", `prefs:${user.id}`]); // "Delete all data" includes settings
       } else if (CHAT_ID.test(q.get("id") || "")) {
         // Remember it as deleted only if it was really there (no junk piling up).
         if (await redis(["HDEL", key, q.get("id")])) await redis(["SADD", gone, q.get("id")]);

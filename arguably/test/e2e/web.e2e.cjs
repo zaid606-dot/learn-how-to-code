@@ -406,3 +406,84 @@ test("website in a normal browser is not App Store mode", async () => {
   assert.equal(await page.locator('[data-action="paywall"]').count(), 0);
   await context.close();
 });
+
+test("website build: QA fixes — safe sign-out, offline deletes stick, reset links, browser Back", async () => {
+  const context = await browser.newContext(devices["iPhone 13"]);
+  await context.addInitScript(() => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true })); } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(url);
+  const serverChats = () => [...store.data].filter(([k]) => k.startsWith("chats:")).flatMap(([, e]) => [...e.v.keys()]);
+  const until = async (fn, ms = 8000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await new Promise((r) => setTimeout(r, 100)); } return false; };
+
+  // Browser Back from Settings comes back to the app's home, not off the site.
+  await page.click("#settingsBtn");
+  await page.goBack();
+  await page.waitForSelector(".home");
+  assert.ok(page.url().startsWith(url), "still on the site");
+
+  // Sign up; typed email survives switching modes.
+  await page.click("#settingsBtn");
+  await page.click('.settings [data-action="account"]');
+  await page.fill("#acEmail", "qa@example.com");
+  await page.click('[data-auth-mode="login"]');
+  assert.equal(await page.inputValue("#acEmail"), "qa@example.com");
+  await page.click('[data-auth-mode="signup"]');
+  await page.fill("#acPassword", "qa password 1");
+  await page.click('.auth-form [type="submit"]');
+  await page.waitForSelector('.settings [data-action="account"]');
+
+  // A chat, then offline: signing out is refused while it isn't saved, nothing is lost.
+  await page.click("#backBtn");
+  await page.locator('#thread [data-action="paste"]').first().click();
+  await context.route("**/api/sync**", (r) => r.abort());
+  await page.fill("#messageInput", "Ana: you said 7\nBo: I said 8\nAna: you always do this");
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.verdict", { timeout: 30000 });
+  await page.click("#backBtn");
+  await page.click("#settingsBtn");
+  await page.click('.settings [data-action="account"]');
+  await page.click('[data-action="sign-out"]');
+  await page.waitForFunction(() => /haven't reached your account/.test(document.getElementById("toast").innerText));
+  assert.ok(await page.locator(".account-card").isVisible(), "still signed in");
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2")).length), 1, "chat kept");
+
+  // Delete it while offline: once back online it doesn't return from the account.
+  await context.unroute("**/api/sync**");
+  assert.ok(await until(() => serverChats().length === 1) || true);
+  await page.evaluate(() => flushUploads());
+  assert.ok(await until(() => serverChats().length === 1), "uploaded once online");
+  await context.route("**/api/sync**", (r) => r.abort());
+  await page.click("#backBtn");
+  await page.click("#backBtn").catch(() => {});
+  await page.click(".recent [data-chat]");
+  await page.click("#deleteBtn");
+  await page.click("#deleteBtn");
+  await context.unroute("**/api/sync**");
+  await page.reload();
+  assert.ok(await until(() => serverChats().length === 0), "the offline delete was sent");
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".recent [data-chat]").count(), 0, "not brought back");
+
+  // Sign out offline: refused (the session would survive); online: works.
+  await page.click("#settingsBtn");
+  await page.click('.settings [data-action="account"]');
+  await context.route("**/api/auth?op=logout", (r) => r.abort());
+  await page.click('[data-action="sign-out"]');
+  await page.waitForFunction(() => /Couldn't sign out/.test(document.getElementById("toast").innerText));
+  await context.unroute("**/api/auth?op=logout");
+  await page.click('[data-action="sign-out"]');
+  await page.waitForFunction(() => !document.querySelector(".account"));
+  await page.reload();
+  await page.click("#settingsBtn");
+  assert.match(await page.locator(".settings").innerText(), /Create account or sign in/, "really signed out");
+
+  // A reset link opened in an already-open tab goes straight to "choose a new password".
+  await page.evaluate(() => { location.hash = "#reset=abc123"; });
+  await page.waitForSelector(".account");
+  assert.equal(await page.locator(".page-title").innerText(), "Choose a new password");
+  assert.ok(await page.locator('[data-auth-mode="forgot"]').isVisible(), "a way out if the link expired");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

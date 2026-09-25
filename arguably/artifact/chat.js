@@ -350,6 +350,8 @@ function ensureChat() {
   return chat;
 }
 
+// First letter for an avatar, emoji-safe (a whole character, never half of one).
+const initial = (name) => ([...String(name || "").trim()][0] || "?").toUpperCase();
 const verdictsOf = (c) => (c?.messages || []).filter((m) => m.kind === "verdict").map((m) => m.verdict);
 const pendingWho = (c = chat) => c?.messages.find((m) => m.kind === "who" && m.status === "pending");
 
@@ -496,7 +498,7 @@ function verdictHTML(m, c) {
       `<div class="names">${(v.participants || [])
         .map(
           (p) => `<div class="name-row">
-            <div class="avatar" style="background:${color(p.name).bg};color:${color(p.name).fg}" aria-hidden="true">${esc(String(p.name || "?").trim().charAt(0).toUpperCase())}</div>
+            <div class="avatar" style="background:${color(p.name).bg};color:${color(p.name).fg}" aria-hidden="true">${esc(initial(p.name))}</div>
             <div><div class="position-head"><strong>${esc(p.name)}</strong><span class="tag">${esc(sourceLabel(p.name_source))}</span></div>
             <div>${esc(p.overall_tone)}</div><div class="src">${esc(p.evidence)}</div></div>
           </div>`
@@ -789,7 +791,7 @@ function homeHTML() {
               const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.safety_note?.trim() ? "Note on safety" : `${esc(winnerOf(v).name)} won${winnerOf(v).margin ? ` by ${winnerOf(v).margin}` : ""}`) : "No verdict yet";
               return `<li><button type="button" data-chat="${esc(c.id)}">
                 <span class="pair" aria-hidden="true">${(names.length ? names : ["?"])
-                  .map((n, i) => `<span style="background:${PALETTE[i].bg};color:${PALETTE[i].fg}">${esc(String(n).trim().charAt(0).toUpperCase())}</span>`)
+                  .map((n, i) => `<span style="background:${PALETTE[i].bg};color:${PALETTE[i].fg}">${esc(initial(n))}</span>`)
                   .join("")}</span>
                 <span class="r-main"><span class="r-title">${esc(c.title)}</span><span class="r-meta">${meta} · ${relTime(c.updatedAt || c.createdAt)}</span></span>
                 <span class="r-go">${svg(ICON.chevron, 18)}</span>
@@ -837,7 +839,7 @@ function onboardingHTML() {
      <ul class="ob-list">
        <li>${pageSvg(PAGE_ICON.device)}<span><strong>Screenshots aren't saved.</strong> They're read, then let go.</span></li>
        <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Chats stay on this device.</strong> Delete them anytime in Settings.</span></li>
-       <li>${pageSvg(PAGE_ICON.spark)}<span>${HOSTED ? "<strong>No account needed.</strong> Import and go." : `<strong>Runs on your ${AI_NAME} account.</strong> Verdicts use your ${AI_NAME} plan. No subscription here.`}</span></li>
+       <li>${pageSvg(PAGE_ICON.spark)}<span>${HOSTED ? "<strong>Accounts are optional.</strong> Sign in only if you want your chats on every phone." : `<strong>Runs on your ${AI_NAME} account.</strong> Verdicts use your ${AI_NAME} plan. No subscription here.`}</span></li>
      </ul>
      <label class="ob-agree${agreed ? " on" : ""}" id="obAgreeRow">
        <input type="checkbox" id="obAgree"${agreed ? " checked" : ""}>
@@ -908,7 +910,7 @@ function settingsHTML() {
     <h1 class="page-title">Settings</h1>
     <div class="set-group">
       <label class="set-card profile">
-        <span class="avatar" aria-hidden="true">${esc((prefs.name || "?").charAt(0).toUpperCase())}</span>
+        <span class="avatar" aria-hidden="true">${esc(initial(prefs.name))}</span>
         <span class="profile-main"><span class="set-sub">Your name</span>
         <input id="setName" type="text" autocomplete="given-name" maxlength="40" value="${esc(prefs.name)}" placeholder="Add your name"></span>
       </label>
@@ -1132,8 +1134,27 @@ function renderHeader() {
   $("inboxBtn").setAttribute("aria-label", unread ? `Notifications, ${unread} unread` : "Notifications");
 }
 
+// The browser's (and iPhone's swipe) Back button: one history entry stands for "inside the app",
+// so Back acts like the app's own back arrow instead of leaving the site.
+function syncHistory(onHome) {
+  const inside = history.state?.arguably === 1;
+  try {
+    if (!onHome && !inside) history.pushState({ arguably: 1 }, "", location.pathname + location.search + location.hash);
+  } catch {}
+}
+window.addEventListener("popstate", () => {
+  if (!chat && !page) return; // home already: let the browser leave
+  if (page === "onboarding" || page === "paywall" || page === "shared") {
+    if (page === "shared") return leaveShared();
+    return syncHistory(false); // intro and paywall have their own buttons
+  }
+  $("backBtn").click();
+  syncHistory(!chat && !page);
+});
+
 function render() {
   const onHome = !chat && !page;
+  syncHistory(onHome);
   document.body.classList.toggle("on-home", onHome);
   document.body.classList.toggle("on-page", !!page);
   document.body.classList.toggle("on-paywall", page === "paywall");
@@ -2754,6 +2775,7 @@ $("thread").addEventListener("toggle", (e) => {
 
 // Settings: your name saves as you type.
 $("thread").addEventListener("input", (e) => {
+  if (e.target.id === "acEmail") authEmail = e.target.value.trim(); // kept while switching modes
   if (e.target.id === "setName" || e.target.id === "obName") {
     prefs.name = e.target.value.trim().slice(0, 40);
     savePrefs();
@@ -3214,6 +3236,8 @@ const AUTH_ERRORS = {
   signed_out: "You've been signed out. Sign in again.",
   accounts_off: "Accounts aren't available right now.",
   network_error: "Couldn't reach Arguably. Check your connection and try again.",
+  storage_error: "Accounts are having trouble right now. Try again in a few minutes.",
+  server_error: "Accounts are having trouble right now. Try again in a few minutes.",
 };
 async function api(path, { method = "GET", body } = {}) {
   try {
@@ -3247,6 +3271,8 @@ async function refreshAccount() {
 // Merge the account's chats with this phone's: the newer copy of each chat wins; chats only on
 // this phone are uploaded. Chats deleted here stay deleted.
 async function syncDown() {
+  await sendDeletes();
+  const skip = pendingDeletes(); // still offline: don't bring these back
   const r = await api("/api/sync");
   if (r.status === 401) return signedOutElsewhere();
   if (!r.ok) return;
@@ -3261,7 +3287,7 @@ async function syncDown() {
   const byId = new Map(chats.filter((c) => !deletedThere.has(c.id)).map((c) => [c.id, c]));
   for (const raw of Array.isArray(r.data.chats) ? r.data.chats : []) {
     const sc = cleanSyncedChat(raw);
-    if (!sc || deletedIds.has(sc.id) || live.has(sc.id)) continue;
+    if (!sc || deletedIds.has(sc.id) || skip.has(sc.id) || live.has(sc.id)) continue;
     const local = byId.get(sc.id);
     if (!local || (Number(sc.updatedAt) || 0) > (Number(local.updatedAt) || 0)) byId.set(sc.id, sc);
   }
@@ -3294,7 +3320,22 @@ async function flushUploads() {
     if (uploads.get(id) !== c) continue;
     const r = await api("/api/sync", { method: "PUT", body: { chat: c } });
     if (r.status === 401) return signedOutElsewhere();
-    if (r.ok || r.status === 400 || r.status === 413 || r.status === 409 || r.status === 410) {
+    if (r.status === 410) {
+      // Deleted on another phone: it goes here too.
+      uploads.delete(id);
+      const gone = chats.find((x) => x.id === id) || (chat?.id === id ? chat : null);
+      if (gone) forget(gone);
+      chats = chats.filter((x) => x.id !== id);
+      writeChats();
+      if (chat?.id === id) {
+        chat = null;
+        page = null;
+        render();
+      }
+      toast(`“${c.title}” was deleted on another phone.`);
+      continue;
+    }
+    if (r.ok || r.status === 400 || r.status === 413 || r.status === 409) {
       if (uploads.get(id) === c) uploads.delete(id); // sent, or will never fit: don't retry forever
       if (r.status === 413) toast(`“${c.title}” is too big to save to your account. It stays on this phone.`);
       if (r.status === 409) toast("Your account is full. Delete old chats to save new ones.");
@@ -3303,9 +3344,26 @@ async function flushUploads() {
   if (uploads.size) uploadTimer = setTimeout(flushUploads, 15000); // offline: try again later
   else lastSynced = Date.now();
 }
+// Deletes made offline are remembered and sent later, so the chat can't come back from the account.
+const PENDING_DELETES = "arguably.pendingDeletes";
+const pendingDeletes = () => new Set(storage(() => JSON.parse(localStorage.getItem(PENDING_DELETES)) || [], []));
+const savePendingDeletes = (set) => storage(() => (set.size ? localStorage.setItem(PENDING_DELETES, JSON.stringify([...set])) : localStorage.removeItem(PENDING_DELETES)));
+async function sendDeletes() {
+  const set = pendingDeletes();
+  for (const id of [...set]) {
+    const r = await api(`/api/sync?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (r.ok || r.status === 400) set.delete(id);
+  }
+  savePendingDeletes(set);
+  return set.size === 0;
+}
 function removeFromAccount(id) {
   uploads.delete(id);
-  if (account) api(`/api/sync?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!account) return;
+  const set = pendingDeletes();
+  set.add(id);
+  savePendingDeletes(set);
+  sendDeletes();
 }
 let prefsTimer = 0;
 function pushPrefs() {
@@ -3335,6 +3393,7 @@ function eraseDevice() {
 function signedOutElsewhere() {
   if (!account) return;
   account = null;
+  authMode = "login";
   uploads.clear();
   toast("You've been signed out. Your chats stay on this phone until you sign in again.");
   if (page === "settings" || page === "account") render();
@@ -3373,16 +3432,29 @@ async function submitAuth(form) {
   if (localOwner() && localOwner() !== account.email) eraseDevice();
   setOwner(account.email);
   if (location.hash.startsWith("#reset=")) history.replaceState(null, "", location.pathname + location.search);
-  const welcome = authMode === "signup" ? "Account created. Your chats are saved to it." : authMode === "reset" ? "Password changed. You're signed in." : "Signed in. Your chats are syncing.";
+  const welcome = authMode === "signup" ? (chats.length ? "Account created. Your chats are saved to it." : "Account created. New chats will be saved to it.") : authMode === "reset" ? "Password changed. You're signed in." : "Signed in. Your chats are syncing.";
   await syncDown();
   page = "settings";
   render();
   toast(welcome);
 }
 
+let signingOut = false;
 async function signOut() {
-  await flushUploads();
-  await api("/api/auth?op=logout", { method: "POST", body: {} });
+  if (signingOut) return;
+  signingOut = true;
+  try {
+    // Chats only leave this phone once they're safely in the account, and only once the
+    // server has really ended the session.
+    clearTimeout(uploadTimer);
+    await flushUploads();
+    const deletesSent = await sendDeletes();
+    if (uploads.size || !deletesSent) return toast("Some chats haven't reached your account yet. Connect to the internet, then sign out.");
+    const r = await api("/api/auth?op=logout", { method: "POST", body: {} });
+    if (!r.ok) return toast("Couldn't sign out. Check your connection and try again.");
+  } finally {
+    signingOut = false;
+  }
   account = null;
   eraseDevice();
   setOwner("");
@@ -3422,9 +3494,9 @@ function accountHTML() {
   const busyAttr = authBusy ? ' aria-busy="true" disabled' : "";
   if (account && !(authMode === "reset" && resetToken)) {
     return `<section class="account">
-      <h1 class="page-title">Your account</h1>
+      <h1 class="page-title" tabindex="-1">Your account</h1>
       <div class="set-card account-card">
-        <span class="avatar" aria-hidden="true">${esc((account.name || prefs.name || account.email).charAt(0).toUpperCase())}</span>
+        <span class="avatar" aria-hidden="true">${esc(initial(account.name || prefs.name || account.email))}</span>
         <span><span class="set-title">${esc(account.email)}</span><span class="set-sub">${plural(chats.length, "chat")} saved · syncs to every phone you sign in on</span></span>
       </div>
       ${deletingAccount ? "" : err}
@@ -3469,9 +3541,10 @@ function accountHTML() {
     ${authMode === "signup" ? '<p class="auth-switch">Already have an account? <button class="text-btn" type="button" data-auth-mode="login">Sign in</button></p>' : ""}
     ${authMode === "login" ? '<p class="auth-switch">New here? <button class="text-btn" type="button" data-auth-mode="signup">Create an account</button></p>' : ""}
     ${authMode === "forgot" ? '<button class="text-btn" type="button" data-auth-mode="login">Back to sign in</button>' : ""}
+    ${authMode === "reset" ? '<p class="auth-switch"><button class="text-btn" type="button" data-auth-mode="forgot">Ask for a new link</button> · <button class="text-btn" type="button" data-auth-mode="login">Sign in</button></p>' : ""}
     ${authMode === "signup" ? '<p class="auth-fine">By creating an account you agree to the <button class="text-btn" type="button" data-doc="terms">Terms</button> and <button class="text-btn" type="button" data-doc="privacy">Privacy Policy</button>.</p>' : ""}`;
   }
-  return `<section class="account"><h1 class="page-title">${h}</h1>${lede ? `<p class="doc-lede">${lede}</p>` : ""}${body}</section>`;
+  return `<section class="account"><h1 class="page-title" tabindex="-1">${h}</h1>${lede ? `<p class="doc-lede">${lede}</p>` : ""}${body}</section>`;
 }
 function openAccount(mode) {
   if (mode) authMode = mode;
@@ -3479,6 +3552,7 @@ function openAccount(mode) {
   authNote = "";
   deletingAccount = false;
   openPage("account");
+  requestAnimationFrame(() => (document.querySelector(".account .page-title")?.focus?.({ preventScroll: true })));
 }
 
 function nudgeAgree() {
@@ -3555,6 +3629,17 @@ function finishOnboarding() {
   if (!policyOk()) {
     goStep(1);
     return nudgeAgree();
+  }
+  if (resetToken && account === null) {
+    // Came here from a reset link: finish the intro, then choose the new password.
+    gateMode = false;
+    if (!prefs.onboarded) {
+      prefs.onboarded = true;
+      savePrefs();
+    }
+    page = "account";
+    authMode = "reset";
+    return render();
   }
   gateMode = false;
   if (prefs.onboarded) {
@@ -3658,12 +3743,21 @@ $("thread").addEventListener("submit", (e) => {
   if (form.dataset.form === "auth") submitAuth(form);
   if (form.dataset.form === "delete-account") deleteAccount(form);
 });
-// A password-reset link from the email opens the "choose a new password" page.
-if (HOSTED && location.hash.startsWith("#reset=")) {
+// A password-reset link from the email opens the "choose a new password" page (after the intro,
+// on a phone that hasn't seen it yet).
+function openResetFromHash() {
+  if (!HOSTED || !location.hash.startsWith("#reset=")) return false;
   resetToken = location.hash.slice(7);
   authMode = "reset";
+  authError = "";
+  if (page === "onboarding") return true;
+  chat = null;
   page = "account";
+  render();
+  return true;
 }
+window.addEventListener("hashchange", openResetFromHash);
+openResetFromHash();
 refreshAccount();
 checkSubscription();
 checkTrial();
