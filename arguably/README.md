@@ -28,6 +28,10 @@ To open it on your phone, run it on your computer and visit `http://<your-comput
 
 **No key yet?** `npm run mock` runs the full UI with a canned verdict.
 
+## Use it without a server (claude.ai Artifact)
+
+`node scripts/build-artifact.mjs` builds `dist/arguably.html`, a single self-contained page that calls Claude through the Artifact `sample` capability. Published as a claude.ai Artifact with `capabilities: {sample: {}}`, it runs on the signed-in viewer's own Claude plan, so no API key or hosting is needed. Tall screenshots are cut into overlapping slices so text stays readable.
+
 ## How it works
 
 - `public/`: the frontend (plain HTML/CSS/JS, no build step)
