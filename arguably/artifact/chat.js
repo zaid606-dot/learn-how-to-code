@@ -24,7 +24,7 @@ const PLANS = {
   yearly: { id: "arguably.pro.yearly", price: "$39.99", per: "year", perWeek: "$0.77", trialDays: 3 },
   monthly: { id: "arguably.pro.monthly", price: "$6.99", per: "month" },
 };
-const MAX_EDGE = 2000;
+const MAX_EDGE = 1400; // max width; tall scrolling captures keep full height
 const STORE_KEY = "arguably.chats.v2";
 const MAX_CHATS = 20;
 const PALETTE = [
@@ -50,7 +50,7 @@ const SUGGESTIONS = [
   "What am I missing about the other side?",
 ];
 const CHAT_RULES = `You are Arguably, a fair referee for text-message arguments, talking with the person who uploaded the conversation.
-Below are the full transcript of the conversation (read from their screenshots, with speakers they confirmed) and the verdict(s) you gave as JSON. Answer their follow-up questions about this argument: explain your reasoning, quote the actual messages from the transcript (cite them like [m12]), help them see the other side, suggest what to say next, and reconsider fairly if they add context (say plainly when new context changes your view and when it doesn't).
+Below are the full transcript of the conversation (read from their screenshots, with speakers they confirmed) and the verdict(s) you gave as JSON. Answer their follow-up questions about this argument: explain your reasoning, quote the actual messages from the transcript word for word in quotation marks (never show message IDs like [m12] to them), help them see the other side, suggest what to say next, and reconsider fairly if they add context (say plainly when new context changes your view and when it doesn't).
 Voice: clear, warm and grounded, like a thoughtful guide. Short paragraphs, concrete words, no exclamation marks. Judge the arguing, never the people, and never mock or shame anyone.
 When asked to write a message, give the message itself, ready to send, then at most one line on why it works.
 Format: plain text. You may use "- " bullet lines and **bold** sparingly. No headings, no tables.
@@ -155,6 +155,7 @@ function relTime(ts) {
 function formatReply(text) {
   const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   return String(text)
+    .replace(/\s*\[m\d+(?:[,\s–-]+m?\d+)*\]/g, "")
     .trim()
     .split(/\n{2,}/)
     .map((block) => {
@@ -221,7 +222,13 @@ function saveChats(c = chat) {
   // Screenshots stay in memory only; saved chats keep text, transcript and verdicts.
   const clean = { ...c, messages: c.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)) };
   chats = [clean, ...chats.filter((x) => x.id !== c.id)].slice(0, MAX_CHATS);
-  storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
+  let saved = storage(() => (localStorage.setItem(STORE_KEY, JSON.stringify(chats)), true), false);
+  // Out of room: drop the oldest chats until it fits, and say so.
+  while (!saved && chats.length > 1) {
+    chats = chats.slice(0, -1);
+    saved = storage(() => (localStorage.setItem(STORE_KEY, JSON.stringify(chats)), true), false);
+    if (saved) toast("Storage is full, so the oldest chat was removed.");
+  }
 }
 
 // Leaving a chat doesn't stop its work: the result is saved and shows up in Notifications.
@@ -300,8 +307,12 @@ function verdictHTML(m, c) {
   const sev = (s) => tag(s, { low: "Low", medium: "Medium", high: "High" });
   const strength = (s) => tag(s, { strong: "Strong", mixed: "Mixed", weak: "Weak" });
   const empty = (msg) => `<p class="empty">${msg}</p>`;
-  const sec = (title, count, body, open = false) =>
-    `<details class="v-sec"${open ? " open" : ""}><summary>${title}${count != null ? ` <span class="count-badge">${count}</span>` : ""}</summary><div class="v-body">${body}</div></details>`;
+  let secN = 0;
+  const sec = (title, count, body, open = false) => {
+    const key = secN++;
+    const isOpen = m.open && key in m.open ? m.open[key] : open;
+    return `<details class="v-sec" data-msg="${esc(m.id || "")}" data-sec="${key}"${isOpen ? " open" : ""}><summary>${title}${count != null ? ` <span class="count-badge">${count}</span>` : ""}</summary><div class="v-body">${body}</div></details>`;
+  };
   const w = v.winner || {};
   const conf = Math.max(0, Math.min(100, Number(w.confidence) || 0));
   const scores = [...(w.scores || [])].sort((a, b) => b.score - a.score);
@@ -1028,7 +1039,7 @@ async function fileToShot(file) {
   const src = URL.createObjectURL(file);
   try {
     const img = await loadImage(src);
-    const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+    const scale = Math.min(1, MAX_EDGE / img.width, 16000 / img.height);
     const c = document.createElement("canvas");
     c.width = Math.round(img.width * scale);
     c.height = Math.round(img.height * scale);
@@ -1110,7 +1121,7 @@ async function sliceShots(shots) {
   const slices = [];
   for (const s of shots) {
     const im = await loadImage(s.url);
-    const parts = Math.max(1, Math.min(4, Math.ceil(im.height / (im.width * 1.15))));
+    const parts = Math.max(1, Math.min(6, Math.ceil(im.height / (im.width * 2.4))));
     const cuts = parts > 1 ? findCuts(im, parts) : [];
     const bounds = [0, ...cuts.map((c) => c.y), im.height];
     for (let p = 0; p < parts; p++) {
@@ -1931,6 +1942,15 @@ $("thread").addEventListener("click", (e) => {
   const open = t.closest("[data-chat]");
   if (open) openChat(open.dataset.chat);
 });
+
+// Verdict sections stay open or closed the way you left them, across re-renders.
+$("thread").addEventListener("toggle", (e) => {
+  const d = e.target;
+  if (!d.matches?.("details[data-sec]") || !chat) return;
+  const m = chat.messages.find((x) => x.id === d.dataset.msg);
+  if (!m) return;
+  m.open = { ...(m.open || {}), [d.dataset.sec]: d.open };
+}, true);
 
 // Settings: your name saves as you type.
 $("thread").addEventListener("input", (e) => {

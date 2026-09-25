@@ -460,3 +460,18 @@ test("a short pasted exchange with names is judged, not treated as a question", 
   await page.click("#sendBtn");
   await page.waitForSelector(".msg.verdict", { timeout: 10000 });
 });
+
+test("verdict sections stay as you left them after a follow-up", async () => {
+  const { page } = await openApp({ images: true });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  const before = await page.$$eval(".v-sec", (d) => d.map((x) => x.open));
+  await page.locator(".v-sec summary").nth(0).click();
+  await page.locator(".v-sec summary").nth(2).click();
+  const toggled = await page.$$eval(".v-sec", (d) => d.map((x) => x.open));
+  assert.notDeepEqual(toggled, before);
+  await page.locator("#suggestions [data-say]").first().click();
+  await waitUntil(page, () => !document.querySelector(".composer.busy") && !!document.querySelector(".msg.reply:not(:has(.thinking))"));
+  assert.deepEqual(await page.$$eval(".v-sec", (d) => d.map((x) => x.open)), toggled);
+  assert.doesNotMatch(await page.locator(".msg.reply").last().innerText(), /\[m\d+\]/, "no internal message IDs in replies");
+});

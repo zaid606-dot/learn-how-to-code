@@ -669,3 +669,4 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .msg.verdict, .msg.reply, .msg.user, .msg.who, .v-title, .quote, .winner-name, .names { overflow-wrap: anywhere; }
 .see-all { width: 100%; min-height: 48px; margin-top: 8px; border: 0; border-radius: 14px; background: rgba(255, 255, 255, .06); color: #f4ebe7; font: 600 15px/1 var(--font-body); }
 .suggestions button.import-chip { border: 0; font: 700 14px/1 var(--font-body); min-height: 44px; }
+@media (max-width: 350px) { .sheet-btn { gap: 6px; padding: 0 10px; font-size: 14px; } }
