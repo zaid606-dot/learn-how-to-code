@@ -194,8 +194,8 @@ const savedPrefs = storage(() => JSON.parse(localStorage.getItem(PREFS_KEY)) || 
 let prefs = { ...DEFAULT_PREFS, ...savedPrefs, notify: { ...DEFAULT_PREFS.notify, ...(savedPrefs.notify || {}) } };
 let inbox = storage(() => JSON.parse(localStorage.getItem(INBOX_KEY)) || [], []);
 let onboardStep = 0;
-let onboardDir = 1;
-let docReturn = null; // a policy page opened from the intro goes back to the intro // 1 = moving forward, -1 = back; sets which way the next step slides in
+let onboardDir = 1; // 1 = moving forward, -1 = back; sets which way the next step slides in
+let docReturn = null; // {page, chat}: where a policy or help page goes back to
 let confirmingDelete = false;
 const policyOk = () => prefs.policy?.version === POLICY_VERSION;
 if (!prefs.onboarded && !chats.length) page = "onboarding";
@@ -216,13 +216,25 @@ function saveInbox() {
 const unreadCount = () => inbox.filter((n) => !n.read).length;
 
 // Add a notification. It's marked read straight away if you're already looking at that chat.
+// Chats deleted while their work was still running. Nothing may save or notify for them again.
+const deletedIds = new Set();
+function forget(c) {
+  if (!c) return;
+  c.deleted = true;
+  deletedIds.add(c.id);
+  live.delete(c.id);
+  if (busy?.chatId === c.id) busy.ctl.abort();
+}
+
 function notify(kind, title, body, chatId) {
+  if (chatId && deletedIds.has(chatId)) return;
   if (kind !== "rate" && !prefs.notify[kind]) return;
   const seen = !page && chatId && chat?.id === chatId && document.visibilityState === "visible";
   inbox.unshift({ id: uid(), kind, title, body, chatId: chatId || "", at: Date.now(), read: !!seen });
   inbox = inbox.slice(0, 50);
   saveInbox();
   renderHeader();
+  if (page === "inbox") render(); // show it right away if you're looking at Notifications
   if (!seen) toast(title);
 }
 
@@ -231,7 +243,7 @@ function newChatObject(saved = {}) {
 }
 
 function saveChats(c = chat) {
-  if (!c || c.example || !c.messages.length) return;
+  if (!c || c.example || c.deleted || deletedIds.has(c.id) || !c.messages.length) return;
   c.updatedAt = Date.now();
   // Screenshots stay in memory only; saved chats keep text, transcript and verdicts.
   const clean = { ...c, messages: c.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)) };
@@ -247,6 +259,8 @@ function saveChats(c = chat) {
 
 // Leaving a chat doesn't stop its work: the result is saved and shows up in Notifications.
 function goHome() {
+  if (page === "onboarding" && (!policyOk() || gateMode)) return nudgeAgree();
+  paywallFor = null;
   chat = null;
   page = null;
   pending = [];
@@ -254,8 +268,9 @@ function goHome() {
   render();
 }
 
-let consentReturn = null;
+let consentReturn = null; // {chat, text} or {chat, verdictNote}: what to do after AI consent
 function openPage(name) {
+  if (DOC_PAGES.includes(name) && !DOC_PAGES.includes(page) && page !== "settings") docReturn = { page, chat };
   page = name;
   confirmingDelete = false;
   if (name === "onboarding") {
@@ -957,7 +972,10 @@ const PAGE_TITLES = { settings: "Settings", inbox: "Notifications", onboarding: 
 function renderHeader() {
   const onHome = !chat && !page;
   $("backBtn").hidden = onHome || page === "onboarding" || page === "paywall";
+  $("backBtn").setAttribute("aria-label", DOC_PAGES.includes(page) ? (docReturn ? "Back" : "Back to Settings") : consentReturn ? "Back to the chat" : "Back to home");
   $("homeBtn").hidden = !onHome && page !== "onboarding";
+  // On the intro the logo is just a logo until the policy is agreed.
+  $("homeBtn").disabled = page === "onboarding" && (!policyOk() || gateMode);
   $("chatTitle").hidden = onHome || page === "onboarding";
   $("chatTitle").textContent = page ? PAGE_TITLES[page] : chat?.title || "";
   $("newBtn").hidden = !!page || onHome;
@@ -1514,10 +1532,10 @@ function startJob(c) {
   return busy.ctl.signal;
 }
 function endJob(c) {
-  busy = null;
+  if (busy?.chatId === c.id) busy = null;
   live.delete(c.id);
   saveChats(c);
-  if (chat?.id === c.id || (!chat && !page)) render();
+  if (chat?.id === c.id || (!chat && !page) || page === "inbox") render();
   else renderHeader();
 }
 
@@ -1591,7 +1609,40 @@ function verdictBlock() {
 }
 const freeLeft = () => Math.max(0, FREE_VERDICTS - prefs.freeUsed);
 let paywallFor = null; // {c, note} waiting on a purchase
+// Nothing goes to the AI without the current policy agreement and AI consent, however it
+// was started (send, Try again, Looks right). Returns true when it's allowed.
+function allowedToSend(retry) {
+  if (!policyOk()) {
+    page = "onboarding";
+    onboardStep = 1;
+    onboardDir = 1;
+    gateMode = prefs.onboarded;
+    render();
+    nudgeAgree();
+    return false;
+  }
+  if (!prefs.aiConsent) {
+    consentReturn = retry;
+    openPage("ai");
+    return false;
+  }
+  return true;
+}
+
 function startVerdict(c, note = "") {
+  if (busy && busy.chatId !== c.id) {
+    c.messages = c.messages.filter((m) => m.kind !== "resume");
+    c.messages.push({ id: uid(), role: "assistant", kind: "resume", reason: "stopped", note });
+    saveChats(c);
+    render();
+    return toast("Arguably is finishing another argument. Try again in a moment.");
+  }
+  if (!allowedToSend({ chat: c, verdictNote: note })) {
+    c.messages = c.messages.filter((m) => m.kind !== "resume");
+    c.messages.push({ id: uid(), role: "assistant", kind: "resume", reason: "consent", note });
+    saveChats(c);
+    return;
+  }
   c.messages = c.messages.filter((m) => m.kind !== "resume");
   const block = verdictBlock();
   if (block) {
@@ -1617,6 +1668,7 @@ function countVerdict() {
 function resumeHTML(m) {
   const copy = {
     stopped: ["Verdict stopped", "Pick up where you left off. Your screenshots are already read."],
+    consent: ["Your verdict is waiting", `Allow sending chats to ${AI_NAME} to get it. Your screenshots are already read.`],
     failed: ["The verdict didn't come through", m.error || "Something went wrong on the way. Your screenshots are already read."],
     locked: ["Your verdict is one tap away", `Start your ${PLANS.yearly.trialDays}-day free trial to see who's right.`],
     fair: ["You've hit this month's fair-use limit", `Pro includes ${PRO_FAIR_USE} verdicts a month. It resets on the 1st.`],
@@ -1753,16 +1805,7 @@ async function runPasted(c, text) {
 async function send(textOverride) {
   if (busy && !busyHere()) return toast("Arguably is finishing another argument. You'll get a notification when it's done.");
   if (busy || !sampler || pendingWho()) return;
-  if (!policyOk()) {
-    page = "onboarding";
-    onboardStep = 1;
-    gateMode = prefs.onboarded;
-    return render();
-  }
-  if (!prefs.aiConsent) {
-    consentReturn = chat;
-    return openPage("ai");
-  }
+  if (!allowedToSend({ chat, text: textOverride })) return;
   const input = $("messageInput");
   const text = (textOverride ?? input.value).trim();
   const shots = pending.slice();
@@ -1953,8 +1996,10 @@ $("thread").addEventListener("click", (e) => {
   const action = t.closest("[data-action]")?.dataset.action;
   if (action === "example") {
     const fromIntro = page === "onboarding";
-    finishOnboarding();
-    if (fromIntro && page === "paywall") return;
+    if (fromIntro) {
+      finishOnboarding();
+      if (page !== null) return; // the agreement, or the store build's paywall, comes first
+    }
     return openExample();
   }
   if (action === "import") {
@@ -1971,12 +2016,14 @@ $("thread").addEventListener("click", (e) => {
   const obDoc = t.closest("[data-ob-doc]");
   if (obDoc) {
     e.preventDefault();
-    docReturn = "onboarding";
+    docReturn = { page: "onboarding" };
     page = obDoc.dataset.obDoc;
     return render();
   }
   if ((action === "consent-next" || action === "agree-next") && !policyOk()) return nudgeAgree();
   if (action === "agree-next") {
+    prefs.aiConsent = false; // "Continue without" means no AI, even if it was allowed before
+    savePrefs();
     if (gateMode) return finishOnboarding();
     return goStep(onboardStep + 1);
   }
@@ -2001,11 +2048,13 @@ $("thread").addEventListener("click", (e) => {
     prefs.aiConsent = true;
     savePrefs();
     if (consentReturn) {
-      page = null;
-      chat = consentReturn;
+      const back = consentReturn;
       consentReturn = null;
+      page = null;
+      chat = back.chat;
       render();
-      return send();
+      if (back.verdictNote !== undefined && chat) return startVerdict(chat, back.verdictNote);
+      return send(back.text);
     }
     return render();
   }
@@ -2057,11 +2106,20 @@ $("thread").addEventListener("click", (e) => {
     return render();
   }
   if (action === "delete-confirm") {
+    [...chats, ...live.values(), chat].forEach(forget);
     if (busy) busy.ctl.abort();
+    busy = null;
+    chat = null;
+    pending = [];
+    paywallFor = null;
+    consentReturn = null;
+    docReturn = null;
     chats = [];
     inbox = [];
     storage(() => [STORE_KEY, INBOX_KEY, PREFS_KEY, "arguably.chats.v1"].forEach((k) => localStorage.removeItem(k)));
-    prefs = { ...DEFAULT_PREFS, onboarded: true, notify: { ...DEFAULT_PREFS.notify } };
+    // Your content goes; the record that you agreed to the policy and any purchase stay,
+    // so erasing can't be used to reset a subscription's monthly allowance.
+    prefs = { ...DEFAULT_PREFS, onboarded: true, notify: { ...DEFAULT_PREFS.notify }, policy: prefs.policy, pro: prefs.pro, proUsage: prefs.proUsage, freeUsed: prefs.freeUsed };
     savePrefs();
     confirmingDelete = false;
     render();
@@ -2135,8 +2193,7 @@ $("thread").addEventListener("input", (e) => {
 $("thread").addEventListener("keydown", (e) => {
   if (e.target.id === "obName" && e.key === "Enter") {
     e.preventDefault();
-    finishOnboarding();
-    $("fileInput").click();
+    goStep(onboardStep + 1); // same as Next: the photos step comes after the name
   }
 });
 
@@ -2192,6 +2249,12 @@ function goStep(n) {
   onboardDir = n > onboardStep ? 1 : -1;
   onboardStep = n;
   render();
+  // Move focus to the new step's heading so screen readers announce it.
+  const h = document.querySelector(".onboard h1");
+  if (h && document.activeElement && document.activeElement !== document.body) {
+    h.tabIndex = -1;
+    h.focus({ preventScroll: true });
+  }
 }
 
 // Swipe through the intro: the screen follows your finger, and a clear sideways flick
@@ -2208,7 +2271,7 @@ $("thread").addEventListener("touchmove", (e) => {
   const dy = e.touches[0].clientY - swipe.y;
   if (swipe.locked == null && Math.abs(swipe.dx) + Math.abs(dy) > 10) swipe.locked = Math.abs(swipe.dx) > Math.abs(dy);
   if (!swipe.locked) return;
-  const edge = (swipe.dx > 0 && onboardStep === 0) || (swipe.dx < 0 && onboardStep === 2);
+  const edge = (swipe.dx > 0 && onboardStep === 0) || (swipe.dx < 0 && onboardStep === OB_STEPS - 1);
   const el = document.querySelector(".onboard");
   if (el) el.style.transform = `translateX(${swipe.dx * (edge ? 0.15 : 0.5)}px)`;
 }, { passive: true });
@@ -2242,8 +2305,9 @@ function finishOnboarding() {
   prefs.onboarded = true;
   savePrefs();
   page = STORE_BUILD && !prefs.pro ? "paywall" : null;
-  if (HOSTED) notify("tips", "Hey, welcome to Arguably!", "Put it on your Home Screen: tap Share, then Add to Home Screen. It opens like an app.");
-  else notify("rate", "Hey, welcome to Arguably!", "Give us a rating on the App Store. It helps more people settle it.");
+  if (STORE_BUILD) notify("rate", "Hey, welcome to Arguably!", "Give us a rating on the App Store. It helps more people settle it.");
+  else if (HOSTED) notify("tips", "Hey, welcome to Arguably!", "Put it on your Home Screen: tap Share, then Add to Home Screen. It opens like an app.");
+  else notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. You can judge arguments you're not in, too.");
   render();
 }
 $("newBtn").addEventListener("click", () => {
@@ -2256,13 +2320,16 @@ $("newBtn").addEventListener("click", () => {
 $("backBtn").addEventListener("click", () => {
   if (consentReturn) {
     page = null;
-    chat = consentReturn;
+    chat = consentReturn.chat;
     consentReturn = null;
     return render();
   }
+  // A policy or help page goes back to wherever it was opened from.
   if (DOC_PAGES.includes(page) && docReturn) {
-    page = docReturn;
+    const back = docReturn;
     docReturn = null;
+    page = back.page;
+    if (back.chat !== undefined) chat = back.chat;
     return render();
   }
   return DOC_PAGES.includes(page) ? openPage("settings") : goHome();
@@ -2286,6 +2353,7 @@ $("thread").addEventListener("change", (e) => {
     savePrefs();
   }
   render();
+  $("obAgree")?.focus(); // keyboard and VoiceOver users stay on the checkbox
 });
 // Delete one chat: the first tap asks, the second (within a few seconds) deletes.
 let deleteTimer = 0;
@@ -2302,8 +2370,8 @@ $("deleteBtn").addEventListener("click", () => {
   b.classList.remove("confirm");
   b.setAttribute("aria-label", "Delete this chat");
   if (!chat) return;
-  if (busyHere()) busy.ctl.abort();
   const id = chat.id;
+  forget(chat);
   chats = chats.filter((x) => x.id !== id);
   storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
   inbox = inbox.filter((n) => n.chatId !== id);

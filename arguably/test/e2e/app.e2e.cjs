@@ -322,11 +322,12 @@ test("settings: store-ready pages, export and support links", async () => {
   assert.deepEqual(errors, []);
 });
 
-test("the first notification asks for an App Store rating", async () => {
-  const { page, errors } = await openApp({ firstRun: true });
+test("App Store build: the first notification asks for a rating (other builds don't)", async () => {
+  const { page, errors } = await openApp({ firstRun: true, store: true });
   await page.click("#skipBtn");
   await page.click("#obAgreeRow");
   await page.click("#skipBtn");
+  await page.click('[data-action="paywall-close"]');
   await page.click("#inboxBtn");
   assert.match(await page.locator(".note").first().innerText(), /welcome to Arguably[\s\S]*rating on the App Store/);
   await shot(page, "inbox-rate");
@@ -633,4 +634,106 @@ test("a screen recording becomes screenshots, frame by frame, on the phone", asy
   const n = await page.locator(".attach-item").count();
   assert.ok(n >= 2 && n <= 12, `pulled ${n} distinct frames`);
   assert.deepEqual(errors, []);
+});
+
+// ---------- Batch 1 regressions: privacy and trust ----------
+const savedChats = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2") || "[]"));
+
+test("a chat deleted while its verdict runs stays deleted", async () => {
+  const { page, errors } = await openApp({ images: true, verdictDelay: 1500 });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg .thinking");
+  await page.click("#deleteBtn");
+  await page.click("#deleteBtn");
+  await page.waitForTimeout(2200); // the verdict would have finished by now
+  assert.equal((await savedChats(page)).length, 0, "not saved again");
+  assert.equal(await page.locator(".recent [data-chat]").count(), 0, "not in Recent");
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.inbox.v1") || "[]").filter((n) => n.chatId).length), 0, "no notification for it");
+  assert.deepEqual(errors, []);
+});
+
+test("Delete all data while a verdict runs erases everything and keeps the agreement", async () => {
+  const { page, errors } = await openApp({ images: true, verdictDelay: 1500 });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg .thinking");
+  await page.click("#backBtn");
+  await page.click("#settingsBtn");
+  await page.click('[data-action="delete-all"]');
+  await page.click('[data-action="delete-confirm"]');
+  await page.waitForTimeout(2200);
+  assert.equal((await savedChats(page)).length, 0);
+  const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")));
+  assert.equal(prefs.policy.version, "2026-09-25", "agreement record kept");
+  assert.deepEqual(errors, []);
+});
+
+test("the logo on the intro can't be used to skip the agreement", async () => {
+  const { page } = await openApp({ firstRun: true });
+  await page.click('[data-action="next"]');
+  await page.click("#homeBtn", { force: true });
+  assert.ok(await page.locator("#obAgreeRow").isVisible(), "still on the agreement");
+  assert.equal(await page.locator("#thread .home").count(), 0);
+});
+
+test("Try again asks for AI consent first if it was turned off, then runs", async () => {
+  const { page, calls } = await openApp({ images: true, failVerdictTimes: 1 });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.resume.failed", { timeout: 10000 });
+  await page.evaluate(() => { prefs.aiConsent = false; });
+  await page.click(".msg.resume [data-resume]");
+  assert.equal(await page.locator(".doc .page-title").innerText(), "How AI is used");
+  const before = (await calls()).filter((c) => c.kind === "verdict").length;
+  assert.equal(before, 0, "nothing sent without consent");
+  await page.click('[data-action="consent"]');
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+});
+
+test("a suggestion tapped before allowing AI is sent after allowing", async () => {
+  const { page, calls } = await openApp({ images: true });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  await page.evaluate(() => { prefs.aiConsent = false; });
+  await page.locator("#suggestions [data-say]").first().click();
+  await page.click('[data-action="consent"]');
+  await waitUntil(page, () => !!document.querySelector(".msg.reply"));
+  assert.ok((await calls()).some((c) => c.kind === "chat"), "the suggestion went through");
+});
+
+test("'Continue without' turns AI off, and Enter on the name goes to the photos step", async () => {
+  const { page } = await openApp({ images: true });
+  await page.click("#settingsBtn");
+  await page.click('[data-action="replay"]');
+  await page.click('[data-action="next"]');
+  await page.click('.onboard [data-action="agree-next"]');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).aiConsent), false);
+  await page.fill("#obName", "Maya");
+  await page.press("#obName", "Enter");
+  assert.ok(await page.locator('.onboard [data-action="photos"]').isVisible(), "photos step, no picker yet");
+});
+
+test("Back from a help page returns to where it was opened", async () => {
+  const { page } = await openApp({ images: true });
+  await page.evaluate(() => { window.__STUB.sampleVerdict = { ...window.__STUB.sampleVerdict, winner: { ...window.__STUB.sampleVerdict.winner, is_draw: true, name: "" }, safety_note: "Some of these messages read as threats." }; });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict.has-safety", { timeout: 10000 });
+  await page.click('.card.safety [data-doc="safety"]');
+  await page.click("#backBtn");
+  assert.ok(await page.locator(".msg.verdict").isVisible(), "back in the chat, not Settings");
+});
+
+test("App Store build: Back from Terms on the paywall returns to the paywall", async () => {
+  const { page } = await openApp({ images: true, store: true });
+  await page.click("#settingsBtn");
+  await page.click('[data-action="paywall"]');
+  await page.click('.paywall [data-doc="terms"]');
+  await page.click("#backBtn");
+  assert.ok(await page.locator(".paywall").isVisible());
+});
+
+test("Notifications update while you're looking at them", async () => {
+  const { page } = await openApp({ images: true, verdictDelay: 800 });
+  await pasteConversation(page);
+  await page.click("#backBtn");
+  await page.click("#inboxBtn");
+  await waitUntil(page, () => /Verdict ready/.test(document.querySelector(".inbox")?.innerText || ""));
 });

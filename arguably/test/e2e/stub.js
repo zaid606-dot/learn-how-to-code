@@ -5,6 +5,7 @@
 //            what "Claude" reads from each screenshot on the image path
 //   failJson: true -> every sample.json call rejects (exercises error handling)
 //   failVerdictTimes: n -> the first n verdict calls reject
+//   verdictDelay: ms -> verdicts take this long (to act while one is running)
 //   noClaude: true -> claude.use("sample") resolves null (signed out / not a Claude viewer)
 // Every call is recorded in window.__STUB.calls so tests can assert what was sent.
 (function () {
@@ -57,6 +58,7 @@
       return out;
     }
     if (input.includes("<conversation>") && input.includes("JSON Schema")) {
+      if (cfg.verdictDelay) await wait(cfg.verdictDelay);
       if (cfg.failVerdictTimes > 0) {
         cfg.failVerdictTimes--;
         stub.calls.push({ kind: "verdict-failed" });
