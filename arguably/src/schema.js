@@ -19,7 +19,7 @@ const obj = (properties, description) => ({
 const severity = enumOf(["low", "medium", "high"], "How much this hurts the conversation.");
 
 export const verdictSchema = obj({
-  title: str("A punchy 3-8 word headline for this argument, e.g. 'The Great Dishwasher Standoff'."),
+  title: str("A punchy 3-8 word headline for this argument, e.g. 'The 2 a.m. Like'."),
   participants: arr(
     obj({
       name: str("Name exactly as shown in the screenshots, or a bubble label like 'Blue bubbles' if no name is visible."),

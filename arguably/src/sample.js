@@ -1,67 +1,69 @@
 // A canned verdict used by "See an example" and by mock mode (ARGUABLY_MOCK=1).
+// Every quote here appears word for word in the example conversation (SAMPLE_TRANSCRIPT in
+// artifact/chat.js), so the example passes its own quote check.
 export const sampleVerdict = {
-  title: "The Great Dishwasher Standoff",
+  title: "The 2 a.m. Like",
   participants: [
     {
       name: "Maya",
       name_source: "contact_header",
-      evidence: "Contact name 'Maya 🌻' at the top of screenshots 1 and 2.",
-      overall_tone: "Specific, frustrated, mostly on-topic",
+      evidence: "Contact name 'Maya' at the top of Jordan's screenshots.",
+      overall_tone: "Direct, hurt, then sharp",
     },
     {
       name: "Jordan",
       name_source: "contact_header",
-      evidence: "Contact name 'Jordan' at the top of screenshot 3.",
-      overall_tone: "Defensive, deflects with sarcasm",
+      evidence: "Contact name 'Jordan' at the top of Maya's screenshots.",
+      overall_tone: "Defensive, answers questions with questions",
     },
   ],
   origin: {
     summary:
-      "Maya asked why the dishes were still in the sink after Jordan said they'd handle them. It quickly became an argument about who does more around the apartment.",
-    spark_quote: "You said you'd do the dishes last night?",
+      "Maya asked why Jordan was liking another woman's photos at 2 a.m. after saying he was asleep. Instead of answering, Jordan brought up Maya leaving him on read, and it turned into a fight about trust.",
+    spark_quote: "So you were 'asleep' but liking Brianna's pics at 2am? 👀",
     spark_speaker: "Maya",
     root_cause:
-      "Maya feels the chore split is uneven and that Jordan's promises don't get followed through. The dishes are the surface; reliability is the real issue.",
+      "Trust. Maya feels Jordan isn't straight with her about small things. Jordan feels checked up on, so he answers with counter-accusations instead of reassurance.",
     escalation_points: [
       {
         speaker: "Jordan",
-        quote: "Ok and you left your laundry in the dryer for 3 days so",
-        why: "Answered a question about the dishes with a counter-accusation instead of the dishes.",
+        quote: "You literally left me on read for 6 hours yesterday",
+        why: "Answered a direct question with a counter-accusation instead of an answer.",
       },
       {
         speaker: "Maya",
-        quote: "This is literally the same thing that happened in March",
-        why: "Pulled a past incident in, widening the fight from one night to a pattern.",
+        quote: "This is exactly what you did with your ex",
+        why: "Pulled his last relationship in, turning one night into a pattern.",
       },
       {
         speaker: "Jordan",
-        quote: "Wow ok sorry I'm not perfect like you",
-        why: "Sarcasm that shut the conversation down instead of answering.",
+        quote: "Wow ok sorry I'm not perfect like you 🙄",
+        why: "Sarcasm that shut the conversation down.",
       },
     ],
   },
   subjects: [
     {
-      topic: "The unwashed dishes",
+      topic: "The 2 a.m. likes",
       positions: [
-        { participant: "Maya", position: "Jordan agreed to do them and didn't.", strength: "strong" },
-        { participant: "Jordan", position: "Was going to do them today; it's not a big deal.", strength: "weak" },
+        { participant: "Maya", position: "He said he was asleep but was online liking photos. She wants a straight answer.", strength: "strong" },
+        { participant: "Jordan", position: "Never answers it. Calls it just a like.", strength: "weak" },
       ],
       edge: "Maya",
     },
     {
-      topic: "Overall chore split",
+      topic: "Being left on read",
       positions: [
-        { participant: "Maya", position: "She does most of the cleaning and is tired of reminding.", strength: "mixed" },
-        { participant: "Jordan", position: "Maya leaves things around too (the laundry).", strength: "mixed" },
+        { participant: "Maya", position: "Doesn't respond to it.", strength: "mixed" },
+        { participant: "Jordan", position: "Six hours without a reply hurt, and that's fair to raise.", strength: "mixed" },
       ],
       edge: "Even",
     },
     {
-      topic: "How to talk about it",
+      topic: "How they argued",
       positions: [
-        { participant: "Maya", position: "Wants to set up a proper chore chart.", strength: "strong" },
-        { participant: "Jordan", position: "Feels nagged and wants her to drop it.", strength: "weak" },
+        { participant: "Maya", position: "Asked a clear question, then escalated with his ex and 'liar'.", strength: "mixed" },
+        { participant: "Jordan", position: "Deflected, minimized, then went sarcastic.", strength: "weak" },
       ],
       edge: "Maya",
     },
@@ -69,21 +71,21 @@ export const sampleVerdict = {
   winner: {
     name: "Maya",
     is_draw: false,
-    confidence: 74,
+    confidence: 71,
     reasoning:
-      "Maya stayed on the actual issue, pointed to a specific broken promise, and proposed a fix. Jordan's laundry point is fair, but it was used to dodge rather than to negotiate. Maya loses points for dragging in March.",
+      "Maya asked a fair, specific question and Jordan never answered it. Being left on read may be a real hurt, but he used it to dodge. Maya loses points for bringing up his ex and calling him a liar.",
     scores: [
       {
         participant: "Maya",
         score: 72,
-        strengths: ["Specific, verifiable complaint", "Proposed a solution (chore chart)"],
-        weaknesses: ["Brought up March", "'You always' generalization"],
+        strengths: ["Asked a specific, direct question", "Said what she actually wants: a straight answer"],
+        weaknesses: ["Brought up his ex", "Called him a liar"],
       },
       {
         participant: "Jordan",
         score: 41,
-        strengths: ["Laundry point is a fair observation"],
-        weaknesses: ["Deflected instead of answering", "Sarcasm ended the discussion"],
+        strengths: ["Being left on read is a fair thing to raise"],
+        weaknesses: ["Never answered the question", "Sarcasm ended the conversation"],
       },
     ],
   },
@@ -91,8 +93,8 @@ export const sampleVerdict = {
     {
       holder: "Maya",
       target: "Jordan",
-      grudge: "A similar broken promise about cleaning in March.",
-      evidence_quote: "This is literally the same thing that happened in March",
+      grudge: "How things went with his ex.",
+      evidence_quote: "This is exactly what you did with your ex",
       severity: "medium",
     },
   ],
@@ -100,15 +102,15 @@ export const sampleVerdict = {
     {
       from: "Jordan",
       to: "Maya",
-      quote: "Wow ok sorry I'm not perfect like you",
-      why_its_personal: "Mocks Maya's character instead of addressing the dishes.",
+      quote: "Wow ok sorry I'm not perfect like you 🙄",
+      why_its_personal: "Mocks Maya instead of answering her question.",
       severity: "medium",
     },
     {
       from: "Maya",
       to: "Jordan",
-      quote: "You always do this, you're so unreliable",
-      why_its_personal: "Labels Jordan as a person rather than naming the behaviour.",
+      quote: "Honestly you're such a liar",
+      why_its_personal: "Labels Jordan as a person instead of naming what he did.",
       severity: "low",
     },
   ],
@@ -116,23 +118,23 @@ export const sampleVerdict = {
     {
       speaker: "Jordan",
       fallacy: "Tu quoque (whataboutism)",
-      quote: "Ok and you left your laundry in the dryer for 3 days so",
-      explanation: "Maya's laundry doesn't make the dishes promise any less broken; it deflects by pointing at her.",
+      quote: "You literally left me on read for 6 hours yesterday",
+      explanation: "Maya's late reply doesn't answer why he was liking photos at 2 a.m. It deflects by pointing at her.",
     },
     {
       speaker: "Maya",
       fallacy: "Hasty generalization",
-      quote: "You always do this, you're so unreliable",
-      explanation: "One missed night and one incident in March don't make 'always'.",
+      quote: "This is exactly what you did with your ex",
+      explanation: "One night of likes doesn't show he's repeating his last relationship.",
     },
     {
       speaker: "Jordan",
       fallacy: "Minimization",
-      quote: "It's literally just dishes, why is this a whole thing",
-      explanation: "Shrinks the issue to avoid the underlying complaint about follow-through.",
+      quote: "It's literally just a like, why is this a whole thing",
+      explanation: "Shrinks the question so he doesn't have to answer the part that hurt: saying he was asleep.",
     },
   ],
   takeaway:
-    "Jordan: own the dishes without the 'but'. Maya: drop 'always' and March. Then actually make the chore chart; you both already agree the split feels off.",
+    "Jordan: answer the question first, then bring up the read receipts on their own. Maya: leave his ex out of it. You both want the same thing, which is to feel the other person is being straight with you.",
   safety_note: "",
 };

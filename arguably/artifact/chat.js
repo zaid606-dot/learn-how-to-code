@@ -85,14 +85,13 @@ Example:
 If a screenshot has no readable messages, give only its H line.`;
 
 const SAMPLE_TRANSCRIPT = [
-  ["Maya", "Today 9:14 PM", "You said you'd do the dishes last night?"],
-  ["Jordan", "", "I was going to do them today"],
-  ["Jordan", "", "It's literally just dishes, why is this a whole thing"],
-  ["Maya", "", "You always do this, you're so unreliable"],
-  ["Jordan", "", "Ok and you left your laundry in the dryer for 3 days so"],
-  ["Maya", "9:21 PM", "This is literally the same thing that happened in March"],
-  ["Jordan", "", "Wow ok sorry I'm not perfect like you"],
-  ["Maya", "", "Can we just make a chore chart so this stops happening"],
+  ["Maya", "Today 11:48 PM", "So you were 'asleep' but liking Brianna's pics at 2am? 👀"],
+  ["Jordan", "", "It's literally just a like, why is this a whole thing"],
+  ["Maya", "", "Honestly you're such a liar"],
+  ["Jordan", "", "You literally left me on read for 6 hours yesterday"],
+  ["Maya", "11:52 PM", "This is exactly what you did with your ex"],
+  ["Jordan", "", "Wow ok sorry I'm not perfect like you 🙄"],
+  ["Maya", "", "I just want a straight answer"],
 ].map(([sender, time, text], i) => ({ id: "m" + (i + 1), sender, time, text, kind: "text", shots: [i < 4 ? 1 : 2] }));
 
 const SAMPLE_ERRORS = {
@@ -481,14 +480,14 @@ function homeHTML() {
         <div class="demo-phone maya">
           <span class="demo-label"><i></i>Maya's phone</span>
           <span class="demo-chat">Jordan</span>
-          <span class="bub out"${d(150)}>You said you'd do the dishes last night?</span>
-          <span class="bub in"${d(500)}>Ok and you left your laundry in the dryer for 3 days so<b class="stamp fallacy"${d(1350)}>Whataboutism</b></span>
-          <span class="bub out"${d(850)}>This is literally the same thing that happened in March<b class="stamp grudge"${d(1500)}>Grudge</b></span>
+          <span class="bub out"${d(150)}>So you were 'asleep' but liking Brianna's pics at 2am? 👀</span>
+          <span class="bub in"${d(500)}>You literally left me on read for 6 hours yesterday<b class="stamp fallacy"${d(1350)}>Whataboutism</b></span>
+          <span class="bub out"${d(850)}>This is exactly what you did with your ex<b class="stamp grudge"${d(1500)}>Grudge</b></span>
         </div>
         <div class="demo-phone jordan">
           <span class="demo-label"><i></i>Jordan's phone</span>
           <span class="demo-chat">Maya</span>
-          <span class="bub in"${d(700)}>This is literally the same thing that happened in March</span>
+          <span class="bub in"${d(700)}>This is exactly what you did with your ex</span>
           <span class="bub out"${d(1050)}>Wow ok sorry I'm not perfect like you 🙄<b class="stamp shot"${d(1650)}>Personal shot</b></span>
           <span class="bub in typing"${d(1250)}><i></i><i></i><i></i></span>
         </div>
@@ -1169,7 +1168,7 @@ function openExample() {
     transcript: SAMPLE_TRANSCRIPT,
     you: "Maya",
     messages: [
-      { id: uid(), role: "user", text: "Who's right here? We're roommates.", shotCount: 2 },
+      { id: uid(), role: "user", text: "Who's right here? We've been dating a year.", shotCount: 2 },
       { id: uid(), role: "assistant", kind: "who", status: "done", groups: [{ me: "Maya", them: "Jordan" }], you: "Maya" },
       { id: uid(), role: "assistant", kind: "verdict", verdict: SAMPLE_VERDICT, unverified: [], transcript: SAMPLE_TRANSCRIPT },
     ],
