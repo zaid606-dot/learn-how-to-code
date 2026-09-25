@@ -114,3 +114,21 @@ test("transcriptText numbers messages and marks gaps", () => {
   ]);
   assert.equal(txt, "[m1] Maya (9:14 PM): Hi\n[possible missing messages here: the screenshots on either side don't overlap]\n[m2] Jordan: Hey");
 });
+
+test("parseTsv turns Tesseract output into positioned lines", () => {
+  const row = (level, line, word, l, t, w, h, conf, text) => [level, 1, 1, 1, line, word, l, t, w, h, conf, text].join("\t");
+  const tsv = [
+    "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext",
+    row(4, 1, 0, 100, 50, 300, 30, -1, ""),
+    row(5, 1, 1, 100, 50, 120, 30, 96, "What"),
+    row(5, 1, 2, 230, 50, 170, 30, 90, "shit?"),
+    row(4, 2, 0, 20, 10, 100, 20, -1, ""),
+    row(5, 2, 1, 20, 10, 100, 20, 40, "10:01"),
+  ].join("\n");
+  const lines = P.parseTsv(tsv, 1000, 1000);
+  assert.deepEqual(lines, [
+    { text: "10:01", l: 2, r: 12, y: 1, conf: 40 },
+    { text: "What shit?", l: 10, r: 40, y: 5, conf: 93 },
+  ]);
+  assert.equal(P.ocrBlock(3, lines), "Screenshot 3:\ny=1 L=2 R=12 low | 10:01\ny=5 L=10 R=40 | What shit?");
+});

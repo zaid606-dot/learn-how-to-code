@@ -199,9 +199,42 @@ function unverifiedQuotes(verdict, messages, raw) {
   });
 }
 
+// Tesseract TSV -> text lines with position as % of the image: l/r = left/right edge, y = top.
+function parseTsv(tsv, width, height) {
+  const lines = new Map();
+  for (const row of String(tsv || "").split("\n")) {
+    const c = row.split("\t");
+    if (c.length < 12) continue;
+    const level = Number(c[0]);
+    const key = c.slice(1, 5).join(".");
+    const [left, top, w, h, conf] = [c[6], c[7], c[8], c[9], c[10]].map(Number);
+    if (level === 4) lines.set(key, { l: left, t: top, r: left + w, h, words: [], confs: [] });
+    if (level === 5 && c[11].trim() && lines.has(key)) {
+      lines.get(key).words.push(c[11].trim());
+      lines.get(key).confs.push(conf);
+    }
+  }
+  const pct = (v, of) => Math.round((v / of) * 100);
+  return [...lines.values()]
+    .filter((x) => x.words.length)
+    .map((x) => ({
+      text: x.words.join(" "),
+      l: pct(x.l, width),
+      r: pct(x.r, width),
+      y: pct(x.t, height),
+      conf: Math.round(x.confs.reduce((a, b) => a + b, 0) / x.confs.length),
+    }))
+    .sort((a, b) => a.y - b.y || a.l - b.l);
+}
+
+// One screenshot's lines, compact enough to send many screenshots in one text-only request.
+function ocrBlock(n, lines) {
+  return `Screenshot ${n}:\n` + lines.map((x) => `y=${x.y} L=${x.l} R=${x.r}${x.conf < 50 ? " low" : ""} | ${x.text}`).join("\n");
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normText, similarity, sameMessage, joinSlices, phoneGroups, defaultMapping,
-    resolveSender, mergeSequences, buildTranscript, transcriptText, verdictQuotes, unverifiedQuotes,
+    resolveSender, mergeSequences, buildTranscript, transcriptText, verdictQuotes, unverifiedQuotes, parseTsv, ocrBlock,
   };
 }

@@ -60,6 +60,25 @@ Then list every message bubble in reading order, top to bottom, image by image. 
 Reply with only one JSON object, for example:
 {"images":[{"image":1,"app":"iMessage","header_name":"Jordan"}],"messages":[{"image":1,"side":"right","sender_label":"","text":"You said you'd do the dishes?","time":"Today 9:14 PM","kind":"text","partial":false,"y":22}]}`;
 
+// Used when this view can't send images to Claude: the phone reads the text, Claude rebuilds the messages.
+const OCR_RULES = `These are text lines read on the user's phone (by OCR) from screenshots of a text-message conversation. Rebuild the conversation's messages. Do not judge or summarize anything.
+
+Each line is: y (top of the line, % of screenshot height), L and R (left and right edge, % of screenshot width), an optional "low" confidence flag, then the text.
+How to read them:
+- The first line or two (time, carrier, battery) is the phone's status bar. Ignore it.
+- The chat header is the centered name near the top (often ending in ">" or "›"). Report it as header_name; "" if none.
+- Sent bubbles (the phone owner's) are right-aligned: R is high (about 85 or more) and L is well away from the left edge. side = "right".
+- Received bubbles are left-aligned: L is low (under about 25). side = "left". In group chats a short name line sits just above a received bubble; use it as sender_label for that bubble, not as a message.
+- Centered short lines between bubbles are timestamps ("Today 9:58 AM") or notices. Put a timestamp on the next message's time field; other notices get side "center", kind "system".
+- Lines close together vertically (y differs by about 3 or less) with the same alignment belong to one bubble: join them with a space.
+- Fix obvious OCR slips (a lone "|" is usually "I"; "0k" is "Ok") but never change the wording. Drop fragments that are clearly icon or photo noise. If garbled text sits where a photo, link card or voice note would be, use a short bracketed description like "[photo]" or "[voice message]".
+- "Replies", "Delivered", "Read", reaction counts and similar labels are not messages. Skip them.
+- y for each message is the y of its first line.
+
+Reply with only one JSON object, for example:
+{"images":[{"image":1,"app":"iMessage","header_name":"Jordan"}],"messages":[{"image":1,"side":"right","sender_label":"","text":"You said you'd do the dishes?","time":"Today 9:14 PM","kind":"text","partial":false,"y":22}]}
+Use the screenshot number as "image".`;
+
 const SAMPLE_TRANSCRIPT = [
   ["Maya", "Today 9:14 PM", "You said you'd do the dishes last night?"],
   ["Jordan", "", "I was going to do them today"],
@@ -78,6 +97,7 @@ const SAMPLE_ERRORS = {
   rate_limited: "You've hit your Claude usage limit for now. Try again later.",
   image_rejected: "One of the screenshots couldn't be used. Remove it or try a different image.",
   images_unavailable: "This view can't send screenshots to Claude. Paste the conversation as text instead.",
+  ocr_unavailable: "This phone couldn't read the screenshots. Try Arguably on claude.ai in a browser, or paste the conversation as text.",
   refused: "Claude couldn't review this. Try a different set of screenshots.",
   prompt_too_large: "That's too much to review at once. Try fewer screenshots or a shorter paste.",
   invalid_json: "The reply came back incomplete. Try again.",
@@ -435,9 +455,7 @@ function homeHTML() {
   const recent = chats.slice(0, 8);
   const notice = !sampler
     ? '<p class="notice">Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.</p>'
-    : !maxImages
-      ? '<p class="notice">This view can\'t send screenshots to Claude. Use Paste text instead.</p>'
-      : "";
+    : "";
   return `<section class="home">
     ${notice}
     <div class="home-hero">
@@ -722,7 +740,150 @@ function batchSlices(slices, size) {
   return batches;
 }
 
-async function readScreenshots(shots, thinking, signal) {
+// ---------- on-device reading (OCR) ----------
+let ocr = null; // { worker, ready: Promise, waiting: Map }
+const SIMD_TEST = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11]);
+
+function ocrStart() {
+  if (ocr) return ocr.ready;
+  const simd = typeof WebAssembly === "object" && WebAssembly.validate(SIMD_TEST);
+  const abs = (p) => new URL(p, location.href).href;
+  const worker = new Worker(abs("ocr/ocr-worker.js"));
+  const waiting = new Map();
+  const state = { worker, waiting, ready: null };
+  ocr = state;
+  state.ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("OCR start timed out")), 90000);
+    worker.onmessage = ({ data }) => {
+      if (data.type === "ready") {
+        clearTimeout(timer);
+        resolve();
+      } else if (data.type === "result" && waiting.has(data.id)) {
+        waiting.get(data.id).resolve(data.tsv);
+        waiting.delete(data.id);
+      } else if (data.type === "error") {
+        if (data.id != null && waiting.has(data.id)) {
+          waiting.get(data.id).reject(new Error(data.message));
+          waiting.delete(data.id);
+        } else {
+          clearTimeout(timer);
+          reject(new Error(data.message));
+        }
+      }
+    };
+    worker.onerror = (e) => {
+      clearTimeout(timer);
+      reject(new Error(e.message || "OCR worker failed"));
+    };
+    worker.postMessage({
+      type: "init",
+      coreUrl: abs(simd ? "ocr/tesseract-core-simd-lstm.wasm.js" : "ocr/tesseract-core-lstm.wasm.js"),
+      langUrl: abs("ocr/eng-traineddata.js"),
+    });
+  });
+  state.ready.catch(() => {
+    state.worker.terminate();
+    if (ocr === state) ocr = null;
+  });
+  return state.ready;
+}
+
+// Prepare a screenshot for text recognition: dark text on a light background everywhere.
+// Dark mode: all text is white, so "how white is this pixel" (the smallest channel) is inverted,
+// which keeps white text on blue bubbles. Light mode: grayscale, with colored bubbles flattened.
+async function ocrImage(url) {
+  const img = await loadImage(url);
+  const scale = img.width < 1200 ? Math.min(2, 1200 / img.width) : 1; // small text reads better enlarged
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * scale);
+  c.height = Math.round(img.height * scale);
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height);
+  const px = d.data;
+  let sum = 0;
+  for (let i = 0; i < px.length; i += 16) sum += px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11;
+  const dark = sum / (px.length / 16) < 110;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    const l = dark ? 255 - Math.min(r, g, b) : Math.max(r, g, b) - Math.min(r, g, b) > 60 ? 150 : r * 0.3 + g * 0.59 + b * 0.11;
+    px[i] = px[i + 1] = px[i + 2] = l;
+  }
+  ctx.putImageData(d, 0, 0);
+  const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+  return { png: await blob.arrayBuffer(), width: c.width, height: c.height };
+}
+
+async function ocrRecognize(url) {
+  await ocrStart();
+  const { png, width, height } = await ocrImage(url);
+  const id = uid();
+  const tsv = await new Promise((resolve, reject) => {
+    ocr.waiting.set(id, { resolve, reject });
+    ocr.worker.postMessage({ type: "ocr", id, png }, [png]);
+  });
+  return parseTsv(tsv, width, height);
+}
+
+async function readWithOcr(shots, thinking, signal) {
+  updateThinking(thinking, "Getting the reader ready on this phone", 0.02);
+  try {
+    await ocrStart();
+  } catch {
+    throw { code: "ocr_unavailable" };
+  }
+  const blocks = [];
+  for (let i = 0; i < shots.length; i++) {
+    if (signal.aborted) throw { code: "cancelled" };
+    updateThinking(thinking, `Reading screenshot ${i + 1} of ${shots.length} on this phone`, (i / shots.length) * 0.6);
+    const lines = await ocrRecognize(shots[i].url).catch(() => []);
+    blocks.push({ n: shots[i].n, text: ocrBlock(shots[i].n, lines), count: lines.length });
+  }
+  if (!blocks.some((b) => b.count)) throw { code: "no_messages" };
+  // Send the lines to Claude in text-only batches that stay well under the request limit.
+  const batches = [];
+  let cur = [];
+  let size = 0;
+  for (const b of blocks) {
+    if (cur.length && size + b.text.length > 36000) {
+      batches.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(b);
+    size += b.text.length;
+  }
+  if (cur.length) batches.push(cur);
+  const readings = [];
+  for (let k = 0; k < batches.length; k++) {
+    updateThinking(thinking, batches.length > 1 ? `Sorting out the messages · part ${k + 1} of ${batches.length}` : "Sorting out the messages", 0.6 + (k / batches.length) * 0.35);
+    const out = await sampler.json(`${OCR_RULES}\n\n${batches[k].map((b) => b.text).join("\n\n")}`, { modelTier: "default", signal });
+    if (!out || !Array.isArray(out.messages)) throw { code: "invalid_json" };
+    for (const b of batches[k]) {
+      const info = (out.images || []).find((x) => Number(x.image) === b.n) || {};
+      const msgs = out.messages
+        .filter((m) => Number(m.image) === b.n)
+        .map((m) => ({ ...m, part: 1, text: String(m.text ?? "") }))
+        .sort((a, c) => (Number(a.y) || 0) - (Number(c.y) || 0));
+      readings.push({
+        n: b.n,
+        header: String(info.header_name || "").trim(),
+        app: info.app || "",
+        isGroup: msgs.some((m) => m.side === "left" && String(m.sender_label || "").trim()),
+        msgs,
+      });
+    }
+  }
+  return readings;
+}
+
+// Claude reads the screenshots itself when this view can send images; otherwise the phone does.
+function readScreenshots(shots, thinking, signal) {
+  return maxImages ? readWithVision(shots, thinking, signal) : readWithOcr(shots, thinking, signal);
+}
+
+async function readWithVision(shots, thinking, signal) {
   const slices = await sliceShots(shots);
   const batches = batchSlices(slices, Math.max(1, maxImages));
   const bySlice = [];
@@ -1061,8 +1222,8 @@ render();
     notice.textContent = "Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.";
     notice.hidden = false;
   } else if (!maxImages) {
-    notice.textContent = "This view can't send screenshots to Claude. Paste the conversation as text instead.";
-    notice.hidden = false;
+    // Warm up the on-device reader in the background so the first import starts sooner.
+    ocrStart().catch(() => {});
   }
   render();
 })();

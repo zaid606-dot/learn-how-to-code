@@ -34,6 +34,7 @@ To open it on your phone, run it on your computer and visit `http://<your-comput
 
 1. On the device: duplicates are skipped, and tall screenshots are cut in the blank space between bubbles so text stays readable at Claude's image size.
 2. Claude reads every message in batches (as many images per call as the view allows), so up to 30 screenshots can go in at once.
+   Where the view can't send images to Claude (the Claude iPhone app), the phone reads the text itself with Tesseract (on-device OCR in a Web Worker, dark mode handled), and Claude rebuilds the messages from the text and each line's position. Run `scripts/fetch-ocr.sh` once before building; the OCR files in `dist/ocr/` are published alongside the page.
 3. "Who's who": each phone shows its owner on the right, so names are inferred per phone from the chat header and confirmed by the person before judging.
 4. Both phones are merged into one transcript using overlapping messages, in any import order; stretches that don't overlap are marked as possible gaps.
 5. Claude judges the transcript. Every quote in the verdict is checked against it, and quotes that can't be found are flagged. Follow-up questions get the full transcript.

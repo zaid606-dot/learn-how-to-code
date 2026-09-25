@@ -3,8 +3,8 @@
 // signed-in viewer), so it needs no server or API key.
 //
 //   node scripts/build-artifact.mjs [out.html]
-// Publish with capabilities: {sample: {}}.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+// Publish with capabilities: {sample: {}} and the files in dist/ocr/ alongside the page.
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verdictSchema } from "../src/schema.js";
@@ -50,4 +50,17 @@ ${js}
 `;
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, page);
+
+// On-device OCR files, published next to the page (see scripts/fetch-ocr.sh).
+const ocrOut = dirname(out) + "/ocr";
+mkdirSync(ocrOut, { recursive: true });
+copyFileSync(root + "artifact/ocr/ocr-worker.js", ocrOut + "/ocr-worker.js");
+const vendor = (f) => {
+  if (!existsSync(root + "vendor/ocr/" + f)) throw new Error(`build-artifact: vendor/ocr/${f} missing. Run scripts/fetch-ocr.sh first.`);
+  return root + "vendor/ocr/" + f;
+};
+for (const f of ["tesseract-core-simd-lstm.wasm.js", "tesseract-core-lstm.wasm.js"]) copyFileSync(vendor(f), ocrOut + "/" + f);
+for (const f of ["LICENSE-tesseract-core", "LICENSE-tessdata"]) copyFileSync(vendor(f), ocrOut + "/" + f + ".txt");
+// Artifacts serve scripts but not raw binary files, so the language data ships as base64 in a script.
+writeFileSync(ocrOut + "/eng-traineddata.js", `self.ENG_TRAINEDDATA_B64=${JSON.stringify(readFileSync(vendor("eng.traineddata")).toString("base64"))};\n`);
 console.log(`wrote ${out} (${(page.length / 1024).toFixed(0)} KB)`);
