@@ -301,7 +301,7 @@ function verdictHTML(m, c) {
   const person = (n) => `<span class="person"><span class="dot" style="background:${color(n).bg}"></span>${esc(n)}</span>`;
   const quote = (text, who) =>
     `<div class="quote" style="box-shadow: inset 3px 0 0 ${color(who).bg}">“${esc(text)}”${
-      unverified.has(text) ? '<span class="tag unverified">Not found in the screenshots</span>' : ""
+      unverified.has(text) ? '<span class="tag unverified">Couldn't verify</span>' : ""
     }</div>`;
   const tag = (value, labels) => `<span class="tag ${esc(value)}">${esc(labels[value] || value)}</span>`;
   const sev = (s) => tag(s, { low: "Low", medium: "Medium", high: "High" });
@@ -324,7 +324,7 @@ function verdictHTML(m, c) {
     <h2 class="v-title">${esc(v.title)}</h2>
     ${
       unverified.size
-        ? `<p class="banner warn" role="note">${(m.unverified || []).length === 1 ? "1 quote" : `${(m.unverified || []).length} quotes`} in this verdict couldn't be matched to the ${m.transcript ? "screenshots" : "conversation"}. They're marked below.</p>`
+        ? `<p class="banner warn" role="note">${(m.unverified || []).length === 1 ? "1 quote" : `${(m.unverified || []).length} quotes`} in this verdict couldn't be matched to the ${m.transcript ? "screenshots" : "conversation"}, or to the person who wrote them. They're marked below.</p>`
         : transcript.length || c.raw
           ? `<p class="checked"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Every quote checked against the ${transcript.length ? "screenshots" : "conversation"}</p>`
           : ""

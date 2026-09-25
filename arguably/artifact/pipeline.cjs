@@ -174,29 +174,47 @@ function transcriptText(messages) {
 }
 
 function verdictQuotes(v) {
+  return quotesWithSpeakers(v).map((x) => x.quote);
+}
+// Each quote with the person the verdict says wrote it ("" when it doesn't say).
+function quotesWithSpeakers(v) {
   const o = v.origin || {};
   return [
-    o.spark_quote,
-    ...(o.escalation_points || []).map((e) => e.quote),
-    ...(v.grudges || []).map((g) => g.evidence_quote),
-    ...(v.personal_shots || []).map((s) => s.quote),
-    ...(v.fallacies || []).map((f) => f.quote),
-  ].filter((q) => typeof q === "string" && q.trim());
+    { quote: o.spark_quote, who: o.spark_speaker },
+    ...(o.escalation_points || []).map((e) => ({ quote: e.quote, who: e.speaker })),
+    ...(v.grudges || []).map((g) => ({ quote: g.evidence_quote, who: g.holder })),
+    ...(v.personal_shots || []).map((s) => ({ quote: s.quote, who: s.from })),
+    ...(v.fallacies || []).map((f) => ({ quote: f.quote, who: f.speaker })),
+  ]
+    .filter((x) => typeof x.quote === "string" && x.quote.trim())
+    .map((x) => ({ quote: x.quote, who: typeof x.who === "string" ? x.who.trim() : "" }));
 }
 
-// Quotes in the verdict that can't be found in what was actually read.
+// Quotes in the verdict that can't be found in what was actually read, or that are pinned on
+// the wrong person. A quote may trim a message, but not add to it.
 function unverifiedQuotes(verdict, messages, raw) {
-  const texts = (messages || []).filter((m) => m.kind !== "gap").map((m) => normText(m.text));
-  const pairs = texts.slice(1).map((t, i) => texts[i] + " " + t);
+  const read = (messages || []).filter((m) => m.kind !== "gap").map((m) => ({ text: normText(m.text), sender: normText(m.sender || "") }));
+  const pairs = read.slice(1).map((t, i) => ({ text: read[i].text + " " + t.text, senders: [read[i].sender, t.sender] }));
   const rawNorm = raw ? normText(raw) : "";
-  return verdictQuotes(verdict).filter((q) => {
-    const nq = normText(q.replace(/\.\.\.|…/g, " "));
-    if (!nq) return false;
-    if (rawNorm && rawNorm.includes(nq)) return false;
-    if (texts.some((t) => t.includes(nq) || (t.length >= 12 && nq.includes(t)) || (nq.length >= 8 && similarity(t, nq) >= 0.85))) return false;
-    if (pairs.some((p) => p.includes(nq))) return false;
-    return true;
-  });
+  const bad = new Set();
+  for (const { quote, who } of quotesWithSpeakers(verdict)) {
+    const nq = normText(quote.replace(/\.\.\.|…/g, " "));
+    if (!nq) continue;
+    if (rawNorm && rawNorm.includes(nq)) continue;
+    const fits = (t) => t.includes(nq) || (t.length >= 12 && nq.includes(t) && nq.length <= t.length * 1.15 + 3) || (nq.length >= 8 && similarity(t, nq) >= 0.85);
+    const hits = read.filter((m) => fits(m.text));
+    // A quote spanning two messages in a row counts only when no single message holds it.
+    const pairHits = hits.length ? [] : pairs.filter((p) => p.text.includes(nq));
+    if (!hits.length && !pairHits.length) {
+      bad.add(quote);
+      continue;
+    }
+    // Found, but written by someone else: a misattributed quote is flagged too.
+    const w = normText(who);
+    const senders = [...hits.map((m) => m.sender), ...pairHits.flatMap((p) => p.senders)].filter(Boolean);
+    if (w && senders.length && !senders.includes(w)) bad.add(quote);
+  }
+  return [...bad];
 }
 
 // Tesseract TSV -> text lines with position as % of the image: l/r = left/right edge, y = top.

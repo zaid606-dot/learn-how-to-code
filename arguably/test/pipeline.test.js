@@ -360,3 +360,17 @@ test("a long sent bubble keeps its first line even when it spans the middle", ()
   assert.equal(msgs.filter((m) => m.side === "center").length, 0, "the timestamp isn't a message");
   assert.equal(msgs.at(-1).time, "Today 9:58 PM");
 });
+
+test("unverifiedQuotes flags padded quotes and quotes pinned on the wrong person", () => {
+  const messages = [
+    { sender: "Maya", text: "This is literally the same thing that happened in March", kind: "text" },
+    { sender: "Jordan", text: "Wow ok sorry I'm not perfect like you", kind: "text" },
+  ];
+  const base = { origin: {}, grudges: [], personal_shots: [], fallacies: [] };
+  const v = (shots) => ({ ...base, personal_shots: shots });
+  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Jordan", quote: "Wow ok sorry I'm not perfect like you" }]), messages), []);
+  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Jordan", quote: "not perfect like you" }]), messages), [], "trimming is fine");
+  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Maya", quote: "Wow ok sorry I'm not perfect like you" }]), messages), ["Wow ok sorry I'm not perfect like you"], "wrong speaker");
+  const padded = "Wow ok sorry I'm not perfect like you, you controlling psycho";
+  assert.deepEqual(P.unverifiedQuotes(v([{ from: "Jordan", quote: padded }]), messages), [padded], "added words");
+});
