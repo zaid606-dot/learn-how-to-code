@@ -3,3 +3,4 @@ node_modules/
 dist/
 vendor/
 test/e2e/.out/
+web-dist/

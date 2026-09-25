@@ -109,14 +109,14 @@ const SAMPLE_TRANSCRIPT = [
 ].map(([sender, time, text], i) => ({ id: "m" + (i + 1), sender, time, text, kind: "text", shots: [i < 4 ? 1 : 2] }));
 
 const SAMPLE_ERRORS = {
-  not_granted: "Arguably needs permission to use Claude. Reload the page and choose Allow when asked.",
-  sampling_disabled: "Claude isn't available for this account, so Arguably can't reply here.",
-  session_expired: "Your Claude session expired. Sign in again, then try again.",
-  rate_limited: "You've hit your Claude usage limit for now. Try again later.",
+  not_granted: `Arguably needs permission to use ${AI_NAME}. Reload the page and choose Allow when asked.`,
+  sampling_disabled: `${AI_NAME} isn't available right now, so Arguably can't reply here.`,
+  session_expired: `Your ${AI_NAME} session expired. Sign in again, then try again.`,
+  rate_limited: HOSTED ? "Arguably is busy right now. Try again in a minute." : `You've hit your ${AI_NAME} usage limit for now. Try again later.`,
   image_rejected: "One of the screenshots couldn't be used. Remove it or try a different image.",
-  images_unavailable: "This view can't send screenshots to Claude. Paste the conversation as text instead.",
+  images_unavailable: `This view can't send screenshots to ${AI_NAME}. Paste the conversation as text instead.`,
   ocr_unavailable: "This phone couldn't read the screenshots. Try Arguably on claude.ai in a browser, or paste the conversation as text.",
-  refused: "Claude couldn't review this. Try a different set of screenshots.",
+  refused: `${AI_NAME} couldn't review this. Try a different set of screenshots.`,
   prompt_too_large: "That's too much to review at once. Try fewer screenshots or a shorter paste.",
   invalid_json: "The reply came back incomplete. Try again.",
   no_messages: "We couldn't find any messages in those screenshots. Check they show the conversation and try again.",
@@ -674,9 +674,9 @@ function onboardingHTML() {
      <ul class="ob-list">
        <li>${pageSvg(PAGE_ICON.device)}<span><strong>Screenshots aren't saved.</strong> They're read, then let go.</span></li>
        <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Chats stay on this device.</strong> Delete them anytime in Settings.</span></li>
-       <li>${pageSvg(PAGE_ICON.spark)}<span><strong>Runs on your Claude account.</strong> Verdicts use your Claude plan. No subscription here.</span></li>
+       <li>${pageSvg(PAGE_ICON.spark)}<span>${HOSTED ? "<strong>No account needed.</strong> Import and go." : `<strong>Runs on your ${AI_NAME} account.</strong> Verdicts use your ${AI_NAME} plan. No subscription here.`}</span></li>
      </ul>
-     <p class="ob-fine">Verdicts are written by Claude, an AI by Anthropic. Allowing sends the conversation you import, and nothing else, to Claude. Change it anytime in Settings.</p>
+     <p class="ob-fine">Verdicts are written by ${AI_NAME}, an AI by ${AI_MAKER}. Allowing sends the conversation you import, and nothing else, to ${AI_NAME}. Change it anytime in Settings.</p>
      ${dots}
      <div class="ob-actions">
        <button class="cta" type="button" data-action="consent-next">Allow and continue</button>
@@ -752,8 +752,8 @@ function settingsHTML() {
     <div class="set-group">
       <h2>AI &amp; screenshots</h2>
       <div class="set-card">
-        ${sw("aiConsent", prefs.aiConsent, "claude", "navy", "Send chats to Claude", "Needed for verdicts. Claude is an AI by Anthropic.")}
-        ${sw("readOnPhone", prefs.readOnPhone, "phone", "sand", "Read screenshots on this phone", "Claude gets the text, never the images.")}
+        ${sw("aiConsent", prefs.aiConsent, "claude", "navy", `Send chats to ${AI_NAME}`, `Needed for verdicts. ${AI_NAME} is an AI by ${AI_MAKER}.`)}
+        ${sw("readOnPhone", prefs.readOnPhone, "phone", "sand", "Read screenshots on this phone", `${AI_NAME} gets the text, never the images.`)}
         ${link('data-doc="ai"', "info", "blue", "How AI is used")}
       </div>
     </div>
@@ -802,7 +802,7 @@ function settingsHTML() {
         ${link('data-doc="licenses"', "code", "sand", "Open-source licenses")}
         <div class="set-row static">${tile("info", "sand")}${text("Version")}<span class="set-value">${APP_VERSION}</span></div>
       </div>
-      <p class="set-about"><img src="${MARK_URI}" alt="" width="22" height="20">Arguably · Verdicts by Claude</p>
+      <p class="set-about"><img src="${MARK_URI}" alt="" width="22" height="20">Arguably · Verdicts by ${AI_NAME}</p>
     </div>
   </section>`;
 }
@@ -828,21 +828,21 @@ const DOCS = {
   privacy: {
     title: "Privacy Policy",
     body: () => `<p class="doc-lede">Short version: your arguments stay yours. No account, no ads, no tracking.</p>
-      <h2>What we collect</h2><p>Nothing on our servers. Arguably keeps your chats (the text, who's who and verdicts), your name if you add one, and your settings on this device only.</p>
-      <h2>What leaves your device</h2><p>When you ask for a verdict, the conversation text, and the screenshots unless “Read screenshots on this phone” is on, is sent to Claude, an AI made by Anthropic, to write the verdict. It's sent only after you allow it, and only to answer you.</p>
+      <h2>What we collect</h2><p>Nothing on our servers.${HOSTED ? " Arguably's server passes your request to " + AI_NAME + " and keeps no copy." : ""} Arguably keeps your chats (the text, who's who and verdicts), your name if you add one, and your settings on this device only.</p>
+      <h2>What leaves your device</h2><p>When you ask for a verdict, the conversation text, and the screenshots unless “Read screenshots on this phone” is on, is sent to ${AI_NAME}, an AI made by ${AI_MAKER}, to write the verdict. It's sent only after you allow it, and only to answer you.</p>
       <h2>Screenshots</h2><p>Screenshots are read, then let go. They're never saved on your device or anywhere else by Arguably.</p>
       <h2>Tracking</h2><p>Arguably doesn't track you across apps or websites, doesn't show ads, and doesn't sell or share data with data brokers.</p>
-      <h2>Your choices</h2><p>Turn off “Send chats to Claude” anytime. Export or delete everything from Settings › Privacy &amp; data. Deleting is immediate and permanent.</p>
+      <h2>Your choices</h2><p>Turn off “Send chats to ${AI_NAME}” anytime. Export or delete everything from Settings › Privacy &amp; data. Deleting is immediate and permanent.</p>
       <h2>Children</h2><p>Arguably isn't made for children under 13.</p>
       <h2>Contact</h2><ul class="help-list"><li><a href="mailto:${SUPPORT_EMAIL}">Email us<span>${SUPPORT_EMAIL}</span></a></li></ul>`,
   },
   ai: {
     title: "How AI is used",
-    body: () => `<p class="doc-lede">Arguably uses Claude, an AI made by Anthropic, to read arguments and write verdicts.</p>
-      <h2>What Claude gets</h2><ul><li>The conversation text from your screenshots or paste</li><li>The screenshots themselves, unless “Read screenshots on this phone” is on</li><li>Names you confirm on the who's-who step, and any note you add</li></ul>
-      <h2>What Claude doesn't get</h2><ul><li>Your contacts, photo library or location</li><li>Other chats on this device</li></ul>
+    body: () => `<p class="doc-lede">Arguably uses ${AI_NAME}, an AI made by ${AI_MAKER}, to read arguments and write verdicts.</p>
+      <h2>What ${AI_NAME} gets</h2><ul><li>The conversation text from your screenshots or paste</li><li>The screenshots themselves, unless “Read screenshots on this phone” is on</li><li>Names you confirm on the who's-who step, and any note you add</li></ul>
+      <h2>What ${AI_NAME} doesn't get</h2><ul><li>Your contacts, photo library or location</li><li>Other chats on this device</li></ul>
       <h2>What to keep in mind</h2><p>Verdicts are an AI's opinion, not a fact or professional advice. Every quote in a verdict is checked against the conversation, and anything that doesn't match is flagged. If a verdict looks wrong or unfair, report it from Settings.</p>
-      ${prefs.aiConsent ? `<p class="doc-state ok">${svg(ICON.check, 16)}You've allowed sending chats to Claude.</p>` : `<button class="cta" type="button" data-action="consent">Allow sending chats to Claude</button>`}`,
+      ${prefs.aiConsent ? `<p class="doc-state ok">${svg(ICON.check, 16)}You've allowed sending chats to ${AI_NAME}.</p>` : `<button class="cta" type="button" data-action="consent">Allow sending chats to ${AI_NAME}</button>`}`,
   },
   terms: {
     title: "Terms of Use",
