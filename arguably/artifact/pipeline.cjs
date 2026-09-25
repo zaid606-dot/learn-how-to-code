@@ -283,7 +283,7 @@ const ocrLeftish = (x) => x.l < 100 - x.r;
 // The top of a screenshot: status bar, header, presence line. Returns the header and the y
 // below which the messages start. Lines are already cleaned.
 function ocrTop(lines) {
-  const plain = (t) => t.replace(/\s*[>›»]+\s*$/, "").replace(/^[<‹«]+\s*\d*\s*/, "").trim();
+  const plain = (t) => t.replace(/\s*[>›»]+\s*$/, "").replace(/^[<‹«←]+\s*\d*\s*/, "").trim();
   for (const x of lines) {
     if (x.y > 22 || ocrStatusBar(x)) continue;
     const t = plain(x.text);
@@ -293,7 +293,11 @@ function ocrTop(lines) {
     // WhatsApp and others: left-aligned after a back arrow, or with "online" under it.
     const next = lines.find((z) => z.y > x.y && z.y - x.y <= 5);
     const presence = next && OCR_PRESENCE.test(next.text);
-    if (x.y <= 14 && (/^[<‹«]/.test(x.text) || presence)) return { header: t, below: presence ? next.y : x.y };
+    if (x.y <= 14 && (/^[<‹«←]/.test(x.text) || presence)) return { header: t, below: presence ? next.y : x.y };
+    // Instagram: "alex.k ›" beside the back arrow; the chevron marks the tappable header.
+    if (x.y <= 14 && /[>›]$/.test(x.text) && t.length <= 30) return { header: t, below: x.y };
+    // The back arrow itself is often not read at all, leaving a lone name high on the left.
+    if (x.y <= 12 && x.r <= 60 && looksLikeName(t)) return { header: t, below: x.y };
   }
   const bar = lines.filter(ocrStatusBar);
   return { header: "", below: bar.length ? Math.max(...bar.map((x) => x.y)) : -1 };
@@ -393,7 +397,11 @@ function linesToMessages(lines) {
       continue;
     }
     cur = null;
-    if (ocrCentered(x) && !x.avatar) {
+    // A wide first line of a sent bubble can sit near the middle; the bubble's next line
+    // shares its left edge, which a centered system line or timestamp doesn't have.
+    const next = rows[i + 1];
+    const opensBubble = next && next.y - x.y <= near && Math.abs(next.l - x.l) <= 3 && !isTimestamp(x.text);
+    if (ocrCentered(x) && !x.avatar && !opensBubble) {
       if (isTimestamp(x.text)) time = x.text;
       else msgs.push({ side: "center", sender_label: "", text: x.text, time: "", kind: "system", partial: false, y: x.y, part: 1 });
       run = null;

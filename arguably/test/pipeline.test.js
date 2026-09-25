@@ -335,3 +335,28 @@ test("normalizeVerdict makes schema-violating verdicts safe or rejects them", ()
   assert.ok(P.normalizeVerdict({ origin: {}, winner: { is_draw: true } }), "a draw needs no name");
   assert.equal(P.normalizeVerdict("text"), null);
 });
+
+test("headers: WhatsApp back-arrow names and Instagram handles are read as the contact", () => {
+  const line = (y, l, r, text) => ({ y, l, r, conf: 90, text });
+  assert.equal(P.headerOf([line(2, 5, 15, "9:41"), line(7, 12, 22, "Sam"), line(8, 12, 30, "online"), line(20, 8, 60, "Are you coming tonight?")]), "Sam");
+  assert.equal(P.headerOf([line(2, 5, 15, "9:41"), line(7, 14, 24, "Sam"), line(20, 8, 60, "Are you coming tonight?")]), "Sam");
+  assert.equal(P.headerOf([line(2, 5, 15, "9:41"), line(7, 20, 38, "alex.k ›"), line(20, 8, 60, "hey")]), "alex.k");
+  assert.equal(P.headerOf([line(2, 5, 15, "9:41"), line(7, 3, 20, "← Chris"), line(20, 8, 60, "hey")]), "Chris");
+});
+
+test("a long sent bubble keeps its first line even when it spans the middle", () => {
+  const line = (y, l, r, text) => ({ y, l, r, conf: 90, text });
+  const msgs = P.linesToMessages([
+    line(2, 5, 15, "9:41"), line(6, 42, 58, "Jordan"),
+    line(20, 8, 50, "Where were you last night?"),
+    line(30, 24, 82, "That's not fair. I've been working"),
+    line(33, 24, 80, "double shifts all week and you know it"),
+    line(36, 24, 60, "so don't start"),
+    line(46, 40, 60, "Today 9:58 PM"),
+    line(52, 8, 40, "ok"),
+  ]);
+  const sent = msgs.find((m) => m.side === "right");
+  assert.equal(sent.text, "That's not fair. I've been working double shifts all week and you know it so don't start");
+  assert.equal(msgs.filter((m) => m.side === "center").length, 0, "the timestamp isn't a message");
+  assert.equal(msgs.at(-1).time, "Today 9:58 PM");
+});
