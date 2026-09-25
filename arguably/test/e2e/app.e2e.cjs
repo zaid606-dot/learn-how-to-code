@@ -497,3 +497,20 @@ test("the judge prompt treats the conversation as evidence, not instructions", a
   assert.match(prompt, /Safety comes first/);
   assert.doesNotMatch(prompt, /The person asking is/);
 });
+
+test("one chat can be deleted with a confirming second tap", async () => {
+  const { page, errors } = await openApp({ images: true });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  await page.click("#deleteBtn");
+  assert.match(await page.getAttribute("#deleteBtn", "aria-label"), /Tap again/);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2")).length), 1, "nothing deleted on the first tap");
+  await shot(page, "delete-confirm");
+  assert.deepEqual(await layoutProblems(page), []);
+  await page.click("#deleteBtn");
+  assert.ok(await page.locator("#thread .home").isVisible());
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2")).length), 0);
+  await page.click('.sheet-btn[data-action="example"]');
+  assert.equal(await page.isVisible("#deleteBtn"), false, "the example can't be deleted");
+  assert.deepEqual(errors, []);
+});

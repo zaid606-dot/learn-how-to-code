@@ -672,6 +672,16 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 @media (max-width: 350px) { .sheet-btn { gap: 6px; padding: 0 10px; font-size: 14px; } }
 
 /* Abuse or threats: support first, no scoreboard. */
-.msg.verdict.has-safety .winner-card { display: none; }
+.msg.verdict.has-safety .winner-card, .msg.verdict.has-safety .scorecard { display: none; }
 .card.safety .cta { margin-top: 12px; }
 .safety-fine { margin: 8px 0 0; font-size: 13px; color: var(--ink-600); }
+
+/* Delete this chat: trash icon that turns into a red "Delete?" pill on the first tap. */
+.del-btn { margin-left: auto; color: var(--ink-600); transition: background-color var(--dur-sm) var(--ease-out), width var(--dur-sm) var(--ease-out); }
+.del-btn + .new-btn { margin-left: 8px; }
+.del-btn .del-confirm { display: none; }
+.del-btn.confirm { width: auto; padding: 0 14px; border-radius: var(--radius-pill); background: #e5362d; color: #fff; }
+.del-btn.confirm svg { display: none; }
+.del-btn.confirm .del-confirm { display: inline; font: 600 14px/1 var(--font-body); }
+.ring span { align-content: center; gap: 2px; }
+.ring span small { margin: 0; letter-spacing: .06em; text-transform: uppercase; }

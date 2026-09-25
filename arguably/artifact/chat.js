@@ -301,7 +301,7 @@ function verdictHTML(m, c) {
   const person = (n) => `<span class="person"><span class="dot" style="background:${color(n).bg}"></span>${esc(n)}</span>`;
   const quote = (text, who) =>
     `<div class="quote" style="box-shadow: inset 3px 0 0 ${color(who).bg}">“${esc(text)}”${
-      unverified.has(text) ? '<span class="tag unverified">Couldn't verify</span>' : ""
+      unverified.has(text) ? '<span class="tag unverified">Couldn’t verify</span>' : ""
     }</div>`;
   const tag = (value, labels) => `<span class="tag ${esc(value)}">${esc(labels[value] || value)}</span>`;
   const sev = (s) => tag(s, { low: "Low", medium: "Medium", high: "High" });
@@ -332,7 +332,7 @@ function verdictHTML(m, c) {
     ${v.safety_note?.trim() ? `<section class="card safety" role="note"><h2>A note on safety</h2><p>${esc(v.safety_note)}</p><button class="cta" type="button" data-doc="safety">Find support</button><p class="safety-fine">Arguably doesn't score conversations like this one.</p></section>` : ""}
     <section class="card winner-card">
       <div class="winner-head">
-        <div class="ring" style="--p:${conf}" role="img" aria-label="${conf}% confidence"><span>${conf}%</span></div>
+        <div class="ring" style="--p:${conf}" role="img" aria-label="${conf}% sure"><span>${conf}%<small>sure</small></span></div>
         <div>
           <div class="winner-label">${w.is_draw ? "Even match" : "Winner"}</div>
           <div class="winner-name">${esc(w.is_draw ? "No clear winner" : w.name)}</div>
@@ -340,7 +340,7 @@ function verdictHTML(m, c) {
       </div>
       <p>${esc(w.reasoning)}</p>
     </section>
-    <section class="card">
+    <section class="card scorecard">
       <h2>Scorecard</h2>
       ${scores
         .map(
@@ -911,6 +911,9 @@ function renderHeader() {
   $("chatTitle").hidden = onHome || page === "onboarding";
   $("chatTitle").textContent = page ? PAGE_TITLES[page] : chat?.title || "";
   $("newBtn").hidden = !!page || onHome;
+  const deletable = !page && !!chat && !chat.example && chats.some((x) => x.id === chat.id);
+  $("deleteBtn").hidden = !deletable;
+  if (!deletable) $("deleteBtn").classList.remove("confirm");
   $("topActions").hidden = !onHome;
   $("skipBtn").hidden = page !== "onboarding";
   const unread = unreadCount();
@@ -2022,6 +2025,30 @@ $("homeBtn").addEventListener("click", goHome);
 $("inboxBtn").addEventListener("click", () => openPage("inbox"));
 $("settingsBtn").addEventListener("click", () => openPage("settings"));
 $("skipBtn").addEventListener("click", finishOnboarding);
+// Delete one chat: the first tap asks, the second (within a few seconds) deletes.
+let deleteTimer = 0;
+$("deleteBtn").addEventListener("click", () => {
+  const b = $("deleteBtn");
+  if (!b.classList.contains("confirm")) {
+    b.classList.add("confirm");
+    b.setAttribute("aria-label", "Tap again to delete this chat");
+    clearTimeout(deleteTimer);
+    deleteTimer = setTimeout(() => { b.classList.remove("confirm"); b.setAttribute("aria-label", "Delete this chat"); }, 3500);
+    return;
+  }
+  clearTimeout(deleteTimer);
+  b.classList.remove("confirm");
+  b.setAttribute("aria-label", "Delete this chat");
+  if (!chat) return;
+  if (busyHere()) busy.ctl.abort();
+  const id = chat.id;
+  chats = chats.filter((x) => x.id !== id);
+  storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
+  inbox = inbox.filter((n) => n.chatId !== id);
+  saveInbox();
+  goHome();
+  toast("Chat deleted.");
+});
 window.addEventListener("resize", renderComposer);
 // The header only shows a (soft) edge once something scrolls under it.
 window.addEventListener("scroll", () => document.body.classList.toggle("scrolled", window.scrollY > 4), { passive: true });
