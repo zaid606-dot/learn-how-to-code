@@ -24,7 +24,6 @@ const PRO_FAIR_USE = 50; // verdicts per calendar month
 const PLANS = {
   yearly: { id: "arguably.pro.yearly", price: "$29.99", per: "year", trialDays: 3 },
   monthly: { id: "arguably.pro.monthly", price: "$9.99", per: "month" },
-  family: { id: "arguably.pro.family", price: "$59.99", per: "year" },
 };
 const MAX_EDGE = 1400; // max width; tall scrolling captures keep full height
 const STORE_KEY = "arguably.chats.v2";
@@ -809,7 +808,7 @@ function proSettingsHTML(link) {
       <div class="set-card">
         ${
           prefs.pro
-            ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${{ yearly: "Yearly", monthly: "Monthly", family: "Family" }[prefs.pro.plan] || "Active"}</span><span class="set-sub">${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
+            ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${prefs.pro.plan === "monthly" ? "Monthly" : "Yearly"}</span><span class="set-sub">${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
                <a class="set-row" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">${tile("doc", "sand")}<span class="set-text"><span class="set-title">Manage subscription</span></span>${chev}</a>`
             : link('data-action="paywall"', "scale", "ember", "Go Pro", `Start your ${PLANS.yearly.trialDays}-day free trial`)
         }
@@ -846,7 +845,7 @@ const DOCS = {
       <h2>Your content</h2><p>Only import conversations you have the right to share. Don't use Arguably to harass, shame or threaten anyone.</p>
       <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
       <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
-      ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial, or ${PLANS.family.price}/year for up to 6 people with Family Sharing. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
+      ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, or ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
       <h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>`,
   },
   safety: {
@@ -1667,7 +1666,7 @@ function openExample() {
 let paywallPlan = "yearly";
 const nextYearDate = (days) => new Date(Date.now() + days * 864e5).toLocaleDateString(undefined, { month: "long", day: "numeric" });
 function paywallHTML() {
-  const y = PLANS.yearly, mo = PLANS.monthly, fam = PLANS.family;
+  const y = PLANS.yearly, mo = PLANS.monthly;
   const plan = PLANS[paywallPlan];
   const save = Math.round((1 - parseFloat(y.price.slice(1)) / (parseFloat(mo.price.slice(1)) * 12)) * 100);
   const trial = paywallPlan === "yearly" && y.trialDays;
@@ -1690,7 +1689,6 @@ function paywallHTML() {
     <div class="plans" role="radiogroup" aria-label="Choose a plan">
       ${radio("yearly", "Yearly", `${y.price}<small>/yr</small>`, `${y.trialDays}-day free trial`, `Save ${save}%`)}
       ${radio("monthly", "Monthly", `${mo.price}<small>/mo</small>`, "Cancel anytime")}
-      ${radio("family", "Family", `${fam.price}<small>/yr</small>`, "Up to 6 people")}
     </div>
     <button class="cta pw-cta" type="button" data-action="purchase">${trial ? `Start ${y.trialDays}-day free trial` : `Subscribe for ${plan.price}/${plan.per}`}</button>
     <p class="pw-terms">${

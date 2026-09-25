@@ -687,3 +687,50 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .ring span small { margin: 0; letter-spacing: .06em; text-transform: uppercase; }
 
 .pw-icon img { width: 44px; height: auto; }
+
+/* ---------- Brand pass: Settings, Notifications, policy pages ----------
+   Arguably's own look, not a stock phone-settings clone: brand cards with a sand hairline,
+   soft Blush/navy icon chips with the logo's coral and navy, coral switches and selections. */
+.set-card, .notes, .inbox-empty, .help-list {
+  border: 1px solid var(--sand-300); border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgba(36, 16, 14, 0.04);
+}
+.set-group h2 { font: 700 12px/1.3 var(--font-body); letter-spacing: .08em; color: var(--ember-700); margin-left: 4px; }
+.set-foot { margin: 0 4px; }
+.set-title { font: 600 16px/1.3 var(--font-body); }
+.set-row + .set-row::before, .set-row + .confirm-row::before, .seg-wrap + .set-row::before { left: 16px; background: var(--sand-100); }
+.set-row:not(.static):active { background: var(--ember-50); }
+@media (hover: hover) { .set-row:not(.static):hover { background: var(--ember-50); } }
+.set-chev { color: var(--ember-300); }
+
+/* Icon chips: the logo's two colors on soft grounds. */
+.tile { width: 36px; height: 36px; border-radius: 11px; box-shadow: none; }
+.tile.ember, .tile.red { background: var(--ember-100); color: var(--ember-700); }
+.tile.navy, .tile.blue { background: color-mix(in srgb, var(--logo-navy) 10%, #fff); color: var(--logo-navy); }
+.tile.green, .tile.sand { background: var(--sand-100); color: var(--ink-900); }
+.danger-row .tile { background: var(--danger-soft); color: var(--danger); }
+.danger-row .set-title { color: var(--danger); }
+.seg-wrap { padding: 0 16px 14px 66px; }
+
+.switch { background: var(--sand-300); }
+.switch.on { background: var(--ember-500); }
+.segmented { background: var(--ember-50); border: 1px solid var(--sand-300); border-radius: var(--radius-sm); }
+.segmented button { border-radius: 8px !important; color: var(--ink-600); font-weight: 600; }
+.segmented button.on { background: var(--ember-500); color: #fff; box-shadow: 0 4px 10px rgba(183, 67, 36, .25); }
+
+.profile { border-color: var(--sand-300); }
+.avatar { background: var(--logo-navy); font-family: var(--font-display); }
+.profile:focus-within { box-shadow: 0 0 0 3px var(--ember-500); }
+.confirm-row { background: var(--danger-soft); }
+.danger-btn { background: var(--danger); border-radius: var(--radius-sm); }
+.ghost-btn { background: var(--white); border: 1px solid var(--sand-300); border-radius: var(--radius-sm); }
+.inbox-top .ghost-btn { border: 0; }
+
+.note-icon, .note-icon.verdict, .note-icon.who, .note-icon.rate, .note-icon.tips { border-radius: 12px; }
+.note-icon.verdict, .note-icon.rate { background: var(--ember-100); color: var(--ember-700); }
+.note-icon.who { background: color-mix(in srgb, var(--logo-navy) 10%, #fff); color: var(--logo-navy); }
+.note-icon.tips, .note-icon { background: var(--sand-100); color: var(--ink-900); }
+.note-icon.verdict, .note-icon.rate { background: var(--ember-100); color: var(--ember-700); }
+.note-icon.who { background: color-mix(in srgb, var(--logo-navy) 10%, #fff); color: var(--logo-navy); }
+.note:active, .help-list a:active { background: var(--ember-50); }
+.page-title { color: var(--logo-navy); }

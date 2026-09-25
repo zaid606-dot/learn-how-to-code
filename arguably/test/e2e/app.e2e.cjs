@@ -382,7 +382,7 @@ test("App Store build: hard paywall after onboarding, then every verdict needs P
   const text = await page.locator(".paywall").innerText();
   assert.match(text, /\$29\.99/);
   assert.match(text, /\$9\.99/);
-  assert.match(text, /\$59\.99/);
+  assert.doesNotMatch(text, /Family|\$59\.99/, "no family plan");
   assert.doesNotMatch(text, /\/week|per week/i, "no weekly price (App Review 3.1.2)");
   assert.match(await page.locator(".pw-terms").innerText(), /then \$29\.99 per year[\s\S]*Renews automatically/);
   assert.equal(await page.locator(".pw-cta").innerText(), "Start 3-day free trial");
