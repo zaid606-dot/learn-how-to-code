@@ -105,7 +105,7 @@ export const verdictSchema = obj({
     }),
     "Logical fallacies found in the messages. Empty if none."
   ),
-  takeaway: str("1-3 sentences of practical advice for resolving this."),
+  takeaway: str("1-3 encouraging sentences with concrete next steps for resolving this, without blame."),
   safety_note: str(
     "If the messages show threats, coercion, stalking, or abuse, a brief caring note suggesting support resources. Otherwise an empty string."
   ),

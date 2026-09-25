@@ -42,7 +42,7 @@ async function getClient() {
     try {
       ({ default: Anthropic } = await import("@anthropic-ai/sdk"));
     } catch {
-      throw new AnalysisError("Server is missing @anthropic-ai/sdk. Run `npm install`.", 500);
+      throw new AnalysisError("Arguably isn't set up yet: the server is missing @anthropic-ai/sdk. Run `npm install`.", 500);
     }
     client = new Anthropic();
   }
@@ -59,27 +59,27 @@ async function readJsonBody(req) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new AnalysisError("Screenshots are too large. Try fewer or smaller images.", 413);
+    if (size > MAX_BODY_BYTES) throw new AnalysisError("Those screenshots are too large to send together. Try fewer at a time.", 413);
     chunks.push(chunk);
   }
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw new AnalysisError("Request body must be JSON.", 400);
+    throw new AnalysisError("We couldn't read that request. Refresh the page and try again.", 400);
   }
 }
 
 function apiErrorResponse(err) {
   if (err instanceof AnalysisError) return [err.status, err.message];
   if (Anthropic && err instanceof Anthropic.APIError) {
-    if (err instanceof Anthropic.AuthenticationError) return [500, "Server API key is missing or invalid."];
-    if (err instanceof Anthropic.RateLimitError) return [429, "The referee is swamped. Try again in a minute."];
-    if (err instanceof Anthropic.BadRequestError) return [400, "Those screenshots couldn't be processed. Try different images."];
-    if (err instanceof Anthropic.APIConnectionError) return [503, "Couldn't reach the AI service. Try again."];
-    return [502, "The AI service had a problem. Try again."];
+    if (err instanceof Anthropic.AuthenticationError) return [500, "Arguably isn't connected to its AI service yet. Check the server's API key."];
+    if (err instanceof Anthropic.RateLimitError) return [429, "Arguably is busy right now. Try again in a minute."];
+    if (err instanceof Anthropic.BadRequestError) return [400, "We couldn't process those screenshots. Try different images."];
+    if (err instanceof Anthropic.APIConnectionError) return [503, "We couldn't reach the AI service. Try again in a moment."];
+    return [502, "The AI service had a problem. Try again in a moment."];
   }
-  if (err?.message?.includes("API key")) return [500, "Server is missing ANTHROPIC_API_KEY."];
-  return [500, "Something went wrong."];
+  if (err?.message?.includes("API key")) return [500, "Arguably isn't connected yet. Set ANTHROPIC_API_KEY on the server."];
+  return [500, "We couldn't finish the verdict. Try again."];
 }
 
 async function handleAnalyze(req, res) {

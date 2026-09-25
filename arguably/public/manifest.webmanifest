@@ -1,10 +1,15 @@
 {
   "name": "Arguably",
   "short_name": "Arguably",
-  "description": "An AI referee for text-message arguments.",
+  "description": "See where an argument started, who made the stronger case, and how to move forward.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0e0f13",
-  "theme_color": "#0e0f13",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "background_color": "#FFF7F3",
+  "theme_color": "#24100E",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }

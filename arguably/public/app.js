@@ -1,18 +1,34 @@
 const MAX_IMAGES = 12;
 const MAX_EDGE = 2000; // px, long edge after resize
 const HISTORY_KEY = "arguably.history.v1";
-const PALETTE = ["#ff5a5f", "#2ec4b6", "#ffc53d", "#a78bfa", "#60a5fa", "#f472b6"];
+// EMBER-derived person colors. `fg` is the text color used on top of `bg`.
+const PALETTE = [
+  { bg: "#9E321F", fg: "#FFFFFF" }, // ember-600
+  { bg: "#1F1B1A", fg: "#FFFFFF" }, // ink-900
+  { bg: "#266B8C", fg: "#FFFFFF" }, // info
+  { bg: "#E7A18A", fg: "#24100E" }, // ember-300
+  { bg: "#665B57", fg: "#FFFFFF" }, // ink-600
+  { bg: "#A86112", fg: "#FFFFFF" }, // warning
+];
+const NEUTRAL = { bg: "#D8CBC3", fg: "#1F1B1A" };
 const LOADING_LINES = [
-  "Reading the receipts…",
-  "Figuring out who's who…",
-  "Finding the spark…",
-  "Digging up old grudges…",
-  "Counting cheap shots…",
-  "Checking for fallacies…",
-  "Deliberating…",
+  "Reading the screenshots",
+  "Working out who's who",
+  "Finding where it started",
+  "Comparing each side",
+  "Checking for grudges and personal shots",
+  "Checking for logical fallacies",
+  "Putting the verdict together",
 ];
 
 const $ = (id) => document.getElementById(id);
+const icon = (d) =>
+  `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONS = {
+  x: icon('<path d="M18 6 6 18M6 6l12 12"/>'),
+  left: icon('<path d="M19 12H5M11 18l-6-6 6-6"/>'),
+  right: icon('<path d="M5 12h14M13 6l6 6-6 6"/>'),
+};
 const views = { upload: $("uploadView"), loading: $("loadingView"), result: $("resultView") };
 
 /** @type {{id: number, url: string, mediaType: string, data: string}[]} */
@@ -78,8 +94,8 @@ async function addFiles(fileList) {
   const files = [...fileList].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
   if (!files.length) return;
   const room = MAX_IMAGES - shots.length;
-  if (room <= 0) return showError(`That's the max: ${MAX_IMAGES} screenshots.`);
-  if (files.length > room) toast(`Only added ${room}; max is ${MAX_IMAGES}.`);
+  if (room <= 0) return showError(`You've added the maximum of ${MAX_IMAGES} screenshots. Remove one to add another.`);
+  if (files.length > room) toast(`Added ${room}. The limit is ${MAX_IMAGES} screenshots.`);
   let failed = 0;
   for (const f of files.slice(0, room)) {
     try {
@@ -89,7 +105,7 @@ async function addFiles(fileList) {
     }
     renderThumbs();
   }
-  if (failed) showError(`${failed} image${failed > 1 ? "s" : ""} couldn't be read. Try PNG or JPEG.`);
+  if (failed) showError(`We couldn't open ${failed} image${failed > 1 ? "s" : ""}. Try saving as PNG or JPEG and add ${failed > 1 ? "them" : "it"} again.`);
 }
 
 function renderThumbs() {
@@ -100,10 +116,10 @@ function renderThumbs() {
       <div class="thumb" data-id="${s.id}">
         <img src="${s.url}" alt="Screenshot ${i + 1}">
         <span class="num">${i + 1}</span>
-        <button class="remove" data-act="remove" aria-label="Remove screenshot ${i + 1}">×</button>
+        <button class="remove" data-act="remove" aria-label="Remove screenshot ${i + 1}">${ICONS.x}</button>
         <div class="order">
-          <button data-act="left" aria-label="Move earlier" ${i === 0 ? "disabled" : ""}>←</button>
-          <button data-act="right" aria-label="Move later" ${i === shots.length - 1 ? "disabled" : ""}>→</button>
+          <button data-act="left" aria-label="Move screenshot ${i + 1} earlier" ${i === 0 ? "disabled" : ""}>${ICONS.left}</button>
+          <button data-act="right" aria-label="Move screenshot ${i + 1} later" ${i === shots.length - 1 ? "disabled" : ""}>${ICONS.right}</button>
         </div>
       </div>`
     )
@@ -112,8 +128,8 @@ function renderThumbs() {
   const btn = $("analyzeBtn");
   btn.disabled = shots.length === 0;
   btn.textContent = shots.length
-    ? `Get the verdict · ${shots.length} screenshot${shots.length > 1 ? "s" : ""}`
-    : "Add screenshots to start";
+    ? `Get the verdict (${shots.length} screenshot${shots.length > 1 ? "s" : ""})`
+    : "Add a screenshot to begin";
 }
 
 $("thumbs").addEventListener("click", (e) => {
@@ -177,12 +193,12 @@ async function analyze() {
       }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    if (!res.ok) throw new Error(body.error || "We couldn't get a verdict this time. Try again.");
     saveHistory(body.verdict);
     showVerdict(body.verdict);
   } catch (err) {
     show("upload");
-    showError(err.message === "Failed to fetch" ? "No connection. Check your internet and try again." : err.message);
+    showError(err.message === "Failed to fetch" ? "We couldn't reach Arguably. Check your connection and try again." : err.message);
   } finally {
     clearInterval(loadingTimer);
   }
@@ -195,7 +211,7 @@ $("sampleBtn").addEventListener("click", async () => {
     const res = await fetch("/api/sample");
     showVerdict((await res.json()).verdict);
   } catch {
-    showError("Couldn't load the example.");
+    showError("We couldn't load the example. Try again.");
   }
 });
 
@@ -215,7 +231,7 @@ function renderHistory() {
     .map(
       (h, i) => `<li><button data-i="${i}">
         <span class="h-title">${esc(h.verdict.title)}</span>
-        <span class="h-win">🏆 ${esc(h.verdict.winner?.is_draw ? "Draw" : h.verdict.winner?.name)}</span>
+        <span class="h-win">${h.verdict.winner?.is_draw ? "Even match" : `Winner: ${esc(h.verdict.winner?.name)}`}</span>
       </button></li>`
     )
     .join("");
@@ -236,17 +252,19 @@ function colorMap(v) {
   (v.winner?.scores || []).forEach((s) => add(s.participant));
   return (n) => {
     const i = names.indexOf(String(n || "").trim().toLowerCase());
-    return i === -1 ? "#9aa0ab" : PALETTE[i % PALETTE.length];
+    return i === -1 ? NEUTRAL : PALETTE[i % PALETTE.length];
   };
 }
 
 function showVerdict(v) {
   currentVerdict = v;
   const color = colorMap(v);
-  const person = (n) => `<span class="person"><span class="dot" style="background:${color(n)}"></span>${esc(n)}</span>`;
+  const person = (n) => `<span class="person"><span class="dot" style="background:${color(n).bg}"></span>${esc(n)}</span>`;
   const quote = (text, who) =>
-    `<div class="quote" style="box-shadow: inset 3px 0 0 ${color(who)}">“${esc(text)}”</div>`;
-  const sev = (s) => `<span class="sev ${esc(s)}">${esc(s)}</span>`;
+    `<div class="quote" style="box-shadow: inset 3px 0 0 ${color(who).bg}">“${esc(text)}”</div>`;
+  const tag = (value, labels) => `<span class="tag ${esc(value)}">${esc(labels[value] || value)}</span>`;
+  const sev = (s) => tag(s, { low: "Low", medium: "Medium", high: "High" });
+  const strength = (s) => tag(s, { strong: "Strong", mixed: "Mixed", weak: "Weak" });
   const empty = (msg) => `<p class="empty">${msg}</p>`;
   const w = v.winner || {};
   const scores = [...(w.scores || [])].sort((a, b) => b.score - a.score);
@@ -257,24 +275,32 @@ function showVerdict(v) {
       id: "verdict",
       label: "Verdict",
       html: `
-        <section class="card winner-card" id="verdict">
+        <section class="card winner-card reveal" id="verdict">
           <div class="winner-head">
-            <div class="ring" style="--p:${conf}" aria-label="${conf}% confidence"><span>${conf}%</span></div>
+            <div class="ring" style="--p:${conf}" role="img" aria-label="${conf}% confidence"><span>${conf}%</span></div>
             <div>
-              <div class="winner-label">${w.is_draw ? "It's a draw" : "🏆 Winner"}</div>
-              <div class="winner-name">${esc(w.is_draw ? "Nobody won" : w.name)}</div>
+              <div class="winner-label">${w.is_draw ? "Even match" : "Winner"}</div>
+              <div class="winner-name">${esc(w.is_draw ? "No clear winner" : w.name)}</div>
             </div>
           </div>
           <p>${esc(w.reasoning)}</p>
+        </section>`,
+    },
+    {
+      id: "scores",
+      label: "Scores",
+      html: `
+        <section class="card" id="scores">
+          <h2>Scorecard</h2>
           ${scores
             .map(
               (s) => `
             <div class="score">
-              <div class="score-top">${person(s.participant)}<span>${Number(s.score) || 0}</span></div>
-              <div class="bar"><i data-w="${Math.max(0, Math.min(100, Number(s.score) || 0))}" style="background:${color(s.participant)}"></i></div>
+              <div class="score-top">${person(s.participant)}<span class="score-num"><b>${Number(s.score) || 0}</b> / 100</span></div>
+              <div class="bar"><i data-w="${Math.max(0, Math.min(100, Number(s.score) || 0))}" style="background:${color(s.participant).bg}"></i></div>
               <div class="proscons">
-                <ul class="plus">${(s.strengths || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-                <ul class="minus">${(s.weaknesses || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+                <div><h4>Helped their case</h4><ul class="plus">${(s.strengths || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+                <div><h4>Hurt their case</h4><ul class="minus">${(s.weaknesses || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
               </div>
             </div>`
             )
@@ -289,14 +315,14 @@ function showVerdict(v) {
           <h2>Where it started</h2>
           <p>${esc(v.origin?.summary)}</p>
           <div class="spark">
-            <div class="label">The spark · ${person(v.origin?.spark_speaker)}</div>
+            <div class="label">First message · ${person(v.origin?.spark_speaker)}</div>
             ${quote(v.origin?.spark_quote, v.origin?.spark_speaker)}
           </div>
           <div class="label">What it's really about</div>
           <p>${esc(v.origin?.root_cause)}</p>
           ${
             v.origin?.escalation_points?.length
-              ? `<div class="label" style="margin-top:14px">How it escalated</div>
+              ? `<div class="label" style="margin-top:16px">How it escalated</div>
                  <ol class="timeline">${v.origin.escalation_points
                    .map((e) => `<li>${person(e.speaker)}${quote(e.quote, e.speaker)}<div class="why">${esc(e.why)}</div></li>`)
                    .join("")}</ol>`
@@ -310,25 +336,26 @@ function showVerdict(v) {
       count: v.subjects?.length,
       html: `
         <section class="card" id="subjects">
-          <h2>Main subjects, compared</h2>
+          <h2>Main subjects compared</h2>
           ${
             (v.subjects || [])
               .map(
                 (s) => `
             <div class="subject">
-              <h3>${esc(s.topic)}<span class="edge">${s.edge && s.edge !== "Even" ? `Edge: ${esc(s.edge)}` : "Even"}</span></h3>
+              <h3>${esc(s.topic)}</h3>
+              <span class="edge">${s.edge && s.edge !== "Even" ? `Stronger case: ${esc(s.edge)}` : "Both sides even"}</span>
               <div class="positions">${(s.positions || [])
                 .map(
                   (p) => `
-                <div class="position" style="box-shadow: inset 3px 0 0 ${color(p.participant)}">
-                  <div class="position-head">${person(p.participant)}<span class="strength ${esc(p.strength)}">${esc(p.strength)}</span></div>
+                <div class="position" style="box-shadow: inset 3px 0 0 ${color(p.participant).bg}">
+                  <div class="position-head">${person(p.participant)}${strength(p.strength)}</div>
                   ${esc(p.position)}
                 </div>`
                 )
                 .join("")}</div>
             </div>`
               )
-              .join("") || empty("No clear subjects found.")
+              .join("") || empty("We didn't find a clear subject in these screenshots.")
           }
         </section>`,
     },
@@ -338,15 +365,16 @@ function showVerdict(v) {
       count: v.participants?.length,
       html: `
         <section class="card" id="names">
-          <h2>Who's in it</h2>
+          <h2>People in this conversation</h2>
           <div class="names">${(v.participants || [])
             .map(
               (p) => `
             <div class="name-row">
-              <div class="avatar" style="background:${color(p.name)}">${esc(String(p.name || "?").trim().charAt(0).toUpperCase())}</div>
+              <div class="avatar" style="background:${color(p.name).bg};color:${color(p.name).fg}" aria-hidden="true">${esc(String(p.name || "?").trim().charAt(0).toUpperCase())}</div>
               <div>
-                <div><strong>${esc(p.name)}</strong> <span class="muted">· ${esc(p.overall_tone)}</span></div>
-                <div class="src">${esc(sourceLabel(p.name_source))} — ${esc(p.evidence)}</div>
+                <div class="position-head"><strong>${esc(p.name)}</strong><span class="tag">${esc(sourceLabel(p.name_source))}</span></div>
+                <div>${esc(p.overall_tone)}</div>
+                <div class="src">${esc(p.evidence)}</div>
               </div>
             </div>`
             )
@@ -370,7 +398,7 @@ function showVerdict(v) {
               ${quote(g.evidence_quote, g.holder)}
             </div>`
               )
-              .join("") || empty("No old grudges dragged in. Respect.")
+              .join("") || empty("No old grudges came up in this conversation.")
           }
         </section>`,
     },
@@ -391,7 +419,7 @@ function showVerdict(v) {
               <p class="expl">${esc(s.why_its_personal)}</p>
             </div>`
               )
-              .join("") || empty("Clean fight. No personal shots.")
+              .join("") || empty("No personal shots. Both sides stayed on the issue.")
           }
         </section>`,
     },
@@ -407,28 +435,29 @@ function showVerdict(v) {
               .map(
                 (f) => `
             <div class="item">
-              <div class="item-head"><span class="fallacy-name">${esc(f.fallacy)}</span><span class="arrow">·</span>${person(f.speaker)}</div>
+              <span class="fallacy-name">${esc(f.fallacy)}</span>
+              <div class="item-head">${person(f.speaker)}</div>
               ${quote(f.quote, f.speaker)}
               <p class="expl">${esc(f.explanation)}</p>
             </div>`
               )
-              .join("") || empty("No fallacies spotted.")
+              .join("") || empty("No logical fallacies found.")
           }
         </section>`,
     },
     {
       id: "takeaway",
-      label: "Fix it",
+      label: "Next step",
       html: `
-        <section class="card" id="takeaway">
-          <h2>How to fix it</h2>
+        <section class="card takeaway-card" id="takeaway">
+          <h2>How to move forward</h2>
           <p class="takeaway">${esc(v.takeaway)}</p>
         </section>`,
     },
   ];
 
   const safety = v.safety_note?.trim()
-    ? `<section class="card safety"><h2>A note from us</h2><p>${esc(v.safety_note)}</p></section>`
+    ? `<section class="card safety" role="note"><h2>A note on safety</h2><p>${esc(v.safety_note)}</p></section>`
     : "";
 
   $("result").innerHTML = `<h1 class="result-title">${esc(v.title)}</h1>${safety}${sections.map((s) => s.html).join("")}`;
@@ -463,11 +492,11 @@ $("chips").addEventListener("click", (e) => {
 function shareText(v) {
   const w = v.winner || {};
   return [
-    `⚖️ ${v.title}`,
-    w.is_draw ? "Verdict: Draw" : `🏆 Winner: ${w.name} (${w.confidence}% confident)`,
+    v.title,
+    w.is_draw ? "Verdict: even match" : `Winner: ${w.name} (${w.confidence}% confidence)`,
     w.reasoning,
     `Grudges: ${v.grudges?.length || 0} · Personal shots: ${v.personal_shots?.length || 0} · Fallacies: ${v.fallacies?.length || 0}`,
-    "Judged by Arguably",
+    "Reviewed with Arguably",
   ].join("\n\n");
 }
 
@@ -484,9 +513,9 @@ $("shareBtn").addEventListener("click", async () => {
   }
   try {
     await navigator.clipboard.writeText(text);
-    toast("Verdict copied");
+    toast("Verdict copied to clipboard.");
   } catch {
-    toast("Couldn't share");
+    toast("We couldn't share that. Try again.");
   }
 });
 

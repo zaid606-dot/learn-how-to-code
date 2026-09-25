@@ -19,7 +19,8 @@ Your job:
 
 Rules:
 - Quote messages exactly as they appear. Only report grudges, shots and fallacies that are actually in the text; empty lists are fine.
-- Be direct and a little witty, never cruel. Judge the arguing, not the people.
+- Write like a thoughtful guide: clear, warm and grounded. Short sentences, concrete verbs, no exclamation marks. Judge the arguing, not the people, and never mock or shame anyone.
+- Keep the takeaway encouraging and practical: one or two concrete next steps, with no blame.
 - If text is unreadable or the screenshots are not a conversation, say so in the summary and keep the rest minimal.`;
 
 /**
@@ -61,18 +62,18 @@ export class AnalysisError extends Error {
 
 export function validateInput(body) {
   if (!body || !Array.isArray(body.images) || body.images.length === 0) {
-    throw new AnalysisError("Add at least one screenshot.", 400);
+    throw new AnalysisError("Add at least one screenshot to get a verdict.", 400);
   }
   if (body.images.length > MAX_IMAGES) {
-    throw new AnalysisError(`Up to ${MAX_IMAGES} screenshots per argument.`, 400);
+    throw new AnalysisError(`Add up to ${MAX_IMAGES} screenshots per argument. Remove a few and try again.`, 400);
   }
   for (const img of body.images) {
     if (!img || typeof img.data !== "string" || !ALLOWED_MEDIA_TYPES.includes(img.mediaType)) {
-      throw new AnalysisError("Screenshots must be JPEG, PNG, WebP or GIF images.", 400);
+      throw new AnalysisError("We couldn't open one of the images. Use JPEG, PNG, WebP or GIF and try again.", 400);
     }
   }
   if (body.context != null && typeof body.context !== "string") {
-    throw new AnalysisError("Context must be text.", 400);
+    throw new AnalysisError("Background notes need to be text.", 400);
   }
   return { images: body.images, context: body.context || "" };
 }
@@ -85,16 +86,16 @@ export async function analyzeArgument(client, input) {
   const message = await stream.finalMessage();
 
   if (message.stop_reason === "refusal") {
-    throw new AnalysisError("The referee declined to analyze these screenshots.", 422);
+    throw new AnalysisError("We couldn't review these screenshots. Try a different set.", 422);
   }
   if (message.stop_reason === "max_tokens") {
-    throw new AnalysisError("The verdict was too long and got cut off. Try fewer screenshots.", 502);
+    throw new AnalysisError("The verdict ran long and got cut off. Try again with fewer screenshots.", 502);
   }
   const text = message.content.find((b) => b.type === "text");
-  if (!text) throw new AnalysisError("No verdict came back. Try again.", 502);
+  if (!text) throw new AnalysisError("No verdict came back this time. Try again.", 502);
   try {
     return JSON.parse(text.text);
   } catch {
-    throw new AnalysisError("The verdict came back garbled. Try again.", 502);
+    throw new AnalysisError("We couldn't read the verdict. Try again.", 502);
   }
 }

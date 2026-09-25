@@ -78,7 +78,7 @@ test("buildRequest omits context block text when context is blank", () => {
 test("validateInput rejects bad payloads", () => {
   assert.throws(() => validateInput({}), AnalysisError);
   assert.throws(() => validateInput({ images: [] }), /at least one/);
-  assert.throws(() => validateInput({ images: Array(MAX_IMAGES + 1).fill(img) }), /Up to/);
+  assert.throws(() => validateInput({ images: Array(MAX_IMAGES + 1).fill(img) }), /up to/);
   assert.throws(() => validateInput({ images: [{ mediaType: "image/tiff", data: "x" }] }), /JPEG/);
   assert.throws(() => validateInput({ images: [img], context: 5 }), /text/);
   assert.deepEqual(validateInput({ images: [img] }), { images: [img], context: "" });
@@ -99,7 +99,7 @@ test("analyzeArgument surfaces refusal, truncation and garbage", async () => {
   await assert.rejects(analyzeArgument(fakeClient({ stop_reason: "max_tokens", content: [] }), { images: [img] }), /cut off/);
   await assert.rejects(
     analyzeArgument(fakeClient({ stop_reason: "end_turn", content: [{ type: "text", text: "{nope" }] }), { images: [img] }),
-    /garbled/
+    /couldn't read the verdict/
   );
   await assert.rejects(analyzeArgument(fakeClient({ stop_reason: "end_turn", content: [] }), { images: [img] }), /No verdict/);
 });

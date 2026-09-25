@@ -11,7 +11,7 @@ Drop in screenshots of a text argument (from one or both people's phones). An AI
 - **Logical fallacies**: named, quoted, and explained
 - **Fix it**: a practical way to resolve it
 
-Mobile-first web app, installable to the home screen (PWA). Screenshots are resized in the browser before upload and are not stored. The last 10 verdicts (text only) are kept in the browser's localStorage.
+Mobile-first web app, installable to the home screen (PWA), styled with the EMBER brand system (tokens live at the top of `public/styles.css`; logo marks and icon variants in `public/brand/`). Screenshots are resized in the browser before upload and are not stored. The last 10 verdicts (text only) are kept in the browser's localStorage.
 
 ## Run it
 
@@ -39,3 +39,9 @@ To open it on your phone, run it on your computer and visit `http://<your-comput
 Settings: `PORT` (default 3000), `ARGUABLY_MODEL` (default `claude-opus-5`), `ARGUABLY_MOCK=1`.
 
 The request opts into server-side refusal fallbacks (`fallbacks: "default"`), so if the primary model declines a request, the API retries it on a suitable fallback model within the same call.
+
+## Brand notes
+
+- Fonts load from Google Fonts (Sora, Inter). Self-host them before production, as the brand system recommends.
+- The brand's `success` and `warning` colors fall below 4.5:1 on their soft backgrounds (4.47:1 and 4.26:1), so status tags use ink text with a colored symbol instead.
+- The brand's secondary-button spec calls for an `ember-200` border, which the palette doesn't define; `ember-300` (Clay) is used instead.
