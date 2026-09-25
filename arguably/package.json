@@ -1,0 +1,17 @@
+{
+  "name": "arguably",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drop in screenshots of an argument; an AI referee finds the origin, the winner, grudges, personal shots and logical fallacies.",
+  "type": "module",
+  "main": "server.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "mock": "ARGUABLY_MOCK=1 node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  }
+}

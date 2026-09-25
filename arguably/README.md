@@ -1,0 +1,41 @@
+# Arguably
+
+Drop in screenshots of a text argument (from one or both people's phones). An AI referee reads them and tells you:
+
+- **Origin**: the message that sparked it, what it's really sprouting from, and each escalation point
+- **Winner**: who argued better, with a confidence score and per-person strengths and weaknesses
+- **Subjects**: the main topics compared side by side, with who has the edge on each
+- **Names**: everyone in the conversation and where their name came from in the screenshot
+- **Grudges**: old incidents dragged into this fight
+- **Personal shots**: attacks on the person instead of the point
+- **Logical fallacies**: named, quoted, and explained
+- **Fix it**: a practical way to resolve it
+
+Mobile-first web app, installable to the home screen (PWA). Screenshots are resized in the browser before upload and are not stored. The last 10 verdicts (text only) are kept in the browser's localStorage.
+
+## Run it
+
+Requires Node 20+ and an Anthropic API key.
+
+```bash
+cd arguably
+npm install
+export ANTHROPIC_API_KEY=sk-ant-...
+npm start            # http://localhost:3000
+```
+
+To open it on your phone, run it on your computer and visit `http://<your-computer's-LAN-IP>:3000` from the phone on the same Wi-Fi, or deploy it to any Node host (Render, Railway, Fly.io).
+
+**No key yet?** `npm run mock` runs the full UI with a canned verdict.
+
+## How it works
+
+- `public/`: the frontend (plain HTML/CSS/JS, no build step)
+- `server.js`: static file server + `POST /api/analyze` (uses only Node built-ins plus the Anthropic SDK)
+- `src/analyze.js`: builds the Claude request: images plus a referee system prompt, adaptive thinking, and a strict JSON-schema structured output
+- `src/schema.js`: the verdict schema the UI renders
+- `test/`: `npm test`
+
+Settings: `PORT` (default 3000), `ARGUABLY_MODEL` (default `claude-opus-5`), `ARGUABLY_MOCK=1`.
+
+The request opts into server-side refusal fallbacks (`fallbacks: "default"`), so if the primary model declines a request, the API retries it on a suitable fallback model within the same call.
