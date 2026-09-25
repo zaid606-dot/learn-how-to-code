@@ -533,12 +533,41 @@ test("every verdict names a winner and the margin; the same conversation gets th
   assert.deepEqual(errors, []);
 });
 
+test("share a verdict: card image, hide names, back to the chat", async () => {
+  const { page, errors } = await openApp({ images: true });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  await page.click(".share-btn");
+  await page.waitForSelector(".share-preview img");
+  assert.equal(await page.locator("#chatTitle").innerText(), "Share verdict");
+  assert.equal(await page.$eval(".share-preview img", (i) => i.complete && i.naturalWidth), 1080);
+  assert.equal(await page.locator('[data-action="share-link"]').count(), 0, "no link inside claude.ai");
+  assert.deepEqual(await layoutProblems(page), []);
+  await shot(page, "share-page");
+  // Hide names: the card is redrawn and no real name is left anywhere in the shared verdict.
+  const before = await page.$eval(".share-preview img", (i) => i.src);
+  await page.click('[data-action="share-hide"]');
+  await page.waitForFunction((src) => { const i = document.querySelector(".share-preview img"); return i && i.src !== src && i.complete; }, before);
+  assert.equal(await page.getAttribute('[data-action="share-hide"]', "aria-checked"), "true");
+  const hidden = await page.evaluate(() => JSON.stringify(anonymize(SAMPLE_VERDICT)));
+  assert.doesNotMatch(hidden, /Maya|Jordan/);
+  assert.match(hidden, /Person A/);
+  assert.equal(await page.evaluate(() => winnerOf(anonymize(SAMPLE_VERDICT)).name), "Person A");
+  // No share sheet in a desktop browser: the image downloads instead.
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click('[data-action="share-image"]')]);
+  assert.equal(download.suggestedFilename(), "arguably-verdict.png");
+  await page.click("#backBtn");
+  assert.ok(await page.locator(".msg.verdict .share-btn").isVisible(), "back in the chat");
+  assert.deepEqual(errors, []);
+});
+
 test("a conversation with abuse gets a safety-first verdict, not a score", async () => {
   const { page } = await openApp({ images: true });
   await page.evaluate(() => { window.__STUB.sampleVerdict = { ...window.__STUB.sampleVerdict, winner: { ...window.__STUB.sampleVerdict.winner, is_draw: true, name: "", confidence: 0 }, safety_note: "Some of these messages read as threats. You deserve to feel safe." }; });
   await pasteConversation(page);
   await page.waitForSelector(".msg.verdict.has-safety", { timeout: 10000 });
   assert.equal(await page.locator(".winner-card").isVisible(), false, "no winner or scores");
+  assert.equal(await page.locator(".share-btn").isVisible(), false, "a safety verdict can't be shared");
   await page.click('.card.safety [data-doc="safety"]');
   assert.equal(await page.locator(".doc .page-title").innerText(), "Staying safe");
 });

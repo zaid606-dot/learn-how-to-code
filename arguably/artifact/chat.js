@@ -410,6 +410,7 @@ function verdictHTML(m, c) {
         </div>
       </div>
       <p>${esc(w.reasoning)}</p>
+      ${c?.shared ? "" : `<button class="share-btn" type="button" data-share="${esc(m.id || "")}">${svg(ICON.share, 18)}Share verdict</button>`}
     </section>
     <section class="card scorecard">
       <h2>Scorecard</h2>
@@ -628,6 +629,8 @@ const ICON = {
   quote: '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
+  share: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
 };
 const svg = (d, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -1005,7 +1008,7 @@ function emptyChatHTML() {
   </section>`;
 }
 
-const PAGE_TITLES = { settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Licenses" };
+const PAGE_TITLES = { share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Licenses" };
 
 function renderHeader() {
   const onHome = !chat && !page;
@@ -1045,6 +1048,10 @@ function render() {
         ? inboxHTML()
         : page === "paywall"
           ? paywallHTML()
+        : page === "share"
+          ? shareHTML()
+        : page === "shared"
+          ? sharedHTML()
         : DOC_PAGES.includes(page)
           ? docHTML(page)
         : onHome
@@ -2316,6 +2323,17 @@ $("thread").addEventListener("click", (e) => {
     return $("fileInput").click();
   }
   if (action === "next") return goStep(onboardStep + 1);
+  const shareBtn = t.closest("[data-share]");
+  if (shareBtn) return openShare(chat?.messages.find((m) => m.id === shareBtn.dataset.share)?.verdict);
+  if (action === "share-image") return shareImage();
+  if (action === "share-link") return shareLink();
+  if (action === "share-hide" && shareFor) {
+    shareFor.hide = !shareFor.hide;
+    shareFor.file = null;
+    render();
+    return makeShareCard();
+  }
+  if (action === "shared-start") return leaveShared();
   const step = t.closest("[data-step]");
   if (step) return goStep(Number(step.dataset.step));
   if (action === "replay") return openPage("onboarding");
@@ -2528,6 +2546,317 @@ async function exportData() {
   }
 }
 
+// ---------- sharing a verdict ----------
+// A share card (an image for Messages, Instagram and the rest) and, on the website, a link to
+// the full verdict. The link carries the verdict itself, compressed into the part after "#",
+// which browsers never send to a server, so nothing is stored anywhere.
+let shareFor = null; // { verdict, hide, url, file, making }
+let sharedView = null; // a verdict opened from a link
+
+// Swap every participant's name for "Person A", "Person B"… everywhere in the verdict.
+function anonymize(v) {
+  const names = [];
+  const add = (n) => {
+    const name = String(n || "").trim();
+    if (name && !/^(even|draw)$/i.test(name) && !names.some((x) => x.toLowerCase() === name.toLowerCase())) names.push(name);
+  };
+  (v.participants || []).forEach((p) => add(p.name));
+  (v.winner?.scores || []).forEach((sc) => add(sc.participant));
+  add(v.winner?.name);
+  // Longest first, so "Maya Lee" is replaced before "Maya".
+  const pairs = names.map((n, i) => [n, `Person ${String.fromCharCode(65 + (i % 26))}`]).sort((a, b) => b[0].length - a[0].length);
+  const swap = (text) =>
+    pairs.reduce((t, [from, to]) => t.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "giu"), `$1${to}`), text);
+  const walk = (x) => (typeof x === "string" ? swap(x) : Array.isArray(x) ? x.map(walk) : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, val]) => [k, walk(val)])) : x);
+  return walk(v);
+}
+
+const b64url = (bytes) => {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const unb64url = (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
+async function pipeBytes(bytes, stream) {
+  return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+}
+async function encodeVerdict(v) {
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, verdict: v }));
+  if (typeof CompressionStream === "function") return "z" + b64url(await pipeBytes(bytes, new CompressionStream("deflate-raw")));
+  return "j" + b64url(bytes);
+}
+async function decodeVerdict(code) {
+  const bytes = unb64url(code.slice(1));
+  const raw = code[0] === "z" ? await pipeBytes(bytes, new DecompressionStream("deflate-raw")) : bytes;
+  const data = JSON.parse(new TextDecoder().decode(raw));
+  return data?.v === 1 ? normalizeVerdict(data.verdict) : null;
+}
+const shareHost = () => (HOSTED ? location.host : "");
+
+function wrapLines(ctx, text, width, maxLines) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (ctx.measureText(next).width <= width || !line) line = next;
+    else {
+      lines.push(line);
+      line = w;
+      if (lines.length === maxLines) break;
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  const used = lines.join(" ").split(/\s+/).length;
+  if (used < words.length && lines.length) {
+    let last = lines.at(-1);
+    while (last && ctx.measureText(last + "…").width > width) last = last.replace(/\s*\S+$/, "");
+    lines[lines.length - 1] = (last || lines.at(-1)) + "…";
+  }
+  return lines;
+}
+
+// The share card: 1080×1350, the shape Instagram and Messages show best.
+async function drawCard(v) {
+  const W = 1080, H = 1350, P = 84;
+  await Promise.all(["700 64px Sora", "600 30px Inter", "400 34px Inter"].map((f) => document.fonts?.load(f).catch(() => {})));
+  const cv = document.createElement("canvas");
+  cv.width = W;
+  cv.height = H;
+  const ctx = cv.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, "#3A1411");
+  g.addColorStop(1, "#24100E");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  // A soft ember glow behind the winner.
+  const glow = ctx.createRadialGradient(W * 0.8, 360, 0, W * 0.8, 360, 620);
+  glow.addColorStop(0, "rgba(183,67,36,.42)");
+  glow.addColorStop(1, "rgba(183,67,36,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  const sans = (weight, size, family = "Inter") => `${weight} ${size}px ${family}, ui-sans-serif, system-ui, -apple-system, sans-serif`;
+  ctx.textBaseline = "alphabetic";
+
+  let y = P + 8;
+  try {
+    const mark = await loadImage(MARK_URI);
+    ctx.drawImage(mark, P, y - 8, 64, 59);
+  } catch {}
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = sans(700, 38, "Sora");
+  ctx.fillText("Arguably", P + 84, y + 38);
+  ctx.fillStyle = "#E7A18A";
+  ctx.font = sans(700, 24);
+  ctx.textAlign = "right";
+  ctx.fillText("THE VERDICT", W - P, y + 36);
+  ctx.textAlign = "left";
+
+  y += 150;
+  const ops = [];
+  const at = (fn) => ops.push(fn); // drawn once the block's height is known, so it can be centered
+  ctx.font = sans(700, 50, "Sora");
+  for (const line of wrapLines(ctx, v.title, W - 2 * P, 2)) {
+    const ly = y;
+    at((dy) => { ctx.fillStyle = "#F8E4DC"; ctx.font = sans(700, 50, "Sora"); ctx.fillText(line, P, ly + dy); });
+    y += 62;
+  }
+
+  const win = winnerOf(v);
+  y += 60;
+  { const ly = y; at((dy) => { ctx.fillStyle = "#E7A18A"; ctx.font = sans(700, 28); ctx.fillText("WINNER", P, ly + dy); }); }
+  y += 118;
+  let size = 124;
+  ctx.font = sans(700, size, "Sora");
+  while (size > 56 && ctx.measureText(win.name).width > W - 2 * P) ctx.font = sans(700, (size -= 6), "Sora");
+  { const ly = y, font = ctx.font; at((dy) => { ctx.fillStyle = "#FFFFFF"; ctx.font = font; ctx.fillText(win.name, P, ly + dy); }); }
+  if (win.margin) {
+    y += 64;
+    const ly = y;
+    at((dy) => { ctx.fillStyle = "#E7A18A"; ctx.font = sans(600, 40); ctx.fillText(`Wins ${byPoints(win.margin)}`, P, ly + dy); });
+  }
+
+  // Scores, winner first.
+  y += 72;
+  const scores = [...(v.winner?.scores || [])].sort((a, b) => b.score - a.score).slice(0, 3);
+  for (const sc of scores) {
+    const top = sc.participant.toLowerCase() === win.name.toLowerCase();
+    ctx.font = sans(600, 30);
+    const label = wrapLines(ctx, sc.participant, W - 2 * P - 140, 1)[0] || "";
+    const ly = y;
+    at((dy) => {
+      ctx.font = sans(600, 30);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(label, P, ly + dy);
+      ctx.textAlign = "right";
+      ctx.fillText(String(sc.score), W - P, ly + dy);
+      ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(255,255,255,.12)";
+      ctx.beginPath();
+      ctx.roundRect(P, ly + dy + 22, W - 2 * P, 16, 8);
+      ctx.fill();
+      ctx.fillStyle = top ? "#B74324" : "#D8CBC3";
+      ctx.beginPath();
+      ctx.roundRect(P, ly + dy + 22, Math.max(16, ((W - 2 * P) * Math.max(0, Math.min(100, sc.score))) / 100), 16, 8);
+      ctx.fill();
+    });
+    y += 92;
+  }
+
+  // Why they won.
+  y += 6;
+  ctx.font = sans(400, 34);
+  const room = Math.max(1, Math.floor((H - 190 - y) / 48));
+  for (const line of wrapLines(ctx, v.winner?.reasoning, W - 2 * P, Math.min(6, room))) {
+    const ly = y;
+    at((dy) => { ctx.fillStyle = "rgba(255,255,255,.88)"; ctx.font = sans(400, 34); ctx.fillText(line, P, ly + 20 + dy); });
+    y += 48;
+  }
+  // Center the block between the header and the footer.
+  const dy = Math.max(0, (H - 150 - y) / 2 - 10);
+  ops.forEach((op) => op(dy));
+
+
+  // Footer.
+  ctx.fillStyle = "rgba(255,255,255,.14)";
+  ctx.fillRect(P, H - 130, W - 2 * P, 2);
+  ctx.fillStyle = "#E7A18A";
+  ctx.font = sans(600, 30);
+  ctx.fillText("Settle yours with Arguably", P, H - 70);
+  const host = shareHost();
+  if (host) {
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    ctx.textAlign = "right";
+    ctx.font = sans(400, 28);
+    ctx.fillText(host, W - P, H - 70);
+    ctx.textAlign = "left";
+  }
+  return new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error("no image"))), "image/png"));
+}
+
+const shareVerdict = () => (shareFor.hide ? anonymize(shareFor.verdict) : shareFor.verdict);
+async function makeShareCard() {
+  const want = shareFor;
+  const hide = want.hide;
+  want.making = true;
+  try {
+    const blob = await drawCard(shareVerdict());
+    if (shareFor !== want || want.hide !== hide) return; // closed or toggled while drawing
+    if (want.url) URL.revokeObjectURL(want.url);
+    want.url = URL.createObjectURL(blob);
+    want.file = new File([blob], "arguably-verdict.png", { type: "image/png" });
+  } catch {
+    if (shareFor === want) toast("Couldn't make the card here. Try the link instead.");
+  } finally {
+    if (shareFor === want && want.hide === hide) want.making = false;
+  }
+  if (page === "share" && shareFor === want) render();
+}
+
+function openShare(verdict) {
+  if (!verdict || verdict.safety_note?.trim()) return;
+  if (shareFor?.url) URL.revokeObjectURL(shareFor.url);
+  shareFor = { verdict, hide: false, url: "", file: null, making: true };
+  openPage("share");
+  makeShareCard();
+}
+
+function shareHTML() {
+  const s = shareFor;
+  if (!s) return "";
+  return `<section class="share-page">
+    <div class="share-preview${s.url ? "" : " loading"}">${s.url ? `<img src="${s.url}" alt="Your verdict card: ${esc(winnerOf(shareVerdict()).name)} wins" width="1080" height="1350">` : '<span class="dots"><i></i><i></i><i></i></span>'}</div>
+    <button class="share-toggle" type="button" role="switch" aria-checked="${s.hide}" data-action="share-hide">
+      <span><b>Hide names</b><small>Show “Person A” and “Person B” instead</small></span>
+      <span class="switch${s.hide ? " on" : ""}" aria-hidden="true"><i></i></span>
+    </button>
+    <div class="share-actions">
+      <button class="cta" type="button" data-action="share-image"${s.file ? "" : " disabled"}>${svg(ICON.share, 20)}Share image</button>
+      ${HOSTED ? `<button class="cta secondary" type="button" data-action="share-link">${svg(ICON.link, 20)}Send link to full verdict</button>` : ""}
+    </div>
+    <p class="share-fine">The card shows the winner, the scores and why.${HOSTED ? " The link opens the whole verdict, quoted messages included. It lives inside the link itself and is never stored on a server." : ""} Only share what everyone in the conversation would be okay with.</p>
+  </section>`;
+}
+
+async function shareImage() {
+  const s = shareFor;
+  if (!s?.file) return;
+  const win = winnerOf(shareVerdict());
+  try {
+    if (navigator.canShare?.({ files: [s.file] })) return await navigator.share({ files: [s.file], title: shareVerdict().title });
+    const a = Object.assign(document.createElement("a"), { href: s.url, download: s.file.name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    toast("Image saved.");
+  } catch (err) {
+    if (err?.name !== "AbortError") toast(`Couldn't share here. Screenshot the card instead: ${win.name} wins.`);
+  }
+}
+
+async function shareLink() {
+  const s = shareFor;
+  if (!s) return;
+  const v = shareVerdict();
+  const win = winnerOf(v);
+  let url;
+  try {
+    url = `${location.origin}${location.pathname}#v=${await encodeVerdict(v)}`;
+  } catch {
+    return toast("Couldn't make a link here.");
+  }
+  const text = `${win.name} wins${win.margin ? ` ${byPoints(win.margin)}` : ""}. See the full verdict on Arguably:`;
+  try {
+    if (navigator.share && matchMedia("(pointer: coarse)").matches) return await navigator.share({ title: v.title, text, url });
+    await navigator.clipboard.writeText(url);
+    toast("Link copied.");
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    toast("Couldn't copy the link here.");
+  }
+}
+
+function sharedHTML() {
+  if (!sharedView) return "";
+  const m = { id: "shared", verdict: sharedView, source: "paste" };
+  return `<p class="shared-banner"><span class="tag">Shared with you</span>A verdict from Arguably. Everything below comes from the person who shared it.</p>
+    <article class="msg verdict">${verdictHTML(m, { transcript: [], raw: "", shared: true })}</article>
+    <section class="card shared-cta">
+      <h2>Got an argument of your own?</h2>
+      <p>Import screenshots from both phones and get a fair verdict, with a clear winner and why.</p>
+      <button class="cta" type="button" data-action="shared-start">Settle my argument</button>
+    </section>`;
+}
+
+async function openSharedFromHash() {
+  const code = HOSTED && location.hash.startsWith("#v=") ? location.hash.slice(3) : "";
+  if (!code) return;
+  try {
+    sharedView = await decodeVerdict(code);
+  } catch {
+    sharedView = null;
+  }
+  if (!sharedView) {
+    history.replaceState(null, "", location.pathname + location.search);
+    return toast("That link didn't open. Ask for a new one.");
+  }
+  chat = null;
+  page = "shared";
+  render();
+}
+
+function leaveShared() {
+  sharedView = null;
+  history.replaceState(null, "", location.pathname + location.search);
+  page = !prefs.onboarded || !policyOk() ? "onboarding" : null;
+  if (page === "onboarding") {
+    gateMode = prefs.onboarded;
+    onboardStep = 0;
+    onboardDir = 1;
+  }
+  render();
+}
+
 function nudgeAgree() {
   toast("Agree to the Privacy Policy and Terms to continue.");
   const row = $("obAgreeRow");
@@ -2624,6 +2953,11 @@ $("newBtn").addEventListener("click", () => {
   render();
 });
 $("backBtn").addEventListener("click", () => {
+  if (page === "share") {
+    page = null; // back to the chat the verdict is in
+    return render();
+  }
+  if (page === "shared") return leaveShared();
   if (consentReturn) {
     page = null;
     chat = consentReturn.chat;
@@ -2686,6 +3020,8 @@ $("deleteBtn").addEventListener("click", () => {
   toast("Chat deleted.");
 });
 window.addEventListener("resize", renderComposer);
+window.addEventListener("hashchange", openSharedFromHash);
+openSharedFromHash();
 // The header only shows a (soft) edge once something scrolls under it.
 window.addEventListener("scroll", () => document.body.classList.toggle("scrolled", window.scrollY > 4), { passive: true });
 

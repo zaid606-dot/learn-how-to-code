@@ -119,3 +119,43 @@ test("website API: the key never reaches the browser and other sites can't call 
   const bad = await realFetch(url + "api/json", { method: "GET" });
   assert.equal(bad.status, 405);
 });
+
+test("website build: a shared link opens the full verdict for someone new, then brings them in", async () => {
+  // The person sharing: build a link from a verdict, copied to the clipboard on a laptop.
+  const sender = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  await sender.grantPermissions(["clipboard-read", "clipboard-write"], { origin: url.slice(0, -1) });
+  const a = await sender.newPage();
+  await a.goto(url);
+  const code = await a.evaluate(() => encodeVerdict(SAMPLE_VERDICT));
+  assert.match(code, /^z[A-Za-z0-9_-]+$/, "compressed, URL-safe");
+  assert.ok(code.length < 6000, `link is ${code.length} characters`);
+  await a.evaluate(() => { shareFor = { verdict: SAMPLE_VERDICT, hide: true }; return shareLink(); });
+  const copied = await a.evaluate(() => navigator.clipboard.readText());
+  assert.ok(copied.startsWith(url + "#v=z"), "link copied");
+  await sender.close();
+
+  // Someone who has never used Arguably opens it on their phone.
+  const context = await browser.newContext(devices["iPhone 13"]);
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const requests = [];
+  page.on("request", (r) => requests.push(r.url()));
+  await page.goto(copied);
+  await page.waitForSelector(".shared-banner");
+  assert.equal(await page.locator(".winner-name").innerText(), "Person A", "names were hidden by the sender");
+  assert.match(await page.locator(".winner-margin").innerText(), /Wins by 31 points/);
+  assert.equal(await page.locator(".share-btn").count(), 0, "a shared verdict isn't re-shared from here");
+  assert.ok(!requests.some((r) => /\/api\/(json|chat)/.test(r)), "opening a link never calls the AI");
+  assert.ok(!requests.some((r) => r.includes("#v=") || r.includes(code.slice(0, 40))), "the verdict never reaches the server");
+  assert.deepEqual(await layoutProblems(page), []);
+  await page.screenshot({ path: path.join(OUT, "web-shared-link.png") });
+  await page.click('[data-action="shared-start"]');
+  await page.waitForSelector(".onboard");
+  assert.equal(await page.evaluate(() => location.hash), "", "link cleared");
+  // A broken link says so and leaves the app usable.
+  await page.goto(url + "#v=zBROKEN");
+  await page.waitForFunction(() => /didn't open/.test(document.body.innerText));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
