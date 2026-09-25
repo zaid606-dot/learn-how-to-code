@@ -13,7 +13,9 @@ import { SYSTEM_PROMPT } from "../src/analyze.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (p) => readFileSync(root + p, "utf8");
-const out = process.argv[2] || root + "dist/arguably.html";
+// --store builds the App Store variant (Pro gate on); the default is the free claude.ai page.
+const store = process.argv.includes("--store");
+const out = process.argv.slice(2).find((a) => !a.startsWith("--")) || root + (store ? "dist/arguably-store.html" : "dist/arguably.html");
 const dataUri = (p) => "data:image/svg+xml;base64," + Buffer.from(read(p)).toString("base64");
 
 function replaceOnce(src, from, to, label) {
@@ -34,6 +36,7 @@ const constants = [
   `const SAMPLE_VERDICT = ${JSON.stringify(sampleVerdict)};`,
   `const SYSTEM_PROMPT = ${JSON.stringify(SYSTEM_PROMPT)};`,
   `const MARK_URI = ${JSON.stringify(dataUri("public/brand/mark.svg"))};`,
+  `const STORE_BUILD = ${store};`,
 ].join("\n");
 const js = read("artifact/pipeline.cjs") + "\n" + replaceOnce(read("artifact/chat.js"), "/*__CONSTANTS__*/", constants, "constants");
 

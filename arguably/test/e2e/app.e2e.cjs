@@ -317,3 +317,100 @@ test("the first notification asks for an App Store rating", async () => {
   assert.equal(await page.locator(".note.unread").count(), 0);
   assert.deepEqual(errors, []);
 });
+
+const PASTED = "Maya: So you were asleep but liking pics at 2am?\nJordan: You literally left me on read for 6 hours yesterday\nMaya: This is literally the same thing that happened in March";
+async function pasteConversation(page) {
+  await page.locator(HOME_PASTE).first().click();
+  await page.fill("#messageInput", PASTED);
+  await page.click("#sendBtn");
+}
+
+test("a failed verdict leaves a Try again card that works, even after reload", async () => {
+  const { page, errors, calls } = await openApp({ images: true, failVerdictTimes: 1 });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.resume.failed", { timeout: 10000 });
+  await shot(page, "verdict-failed");
+  await page.reload(); // the stub resets on reload, so the first retry fails once more
+  await page.click(".recent [data-chat]");
+  await page.click(".msg.resume [data-resume]");
+  await page.waitForSelector(".msg.resume.failed", { timeout: 10000 });
+  await page.click(".msg.resume [data-resume]");
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  assert.equal(await page.locator(".msg.resume").count(), 0);
+  assert.equal((await calls()).filter((c) => c.kind === "verdict").length, 1);
+  assert.deepEqual(errors, []);
+});
+
+test("a failed reading keeps the screenshots and note for another try", async () => {
+  const { page } = await openApp({ images: true, failJson: true });
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone]);
+  await page.fill("#messageInput", "We've been dating a year");
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.error", { timeout: 15000 });
+  assert.equal(await page.locator(".attach-item").count(), 1, "screenshot is back in the tray");
+  assert.equal(await page.inputValue("#messageInput"), "We've been dating a year");
+  assert.equal(await page.locator(".msg.user").count(), 0);
+});
+
+test("different screenshots are all kept; only a true re-import is skipped", async () => {
+  const { page } = await openApp({ images: true });
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone, fixtures.jordanPhone, fixtures.mayaPhone]);
+  assert.equal(await page.locator(".attach-item").count(), 2);
+});
+
+test("asking about the example keeps the example's conversation", async () => {
+  const { page, errors, calls } = await openApp({ images: true });
+  await page.click('.sheet-btn[data-action="example"]');
+  await page.fill("#messageInput", "Was Maya too harsh?");
+  await page.click("#sendBtn");
+  await waitUntil(page, () => !document.querySelector(".msg.reply .thinking") && !!document.querySelector(".msg.reply"));
+  const chat = (await calls()).find((c) => c.kind === "chat");
+  assert.ok(chat, "a chat call was made");
+  assert.match(chat.context, /Brianna/);
+  assert.ok(await page.locator(".msg.verdict").isVisible(), "the example verdict stays in the thread");
+  assert.deepEqual(errors, []);
+});
+
+test("App Store build: free verdicts count down, then the paywall gates the next one", async () => {
+  const { page, errors, calls } = await openApp({ images: true, store: true, prefs: { freeUsed: 2 } });
+  assert.match(await page.locator(".import-note").innerText(), /1 free verdict left/);
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).freeUsed), 3);
+  // The next verdict is gated: the paywall shows and nothing is sent to Claude.
+  await page.click("#newBtn");
+  await page.fill("#messageInput", PASTED);
+  await page.click("#sendBtn");
+  await page.waitForSelector(".paywall");
+  await shot(page, "paywall");
+  assert.deepEqual(await layoutProblems(page), []);
+  assert.equal((await calls()).filter((c) => c.kind === "verdict").length, 1);
+  const terms = await page.locator(".pw-terms").innerText();
+  assert.match(terms, /\$39\.99 per year/);
+  assert.match(terms, /Renews automatically/);
+  assert.ok(await page.locator('[data-action="restore"]').isVisible(), "Restore purchases on the paywall");
+  // Closing leaves a card that brings the paywall back.
+  await page.click('[data-action="paywall-close"]');
+  assert.ok(await page.locator(".msg.resume.locked").isVisible());
+  await page.click('.msg.resume [data-action="paywall"]');
+  await page.click('[data-plan="monthly"]');
+  assert.equal(await page.locator(".pw-cta").innerText(), "Subscribe for $6.99/month");
+  await page.click('[data-action="purchase"]');
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")));
+  assert.equal(prefs.pro.plan, "monthly");
+  assert.equal(prefs.proUsage.n, 1);
+  await page.click("#backBtn");
+  await page.click("#settingsBtn");
+  assert.match(await page.locator(".settings").innerText(), /Pro · Monthly[\s\S]*1 of 50 verdicts this month[\s\S]*Manage subscription/);
+  assert.deepEqual(errors, []);
+});
+
+test("claude.ai build has no gate", async () => {
+  const { page } = await openApp({ images: true, prefs: { freeUsed: 99 } });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  await page.click("#backBtn");
+  await page.click("#settingsBtn");
+  assert.doesNotMatch(await page.locator(".settings").innerText(), /Pro|Restore purchases/);
+});

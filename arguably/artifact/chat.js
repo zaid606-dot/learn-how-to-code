@@ -16,6 +16,14 @@ const SUPPORT_EMAIL = "support@arguably.app";
 // Set to the numeric App Store ID once the listing exists; the rating notification links to it.
 const APP_STORE_ID = "";
 const APP_VERSION = "1.0";
+// App Store build only (node scripts/build-artifact.mjs --store). On claude.ai, verdicts run on
+// the viewer's own Claude plan, so there is nothing to gate.
+const FREE_VERDICTS = 3;
+const PRO_FAIR_USE = 50; // verdicts per calendar month
+const PLANS = {
+  yearly: { id: "arguably.pro.yearly", price: "$39.99", per: "year", perWeek: "$0.77", trialDays: 3 },
+  monthly: { id: "arguably.pro.monthly", price: "$6.99", per: "month" },
+};
 const MAX_EDGE = 2000;
 const STORE_KEY = "arguably.chats.v2";
 const MAX_CHATS = 20;
@@ -164,7 +172,7 @@ function formatReply(text) {
 let chats = storage(() => JSON.parse(localStorage.getItem(STORE_KEY)) || JSON.parse(localStorage.getItem("arguably.chats.v1")) || [], []);
 let chat = null; // null = home screen
 let page = null; // null, "onboarding", "settings" or "inbox": a full page shown instead of home/chat
-let pending = []; // screenshots attached to the next message: {id, url, hash}
+let pending = []; // screenshots attached to the next message: {id, url, key}
 let busy = null; // {ctl, chatId}: one reading/verdict/reply job at a time; it keeps running if you leave the chat
 const live = new Map(); // chat id -> chat object with a job in progress, so reopening it shows the progress
 let sampler = null;
@@ -173,7 +181,7 @@ let maxImages = 0;
 // Preferences and the notification inbox live on this device only.
 const PREFS_KEY = "arguably.prefs.v1";
 const INBOX_KEY = "arguably.inbox.v1";
-const DEFAULT_PREFS = { onboarded: false, aiConsent: false, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
+const DEFAULT_PREFS = { onboarded: false, aiConsent: false, freeUsed: 0, pro: null, proUsage: { month: "", n: 0 }, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
 const savedPrefs = storage(() => JSON.parse(localStorage.getItem(PREFS_KEY)) || {}, {});
 let prefs = { ...DEFAULT_PREFS, ...savedPrefs, notify: { ...DEFAULT_PREFS.notify, ...(savedPrefs.notify || {}) } };
 let inbox = storage(() => JSON.parse(localStorage.getItem(INBOX_KEY)) || [], []);
@@ -494,6 +502,7 @@ function messageHTML(m) {
   if (m.kind === "verdict") return `<article class="msg verdict">${verdictHTML(m, chat)}</article>`;
   if (m.kind === "who") return whoHTML(m);
   if (m.kind === "nudge") return nudgeHTML();
+  if (m.kind === "resume") return resumeHTML(m);
   if (m.kind === "error") return `<div class="msg error"><p class="banner" role="alert">${esc(m.text)}</p></div>`;
   if (m.kind === "thinking")
     return `<div class="msg reply" id="${m.id}"><div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="step">${esc(m.text)}</span></div>${
@@ -590,7 +599,7 @@ function homeHTML() {
     <div class="home-sheet">
       <p class="sheet-prompt">Still thinking about your last argument? <span>Start there.</span></p>
       <button class="import-btn" type="button" data-action="import">${svg(ICON.upload, 22)}Import screenshots</button>
-      <p class="import-note">Both phones · any order · up to ${MAX_IMAGES}</p>
+      <p class="import-note">Both phones · any order · ${STORE_BUILD && !prefs.pro ? `${freeLeft()} free ${freeLeft() === 1 ? "verdict" : "verdicts"} left` : `up to ${MAX_IMAGES}`}</p>
       <div class="sheet-row">
         <button class="sheet-btn" type="button" data-action="paste">${svg(ICON.paste, 20)}Paste text</button>
         <button class="sheet-btn" type="button" data-action="example">${svg(ICON.play, 20)}Try an example</button>
@@ -665,6 +674,7 @@ function onboardingHTML() {
 }
 
 const SET_ICON = {
+  scale: '<path d="M12 3v18M5 7h14M7 7l-3 7a3 3 0 0 0 6 0L7 7zM17 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>',
   person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   tone: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
   claude: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
@@ -705,6 +715,7 @@ function settingsHTML() {
       <p class="set-foot">Used to spot you in screenshots. Leave it blank if you mostly judge other people's arguments.</p>
     </div>
 
+    ${STORE_BUILD ? proSettingsHTML(link) : ""}
     <div class="set-group">
       <h2>Verdicts</h2>
       <div class="set-card">
@@ -774,6 +785,22 @@ function settingsHTML() {
   </section>`;
 }
 
+function proSettingsHTML(link) {
+  const used = prefs.proUsage.month === monthKey() ? prefs.proUsage.n : 0;
+  return `<div class="set-group">
+      <h2>Arguably Pro</h2>
+      <div class="set-card">
+        ${
+          prefs.pro
+            ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${prefs.pro.plan === "yearly" ? "Yearly" : "Monthly"}</span><span class="set-sub">${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
+               <a class="set-row" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">${tile("doc", "sand")}<span class="set-text"><span class="set-title">Manage subscription</span></span>${chev}</a>`
+            : link('data-action="paywall"', "scale", "ember", "Go Pro", `${freeLeft()} of ${FREE_VERDICTS} free verdicts left`)
+        }
+        <button class="set-row" type="button" data-action="restore">${tile("replay", "sand")}<span class="set-text"><span class="set-title">Restore purchases</span></span></button>
+      </div>
+    </div>`;
+}
+
 // In-app policy pages. Drafts: have them reviewed before submission.
 const DOCS = {
   privacy: {
@@ -802,6 +829,7 @@ const DOCS = {
       <h2>Your content</h2><p>Only import conversations you have the right to share. Don't use Arguably to harass, shame or threaten anyone.</p>
       <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
       <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
+      ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription (${PLANS.monthly.price}/month or ${PLANS.yearly.price}/year, with a ${PLANS.yearly.trialDays}-day free trial on yearly). Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
       <h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>`,
   },
   safety: {
@@ -859,11 +887,11 @@ function emptyChatHTML() {
   </section>`;
 }
 
-const PAGE_TITLES = { settings: "Settings", inbox: "Notifications", onboarding: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Licenses" };
+const PAGE_TITLES = { settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Licenses" };
 
 function renderHeader() {
   const onHome = !chat && !page;
-  $("backBtn").hidden = onHome || page === "onboarding";
+  $("backBtn").hidden = onHome || page === "onboarding" || page === "paywall";
   $("homeBtn").hidden = !onHome && page !== "onboarding";
   $("chatTitle").hidden = onHome || page === "onboarding";
   $("chatTitle").textContent = page ? PAGE_TITLES[page] : chat?.title || "";
@@ -880,6 +908,7 @@ function render() {
   const onHome = !chat && !page;
   document.body.classList.toggle("on-home", onHome);
   document.body.classList.toggle("on-page", !!page);
+  document.body.classList.toggle("on-paywall", page === "paywall");
   renderHeader();
   $("composer").hidden = onHome || !!page;
 
@@ -890,6 +919,8 @@ function render() {
       ? settingsHTML()
       : page === "inbox"
         ? inboxHTML()
+        : page === "paywall"
+          ? paywallHTML()
         : DOC_PAGES.includes(page)
           ? docHTML(page)
         : onHome
@@ -976,25 +1007,18 @@ function loadImage(url) {
   });
 }
 
-// Small grayscale thumbnail for spotting the same screenshot imported twice. Chat screenshots
-// all share one layout, so this must be detailed enough that different conversations differ.
-function imageHash(img) {
-  const c = document.createElement("canvas");
-  c.width = 48;
-  c.height = 96;
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, 48, 96);
-  const d = ctx.getImageData(0, 0, 48, 96).data;
-  const lum = new Uint8Array(48 * 96);
-  for (let i = 0; i < lum.length; i++) lum[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
-  return lum;
+// Fingerprint of every pixel. Chat screenshots differ by a few lines of text, which a
+// thumbnail can't see, so only a true re-import of the same image counts as a duplicate.
+function pixelKey(c) {
+  const d = c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data;
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = (d[i] >> 2) | ((d[i + 1] >> 2) << 6) | ((d[i + 2] >> 2) << 12);
+    h1 = Math.imul(h1 ^ v, 16777619);
+    h2 = Math.imul(h2 ^ (v + i), 2246822519);
+  }
+  return `${c.width}x${c.height}:${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
 }
-// Mean brightness difference per pixel (0-255). A re-imported screenshot scores about 0-1.
-const hashDistance = (a, b) => {
-  let sum = 0;
-  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
-  return sum / a.length;
-};
 
 async function fileToShot(file) {
   const src = URL.createObjectURL(file);
@@ -1008,7 +1032,7 @@ async function fileToShot(file) {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, c.width, c.height);
     ctx.drawImage(img, 0, 0, c.width, c.height);
-    return { id: uid(), url: c.toDataURL("image/jpeg", 0.88), hash: imageHash(c) };
+    return { id: uid(), url: c.toDataURL("image/jpeg", 0.88), key: pixelKey(c) };
   } finally {
     URL.revokeObjectURL(src);
   }
@@ -1026,7 +1050,7 @@ async function addFiles(fileList) {
   for (const f of files.slice(0, room)) {
     try {
       const shot = await fileToShot(f);
-      if (pending.some((p) => hashDistance(p.hash, shot.hash) < 1.5)) dupes++;
+      if (pending.some((p) => p.key === shot.key)) dupes++;
       else pending.push(shot);
     } catch {
       failed++;
@@ -1367,6 +1391,13 @@ async function runImport(c, shots, note) {
     notify("who", "Screenshots read. Check who's who", `${plural(messageCount, "message")} from ${plural(shots.length, "screenshot")}.`, c.id);
   } catch (err) {
     c.messages = c.messages.filter((m) => m !== thinking);
+    // Put the screenshots and note back so trying again is one tap.
+    const sent = c.messages.findLast((m) => m.role === "user" && m.shotCount === shots.length);
+    if (sent) c.messages = c.messages.filter((m) => m !== sent);
+    if (chat === c) {
+      pending = [...shots, ...pending].slice(0, MAX_IMAGES);
+      if (note && !$("messageInput").value) $("messageInput").value = note;
+    }
     if (err?.code !== "cancelled") c.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
   } finally {
     endJob(c);
@@ -1391,7 +1422,54 @@ function confirmWho(id) {
   c.groups = [...m.groups, ...c.groups.filter((g) => !m.groups.some((x) => x.key === g.key))];
   const readings = c.readings.filter((r) => m.readingNs.includes(r.n));
   c.transcript = buildTranscript(readings, m.groups, c.transcript);
-  runVerdict(c, m.note);
+  startVerdict(c, m.note);
+}
+
+// Every verdict starts here. A verdict that can't run yet (stopped, failed, or waiting on Pro)
+// leaves a "resume" card in the chat, which is saved, so it survives leaving and reloading.
+const monthKey = () => new Date().toISOString().slice(0, 7);
+function verdictBlock() {
+  if (!STORE_BUILD) return "";
+  if (!prefs.pro) return prefs.freeUsed >= FREE_VERDICTS ? "locked" : "";
+  const u = prefs.proUsage.month === monthKey() ? prefs.proUsage.n : 0;
+  return u >= PRO_FAIR_USE ? "fair" : "";
+}
+const freeLeft = () => Math.max(0, FREE_VERDICTS - prefs.freeUsed);
+let paywallFor = null; // {c, note} waiting on a purchase
+function startVerdict(c, note = "") {
+  c.messages = c.messages.filter((m) => m.kind !== "resume");
+  const block = verdictBlock();
+  if (block) {
+    c.messages.push({ id: uid(), role: "assistant", kind: "resume", reason: block, note });
+    saveChats(c);
+    if (block === "locked") {
+      paywallFor = { c, note };
+      return openPage("paywall");
+    }
+    return render();
+  }
+  return runVerdict(c, note);
+}
+function countVerdict() {
+  if (!STORE_BUILD) return;
+  if (prefs.pro) {
+    const m = monthKey();
+    prefs.proUsage = { month: m, n: (prefs.proUsage.month === m ? prefs.proUsage.n : 0) + 1 };
+  } else prefs.freeUsed += 1;
+  savePrefs();
+}
+
+function resumeHTML(m) {
+  const copy = {
+    stopped: ["Verdict stopped", "Pick up where you left off. Your screenshots are already read."],
+    failed: ["The verdict didn't come through", m.error || "Something went wrong on the way. Your screenshots are already read."],
+    locked: ["Your verdict is one tap away", `You've used your ${FREE_VERDICTS} free verdicts. Go Pro to see who's right.`],
+    fair: ["You've hit this month's fair-use limit", `Pro includes ${PRO_FAIR_USE} verdicts a month. It resets on the 1st.`],
+  }[m.reason] || ["Verdict didn't finish", ""];
+  const button = m.reason === "fair" ? "" : m.reason === "locked"
+    ? `<button class="cta" type="button" data-action="paywall" data-resume="${m.id}">See Pro</button>`
+    : `<button class="cta" type="button" data-resume="${m.id}">Try again</button>`;
+  return `<div class="msg resume ${m.reason}" role="status"><div class="resume-text"><strong>${esc(copy[0])}</strong><span>${esc(copy[1])}</span></div>${button}</div>`;
 }
 
 const TONES = {
@@ -1440,11 +1518,13 @@ async function runVerdict(c, note) {
       transcript: c.transcript.length ? c.transcript.slice() : undefined,
     });
     c.title = verdict.title || c.title;
+    countVerdict();
     const w = verdict.winner || {};
     notify("verdict", `Verdict ready: ${c.title}`, w.is_draw ? "It's an even match." : `${w.name} has the stronger case.`, c.id);
   } catch (err) {
     c.messages = c.messages.filter((m) => m !== thinking);
-    if (err?.code !== "cancelled") c.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
+    const stopped = err?.code === "cancelled";
+    c.messages.push({ id: uid(), role: "assistant", kind: "resume", reason: stopped ? "stopped" : "failed", note, error: stopped ? "" : errorCopy(err?.code) });
   } finally {
     clearInterval(timer);
     endJob(c);
@@ -1463,7 +1543,7 @@ function chatTurns(chat) {
     (verdicts.length ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n") : "\n\nNo verdict has been given yet.");
   const turns = [];
   for (const m of chat.messages) {
-    if (m.transient || m.kind === "error" || m.kind === "thinking" || m.kind === "who" || m.kind === "nudge") continue;
+    if (m.transient || m.kind === "error" || m.kind === "thinking" || m.kind === "who" || m.kind === "nudge" || m.kind === "resume") continue;
     if (m.role === "user") {
       const n = m.shotCount || m.shots?.length;
       const content = ((n ? `(imported ${plural(n, "screenshot")}) ` : "") + (m.text || "")).trim();
@@ -1514,7 +1594,7 @@ async function runChat(c) {
 
 async function runPasted(c, text) {
   c.raw = (c.raw ? c.raw + "\n" : "") + text;
-  return runVerdict(c, "");
+  return startVerdict(c, "");
 }
 
 async function send(textOverride) {
@@ -1528,6 +1608,10 @@ async function send(textOverride) {
   const text = (textOverride ?? input.value).trim();
   const shots = pending.slice();
   if (!text && !shots.length) return;
+  if (chat?.example && !shots.length) {
+    const ex = chat;
+    chat = { ...newChatObject(), title: ex.title, transcript: ex.transcript.slice(), you: "", messages: ex.messages.filter((m) => m.kind !== "nudge") };
+  }
   ensureChat();
   chat.messages = chat.messages.filter((m) => m.kind !== "error");
   chat.messages.push({ id: uid(), role: "user", text, shots: shots.map((s) => s.url), shotCount: shots.length });
@@ -1557,6 +1641,94 @@ function openExample() {
       { id: uid(), role: "assistant", kind: "nudge" },
     ],
   };
+  render();
+}
+
+// ---------- Pro (App Store build) ----------
+let paywallPlan = "yearly";
+const nextYearDate = (days) => new Date(Date.now() + days * 864e5).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+function paywallHTML() {
+  const y = PLANS.yearly, mo = PLANS.monthly;
+  const plan = PLANS[paywallPlan];
+  const save = Math.round((1 - parseFloat(y.price.slice(1)) / (parseFloat(mo.price.slice(1)) * 12)) * 100);
+  const trial = paywallPlan === "yearly" && y.trialDays;
+  const radio = (key, title, price, sub, badge = "") => `<button type="button" role="radio" aria-checked="${paywallPlan === key}" class="plan${paywallPlan === key ? " on" : ""}" data-plan="${key}">
+      <span class="plan-dot" aria-hidden="true"></span>
+      <span class="plan-main"><span class="plan-title">${title}${badge ? `<b>${badge}</b>` : ""}</span><span class="plan-sub">${sub}</span></span>
+      <span class="plan-price">${price}</span></button>`;
+  return `<section class="paywall" aria-labelledby="pwTitle">
+    <button class="pw-close" type="button" data-action="paywall-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <div class="pw-icon"><img src="${MARK_URI}" alt="" width="64" height="59"></div>
+    <span class="pw-eyebrow">Arguably Pro</span>
+    <h1 id="pwTitle">Unlimited verdicts.<br><em>Settle every one.</em></h1>
+    ${paywallFor ? `<p class="pw-waiting">${svg(ICON.check, 16)}Your screenshots are read. The verdict runs the moment you unlock.</p>` : ""}
+    <ul class="pw-benefits">
+      <li>${pageSvg(PAGE_ICON.scale, 22)}<span><strong>Every argument, judged</strong>Up to ${PRO_FAIR_USE} verdicts a month, not ${FREE_VERDICTS} total.</span></li>
+      <li>${pageSvg(SET_ICON.replay, 22)}<span><strong>Rematches</strong>Add new screenshots anytime and get a fresh verdict.</span></li>
+      <li>${pageSvg(PAGE_ICON.spark, 22)}<span><strong>New features first</strong>Everything we ship next is included.</span></li>
+    </ul>
+    <div class="plans" role="radiogroup" aria-label="Choose a plan">
+      ${radio("yearly", "Yearly", `${y.price}<small>/yr</small>`, `${y.perWeek}/week · ${y.trialDays}-day free trial`, `Save ${save}%`)}
+      ${radio("monthly", "Monthly", `${mo.price}<small>/mo</small>`, "Cancel anytime")}
+    </div>
+    <button class="cta pw-cta" type="button" data-action="purchase">${trial ? `Start ${y.trialDays}-day free trial` : `Subscribe for ${plan.price}/${plan.per}`}</button>
+    <p class="pw-terms">${
+      trial
+        ? `Free until ${nextYearDate(y.trialDays)}, then ${y.price} per year.`
+        : `${plan.price} per ${plan.per}.`
+    } Renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel anytime in your App Store account settings.</p>
+    <div class="pw-links">
+      <button type="button" data-action="restore">Restore purchases</button><span aria-hidden="true">·</span>
+      <button type="button" data-doc="terms">Terms</button><span aria-hidden="true">·</span>
+      <button type="button" data-doc="privacy">Privacy</button>
+    </div>
+  </section>`;
+}
+
+// StoreKit lives in the native wrapper; it answers through window.ArguablyStore.
+// Without it (a browser preview) purchases are simulated so the flow can be tried end to end.
+const storeBridge = () => window.webkit?.messageHandlers?.storekit || null;
+function storeCall(msg) {
+  const bridge = storeBridge();
+  if (!bridge) return Promise.resolve(msg.type === "purchase" ? { ok: true, plan: msg.plan, preview: true } : { ok: false });
+  return new Promise((resolve) => {
+    const id = uid();
+    (window.ArguablyStore ||= { pending: {}, reply: (rid, res) => { window.ArguablyStore.pending[rid]?.(res); delete window.ArguablyStore.pending[rid]; } });
+    window.ArguablyStore.pending[id] = resolve;
+    bridge.postMessage({ ...msg, id });
+  });
+}
+async function purchase() {
+  const plan = PLANS[paywallPlan];
+  const res = await storeCall({ type: "purchase", plan: paywallPlan, productId: plan.id });
+  if (!res?.ok) return res?.cancelled ? undefined : toast("The purchase didn't go through. You weren't charged.");
+  unlockPro(res.plan || paywallPlan, res.preview ? "Preview: purchase simulated. You're Pro." : "You're Pro. Welcome in.");
+}
+async function restore() {
+  const res = await storeCall({ type: "restore" });
+  if (res?.ok && res.plan) return unlockPro(res.plan, "Purchases restored. You're Pro.");
+  toast("No purchases to restore on this Apple ID.");
+}
+function unlockPro(plan, message) {
+  prefs.pro = { plan, since: Date.now() };
+  savePrefs();
+  toast(message);
+  const waiting = paywallFor;
+  paywallFor = null;
+  if (waiting) {
+    page = null;
+    chat = live.get(waiting.c.id) || waiting.c;
+    return startVerdict(chat, waiting.note);
+  }
+  if (page === "paywall") page = "settings";
+  render();
+}
+function closePaywall() {
+  const waiting = paywallFor;
+  paywallFor = null;
+  page = null;
+  if (waiting) chat = waiting.c;
   render();
 }
 
@@ -1649,6 +1821,26 @@ $("thread").addEventListener("click", (e) => {
     return render();
   }
   if (action === "export") return exportData();
+  if (action === "paywall") {
+    const r = t.closest("[data-resume]");
+    const m = r && chat?.messages.find((x) => x.id === r.dataset.resume);
+    paywallFor = m ? { c: chat, note: m.note } : null;
+    return openPage("paywall");
+  }
+  if (action === "paywall-close") return closePaywall();
+  if (action === "purchase") return purchase();
+  if (action === "restore") return restore();
+  const plan = t.closest("[data-plan]");
+  if (plan) {
+    paywallPlan = plan.dataset.plan;
+    return render();
+  }
+  const resume = t.closest("[data-resume]");
+  if (resume && chat) {
+    if (busy) return toast("Arguably is finishing another argument. Try again in a moment.");
+    const m = chat.messages.find((x) => x.id === resume.dataset.resume);
+    if (m) return startVerdict(chat, m.note);
+  }
   if (action === "paste-new") {
     chat = null;
     ensureChat();

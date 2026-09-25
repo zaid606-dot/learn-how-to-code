@@ -4,6 +4,7 @@
 //   shots:   { [screenshotNumber]: { header, msgs: [[side, text, senderLabel?]] } }
 //            what "Claude" reads from each screenshot on the image path
 //   failJson: true -> every sample.json call rejects (exercises error handling)
+//   failVerdictTimes: n -> the first n verdict calls reject
 //   noClaude: true -> claude.use("sample") resolves null (signed out / not a Claude viewer)
 // Every call is recorded in window.__STUB.calls so tests can assert what was sent.
 (function () {
@@ -56,6 +57,11 @@
       return out;
     }
     if (input.includes("<conversation>") && input.includes("JSON Schema")) {
+      if (cfg.failVerdictTimes > 0) {
+        cfg.failVerdictTimes--;
+        stub.calls.push({ kind: "verdict-failed" });
+        throw { code: "upstream_error", message: "stubbed verdict failure" };
+      }
       stub.calls.push({
         kind: "verdict",
         images,

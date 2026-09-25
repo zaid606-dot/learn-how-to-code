@@ -600,3 +600,67 @@ body.on-page.scrolled #chatTitle { opacity: 1; }
 }
 body.scrolled .topbar { box-shadow: 0 6px 20px rgba(36, 16, 14, 0.07); }
 body.on-home .thread { padding-top: 4px; }
+
+/* ---------- Resume card: a verdict that stopped, failed or waits on Pro ---------- */
+.msg.resume {
+  display: grid; gap: 14px; padding: 18px; border-radius: 20px; background: #fff;
+  box-shadow: 0 0 0 1px rgba(36, 16, 14, 0.06), 0 10px 28px rgba(36, 16, 14, 0.08);
+}
+.resume-text { display: grid; gap: 4px; }
+.resume-text strong { font: 700 17px/1.3 var(--font-display); color: var(--ember-950); letter-spacing: -0.01em; }
+.resume-text span { font-size: 15px; line-height: 1.45; color: var(--ink-600); }
+.msg.resume .cta { min-height: 50px; }
+.msg.resume.locked { background: radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--ember-500) 30%, transparent), transparent 60%), #1c1412; }
+.msg.resume.locked strong { color: #fff; }
+.msg.resume.locked span { color: #cdbfb9; }
+
+/* ---------- Paywall: full-screen dark sheet ---------- */
+body.on-paywall { background: #140e0c; }
+body.on-paywall .topbar, body.on-paywall .composer { display: none !important; }
+.paywall {
+  position: relative; min-height: 100dvh; margin: 0 -16px; padding: 28px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; color: #f4ebe7;
+  background: radial-gradient(90% 50% at 50% 0%, color-mix(in srgb, var(--ember-500) 42%, transparent), transparent 70%), #140e0c;
+}
+.paywall > * { max-width: 440px; width: 100%; }
+.pw-close {
+  position: absolute; top: 10px; right: 12px; width: 44px !important; height: 44px; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(255, 255, 255, .1); color: #fff;
+}
+.pw-icon {
+  width: 68px !important; height: 68px; border-radius: 17px; display: grid; place-items: center; background: #fff;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .45), 0 0 80px 8px color-mix(in srgb, var(--ember-500) 45%, transparent);
+}
+.pw-eyebrow { width: auto !important; margin-top: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, .1); font: 700 11px/1 var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--ember-300); }
+.paywall h1 { margin: 0; font: 700 clamp(27px, 7.4vw, 34px)/1.08 var(--font-display); letter-spacing: -0.035em; color: #fff; text-wrap: balance; }
+.paywall h1 em { font-style: normal; color: var(--ember-300); }
+.pw-waiting { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 8px 12px; border-radius: 12px; background: rgba(52, 199, 89, .14); color: #8ce0a4; font-size: 13px; line-height: 1.35; text-align: left; }
+.pw-benefits { list-style: none; margin: 4px 0 2px; padding: 0; display: grid; gap: 10px; text-align: left; }
+.pw-benefits li { display: flex; gap: 14px; align-items: flex-start; }
+.pw-benefits svg { flex: none; margin-top: 2px; color: var(--ember-300); }
+.pw-benefits span { display: grid; gap: 1px; font-size: 13px; line-height: 1.35; color: #cdbfb9; }
+.pw-benefits strong { font-size: 15px; color: #fff; font-weight: 600; }
+.plans { display: grid; gap: 8px; margin-top: auto; }
+.plan {
+  display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 10px 16px; border-radius: 16px; text-align: left;
+  border: 1.5px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .04); color: #fff; font: inherit;
+  transition: border-color var(--dur-sm) var(--ease-out), background-color var(--dur-sm) var(--ease-out), transform 140ms var(--ease-out);
+}
+.plan:active { transform: scale(.98); }
+.plan.on { border-color: var(--ember-500); background: color-mix(in srgb, var(--ember-500) 14%, transparent); }
+.plan-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35); }
+.plan.on .plan-dot { border: 7px solid var(--ember-500); background: #fff; }
+.plan-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.plan-title { display: flex; align-items: center; gap: 8px; font: 600 16px/1.2 var(--font-body); }
+.plan-title b { padding: 3px 8px; border-radius: var(--radius-pill); background: var(--ember-500); color: #fff; font: 700 11px/1.2 var(--font-body); }
+.plan-sub { font-size: 13px; color: #cdbfb9; }
+.plan-price { font: 700 18px/1 var(--font-display); }
+.plan-price small { font: 500 13px/1 var(--font-body); color: #cdbfb9; }
+.pw-cta { min-height: 58px; font-size: 17px; box-shadow: 0 14px 34px rgba(231, 90, 50, .45); }
+.pw-terms { margin: 0; font-size: 11px; line-height: 1.45; color: #9d8f89; }
+.pw-links { display: flex; justify-content: center; align-items: center; gap: 4px; color: #9d8f89; }
+.pw-links button { min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #cdbfb9; font: 600 13px/1 var(--font-body); }
+
+/* The paywall sits flush under the status bar. */
+body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
+.pw-benefits svg { width: 20px; height: 20px; }

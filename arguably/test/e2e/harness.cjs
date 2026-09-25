@@ -22,11 +22,12 @@ const { chromium, devices } = loadPlaywright();
 
 function build() {
   execSync("node scripts/build-artifact.mjs", { cwd: ROOT, stdio: "pipe" });
+  execSync("node scripts/build-artifact.mjs --store", { cwd: ROOT, stdio: "pipe" });
 }
 
 // The page with the stub injected before it, as a full document (the Artifact host adds this skeleton).
 function wrappedPage(stubConfig) {
-  const page = fs.readFileSync(path.join(DIST, "arguably.html"), "utf8");
+  const page = fs.readFileSync(path.join(DIST, stubConfig?.store ? "arguably-store.html" : "arguably.html"), "utf8");
   const stub = fs.readFileSync(path.join(__dirname, "stub.js"), "utf8");
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
