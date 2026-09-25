@@ -321,3 +321,17 @@ test("readingQuality flags screenshots that read poorly", () => {
   assert.equal(q.reason, "garbled");
   assert.deepEqual(P.readingQuality([], []), { conf: 0, garbled: 0, lines: 0, messages: 0, poor: false, reason: "empty" });
 });
+
+test("normalizeVerdict makes schema-violating verdicts safe or rejects them", () => {
+  const bad = { title: 42, origin: { escalation_points: "x" }, participants: "nope", winner: { name: "Maya", confidence: "140", scores: "x" }, fallacies: [null, { quote: "q" }] };
+  const v = P.normalizeVerdict(bad);
+  assert.equal(v.title, "42");
+  assert.deepEqual(v.participants, []);
+  assert.deepEqual(v.origin.escalation_points, []);
+  assert.deepEqual(v.winner.scores, []);
+  assert.equal(v.winner.confidence, 100);
+  assert.equal(v.fallacies.length, 1);
+  assert.equal(P.normalizeVerdict({ origin: {}, winner: {} }), null, "no winner and not a draw");
+  assert.ok(P.normalizeVerdict({ origin: {}, winner: { is_draw: true } }), "a draw needs no name");
+  assert.equal(P.normalizeVerdict("text"), null);
+});

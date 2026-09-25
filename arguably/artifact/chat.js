@@ -170,12 +170,15 @@ function formatReply(text) {
 // ---------- state ----------
 // Chats saved by the previous version (v1) are carried over.
 let chats = storage(() => JSON.parse(localStorage.getItem(STORE_KEY)) || JSON.parse(localStorage.getItem("arguably.chats.v1")) || [], []);
+if (!Array.isArray(chats)) chats = [];
+chats = chats.filter((c) => c && typeof c === "object" && Array.isArray(c.messages));
 let chat = null; // null = home screen
 let page = null; // null, "onboarding", "settings" or "inbox": a full page shown instead of home/chat
 let pending = []; // screenshots attached to the next message: {id, url, key}
 let busy = null; // {ctl, chatId}: one reading/verdict/reply job at a time; it keeps running if you leave the chat
 const live = new Map(); // chat id -> chat object with a job in progress, so reopening it shows the progress
 let sampler = null;
+let claudeChecked = false; // until the connection check finishes, don't claim you're signed out
 let maxImages = 0;
 
 // Preferences and the notification inbox live on this device only.
@@ -310,7 +313,7 @@ function verdictHTML(m, c) {
     <h2 class="v-title">${esc(v.title)}</h2>
     ${
       unverified.size
-        ? `<p class="banner warn" role="note">${(m.unverified || []).length === 1 ? "1 quote" : `${(m.unverified || []).length} quotes`} in this verdict couldn't be matched to the screenshots. They're marked below.</p>`
+        ? `<p class="banner warn" role="note">${(m.unverified || []).length === 1 ? "1 quote" : `${(m.unverified || []).length} quotes`} in this verdict couldn't be matched to the ${m.transcript ? "screenshots" : "conversation"}. They're marked below.</p>`
         : transcript.length || c.raw
           ? `<p class="checked"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Every quote checked against the ${transcript.length ? "screenshots" : "conversation"}</p>`
           : ""
@@ -549,10 +552,11 @@ const svg = (d, size = 22) =>
 
 // The example card settles in once per page load; a re-render picks the animation up where it was.
 let homeShownAt = 0;
+let showAllRecent = false;
 
 function homeHTML() {
-  const recent = chats.slice(0, 8);
-  const notice = !sampler
+  const recent = showAllRecent ? chats : chats.slice(0, 8);
+  const notice = claudeChecked && !sampler
     ? '<p class="notice">Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.</p>'
     : "";
   // The demo plays once per page load; re-renders during startup continue it where it was.
@@ -620,7 +624,7 @@ function homeHTML() {
                 <span class="r-go">${svg(ICON.chevron, 18)}</span>
               </button></li>`;
             })
-            .join("")}</ul></section>`
+            .join("")}</ul>${chats.length > 8 ? `<button class="see-all" type="button" data-action="all-recent">${showAllRecent ? "Show less" : `See all ${chats.length}`}</button>` : ""}</section>`
         : ""
     }
   </section>`;
@@ -943,7 +947,7 @@ function render() {
     let top = last ? document.documentElement.scrollHeight : 0;
     if (last && (last.kind === "verdict" || last.kind === "who")) {
       const el = trail ? thread.lastElementChild?.previousElementSibling : thread.lastElementChild;
-      if (el) top = el.getBoundingClientRect().top + window.scrollY - $("thread").offsetTop + 8;
+      if (el) top = el.getBoundingClientRect().top + window.scrollY - (document.querySelector(".topbar")?.offsetHeight || 0) - 12;
     }
     window.scrollTo({ top });
   });
@@ -955,7 +959,7 @@ function renderSuggestions() {
   const show = !busyHere() && last?.kind === "verdict" && sampler;
   box.hidden = !show;
   box.innerHTML = show
-    ? '<label class="import-chip" for="fileInput">Import more screenshots</label>' +
+    ? '<button type="button" class="import-chip" data-pick="">Import more screenshots</button>' +
       SUGGESTIONS.map((s) => `<button type="button" data-say="${esc(s)}">${esc(s)}</button>`).join("")
     : "";
 }
@@ -1040,7 +1044,7 @@ async function fileToShot(file) {
 
 async function addFiles(fileList) {
   const files = [...fileList].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
-  if (!files.length) return;
+  if (!files.length) return fileList.length ? toast("Only images can be imported. Try screenshots (PNG or JPEG).") : undefined;
   ensureChat();
   const room = MAX_IMAGES - pending.length;
   if (room <= 0) return toast(`You can import up to ${MAX_IMAGES} screenshots at a time.`);
@@ -1060,7 +1064,7 @@ async function addFiles(fileList) {
   const notes = [];
   if (failed) notes.push(`${failed} couldn't be opened`);
   if (dupes) notes.push(`skipped ${plural(dupes, "duplicate")}`);
-  toast(pending.length ? `${plural(pending.length, "screenshot")} ready${notes.length ? ` (${notes.join(", ")})` : ""}. Tap send.` : "We couldn't open those images. Try PNG or JPEG.");
+  toast(pending.length ? `${plural(pending.length, "screenshot")} ready${notes.length ? ` (${notes.join(", ")})` : ""}. ${sampler ? "Tap send." : "Open Arguably on claude.ai while signed in to get a verdict."}` : "We couldn't open those images. Try PNG or JPEG.");
 }
 
 // Where to cut a tall screenshot: blank rows between bubbles, close to evenly spaced.
@@ -1409,12 +1413,12 @@ function confirmWho(id) {
   const c = chat;
   const m = c.messages.find((x) => x.id === id);
   if (!m || m.status !== "pending") return;
-  m.groups.forEach((g, i) => {
-    for (const side of ["them", "me"]) {
-      const input = document.getElementById(`who-${m.id}-${i}-${side}`);
-      if (input) g[side] = input.value.trim() || (side === "me" ? "Me" : "Them");
-    }
+  const named = m.groups.map((g, i) => {
+    const pick = (side, fallback) => document.getElementById(`who-${m.id}-${i}-${side}`)?.value.trim() || g[side] || fallback;
+    return { me: pick("me", "Me"), them: pick("them", "Them") };
   });
+  if (named.some((g) => g.me.toLowerCase() === g.them.toLowerCase())) return toast("Each side needs a different name.");
+  m.groups.forEach((g, i) => Object.assign(g, named[i]));
   m.status = "done";
   c.you = m.you === "__none" ? "" : m.you;
   m.you = c.you;
@@ -1495,8 +1499,6 @@ function verdictPrompt(chat, note) {
   return p;
 }
 
-const looksLikeVerdict = (v) => v && typeof v === "object" && v.winner && v.origin && Array.isArray(v.participants);
-
 async function runVerdict(c, note) {
   const thinking = { id: uid(), role: "assistant", kind: "thinking", text: VERDICT_STEPS[0], transient: true };
   c.messages.push(thinking);
@@ -1508,9 +1510,8 @@ async function runVerdict(c, note) {
     updateThinking(thinking, VERDICT_STEPS[step]);
   }, 7000);
   try {
-    const verdict = await sampler.json(verdictPrompt(c, note), { modelTier: "complex", signal });
-    if (!looksLikeVerdict(verdict)) throw { code: "invalid_json" };
-    for (const k of ["subjects", "grudges", "personal_shots", "fallacies"]) if (!Array.isArray(verdict[k])) verdict[k] = [];
+    const verdict = normalizeVerdict(await sampler.json(verdictPrompt(c, note), { modelTier: "complex", signal }));
+    if (!verdict) throw { code: "invalid_json" };
     c.messages = c.messages.filter((m) => m !== thinking);
     c.messages.push({
       id: uid(), role: "assistant", kind: "verdict", verdict,
@@ -1577,8 +1578,10 @@ async function runChat(c) {
         streamed = text;
         const el = document.getElementById(reply.id);
         if (!el) return;
+        // Follow the reply only if you're already at the bottom; reading back up isn't interrupted.
+        const following = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
         el.outerHTML = `<div class="msg reply" id="${reply.id}">${formatReply(text)}</div>`;
-        window.scrollTo({ top: document.documentElement.scrollHeight });
+        if (following) window.scrollTo({ top: document.documentElement.scrollHeight });
       },
     });
     Object.assign(reply, { kind: "text", text, transient: false, interrupted: truncated });
@@ -1593,7 +1596,7 @@ async function runChat(c) {
 }
 
 async function runPasted(c, text) {
-  c.raw = (c.raw ? c.raw + "\n" : "") + text;
+  if (!c.raw.endsWith(text)) c.raw = (c.raw ? c.raw + "\n" : "") + text;
   return startVerdict(c, "");
 }
 
@@ -1621,7 +1624,8 @@ async function send(textOverride) {
   const c = chat;
   if (shots.length) return runImport(c, shots, text);
   // A long paste before any verdict is treated as the conversation itself.
-  if (!verdictsOf(c).length && text.length >= 80) return runPasted(c, text);
+  const speakerLines = (text.match(/^[^:\n]{1,30}:\s*\S/gm) || []).length;
+  if (!verdictsOf(c).length && (text.length >= 80 || speakerLines >= 2)) return runPasted(c, text);
   return runChat(c);
 }
 
@@ -1775,6 +1779,7 @@ $("attachStrip").addEventListener("click", (e) => {
   render();
 });
 $("suggestions").addEventListener("click", (e) => {
+  if (e.target.closest("[data-pick]")) return $("fileInput").click();
   const b = e.target.closest("[data-say]");
   if (b) send(b.dataset.say);
 });
@@ -1821,6 +1826,10 @@ $("thread").addEventListener("click", (e) => {
     return render();
   }
   if (action === "export") return exportData();
+  if (action === "all-recent") {
+    showAllRecent = !showAllRecent;
+    return render();
+  }
   if (action === "paywall") {
     const r = t.closest("[data-resume]");
     const m = r && chat?.messages.find((x) => x.id === r.dataset.resume);
@@ -2008,6 +2017,7 @@ render();
   } catch {
     sampler = null;
   }
+  claudeChecked = true;
   const notice = $("notice");
   if (!sampler) {
     notice.textContent = "Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.";

@@ -119,7 +119,7 @@ test("screenshots from both phones: who's who, merged transcript, verdict, follo
   assert.ok(await page.locator(".tag.unverified").count() > 0, "quotes not in the transcript are flagged");
   await shot(page, "flow-verdict");
 
-  await page.locator("#suggestions button").first().click();
+  await page.locator("#suggestions [data-say]").first().click();
   await page.waitForFunction(() => !document.querySelector(".composer.busy") && document.querySelector(".msg.reply"));
   const chat = (await calls()).find((c) => c.kind === "chat");
   assert.match(chat.context, /\[m1\] Maya: You said/, "follow-ups get the transcript");
@@ -413,4 +413,50 @@ test("claude.ai build has no gate", async () => {
   await page.click("#backBtn");
   await page.click("#settingsBtn");
   assert.doesNotMatch(await page.locator(".settings").innerText(), /Pro|Restore purchases/);
+});
+
+test("leaving or starting a new chat while work runs doesn't break or leak results", async () => {
+  const { page, errors } = await openApp({
+    images: true,
+    shots: { 1: { header: "Jordan", msgs: [["right", "You said you'd do the dishes last night?"], ["left", "Ok and you left your laundry in the dryer for 3 days so"]] } },
+  });
+  // Back while reading.
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone]);
+  await page.click("#sendBtn");
+  await page.click("#backBtn");
+  await waitUntil(page, () => document.querySelector(".recent")?.innerText.includes("Check who's who"));
+  // New chat while the verdict runs: the verdict lands in its own chat, not the new one.
+  await page.click(".recent [data-chat]");
+  await page.click("[data-confirm]");
+  await page.click("#newBtn");
+  await page.waitForTimeout(600);
+  assert.equal(await page.locator(".msg.verdict").count(), 0, "new chat stays empty");
+  assert.equal(await page.isVisible("#sendBtn"), true);
+  await page.click("#backBtn");
+  await waitUntil(page, () => document.querySelector(".recent")?.innerText.includes("won"));
+  assert.deepEqual(errors, []);
+});
+
+test("who's who won't accept the same name for both sides", async () => {
+  const { page, calls } = await openApp({
+    images: true,
+    shots: { 1: { header: "Jordan", msgs: [["right", "You said you'd do the dishes last night?"], ["left", "Ok and you left your laundry in the dryer for 3 days so"]] } },
+  });
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone]);
+  await page.click("#sendBtn");
+  await waitUntil(page, () => !!document.querySelector(".msg.who:not(.done)"));
+  const inputs = page.locator(".who input");
+  await inputs.nth(0).fill("Jordan");
+  await inputs.nth(1).fill("jordan");
+  await page.click("[data-confirm]");
+  assert.ok(await page.locator(".msg.who:not(.done)").isVisible(), "still asking");
+  assert.equal((await calls()).filter((c) => c.kind === "verdict").length, 0);
+});
+
+test("a short pasted exchange with names is judged, not treated as a question", async () => {
+  const { page } = await openApp({ images: true });
+  await page.locator(HOME_PASTE).first().click();
+  await page.fill("#messageInput", "Maya: you're late again\nJordan: traffic");
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
 });

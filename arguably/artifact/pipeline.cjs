@@ -462,10 +462,32 @@ function parseOcrReply(text) {
   return out;
 }
 
+// Makes a verdict from the model safe to render: every list is a list, every name a string.
+// Returns null when there's no usable winner, so the caller can treat it as a bad reply.
+function normalizeVerdict(v) {
+  if (!v || typeof v !== "object" || !v.winner || typeof v.winner !== "object" || !v.origin || typeof v.origin !== "object") return null;
+  const objs = (x) => (Array.isArray(x) ? x.filter((i) => i && typeof i === "object") : []);
+  const strs = (x) => (Array.isArray(x) ? x.filter((i) => typeof i === "string") : []);
+  const str = (x) => (typeof x === "string" ? x : typeof x === "number" ? String(x) : "");
+  v.title = str(v.title).trim() || "Verdict";
+  v.participants = objs(v.participants).map((p) => ({ ...p, name: str(p.name).trim() || "Someone" }));
+  for (const k of ["subjects", "grudges", "personal_shots", "fallacies"]) v[k] = objs(v[k]);
+  v.subjects.forEach((s) => (s.positions = objs(s.positions)));
+  v.origin.escalation_points = objs(v.origin.escalation_points);
+  const w = v.winner;
+  w.is_draw = w.is_draw === true;
+  w.name = str(w.name).trim();
+  if (!w.is_draw && !w.name) return null;
+  const n = Number(w.confidence);
+  w.confidence = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50;
+  w.scores = objs(w.scores).map((s) => ({ ...s, participant: str(s.participant), strengths: strs(s.strengths), weaknesses: strs(s.weaknesses) }));
+  return v;
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normText, similarity, sameMessage, joinSlices, phoneGroups, defaultMapping,
     resolveSender, mergeSequences, buildTranscript, transcriptText, verdictQuotes, unverifiedQuotes, parseTsv, ocrBlock,
-    cleanOcr, headerOf, linesToMessages, readingQuality, parseOcrReply,
+    cleanOcr, headerOf, linesToMessages, readingQuality, parseOcrReply, normalizeVerdict,
   };
 }
