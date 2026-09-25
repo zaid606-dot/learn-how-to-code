@@ -167,26 +167,38 @@ test("a failed Claude call shows a clear error and the app stays usable", async 
   assert.ok(await page.isEnabled("#fileInput"), "can import again");
 });
 
-test("first run: onboarding in three steps, name saved, lands on import", async () => {
+test("first run: four steps, required agreement, name saved, photos step opens the picker", async () => {
   const { page, errors } = await openApp({ images: true, firstRun: true });
   assert.ok(await page.locator(".onboard").isVisible(), "onboarding shows on first run");
   await shot(page, "onboarding-1");
   assert.deepEqual(await layoutProblems(page), []);
   await page.click('[data-action="next"]');
-  await page.click('[data-action="next"]');
+  await shot(page, "onboarding-2");
+  assert.deepEqual(await layoutProblems(page), []);
+  await page.click("#obAgreeRow");
+  await page.click('[data-action="consent-next"]');
   await page.fill("#obName", "Maya");
-  await shot(page, "onboarding-3");
-  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('.onboard [data-action="import"]')]);
-  assert.ok(chooser, "finishing onboarding opens the photo picker");
+  await page.click('.onboard [data-action="next"]');
+  await shot(page, "onboarding-4");
+  assert.deepEqual(await layoutProblems(page), []);
+  assert.equal(await page.getAttribute("#fileInput", "accept"), "image/*,video/*", "photos and videos");
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('.onboard [data-action="photos"]')]);
+  assert.ok(chooser, "allowing photo access opens the photo picker");
   const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")));
   assert.equal(prefs.onboarded, true);
+  assert.equal(prefs.photos, true);
+  assert.equal(prefs.policy.version, "2026-09-25");
   assert.equal(prefs.name, "Maya");
   assert.ok(await page.locator("#thread .home").isVisible(), "home is behind the picker");
   assert.deepEqual(errors, []);
 });
 
-test("first run: Skip goes straight to home", async () => {
+test("first run: Skip can't get past the Privacy Policy; after agreeing it goes home", async () => {
   const { page } = await openApp({ firstRun: true });
+  await page.click("#skipBtn");
+  assert.ok(await page.locator("#obAgreeRow").isVisible(), "Skip lands on the agreement");
+  assert.equal(await page.locator("#thread .home").count(), 0);
+  await page.click("#obAgreeRow");
   await page.click("#skipBtn");
   assert.ok(await page.locator("#thread .home").isVisible());
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).onboarded), true);
@@ -273,7 +285,11 @@ test("onboarding asks for consent explicitly and 'Not now' respects it", async (
   const { page } = await openApp({ firstRun: true });
   await page.click('[data-action="next"]');
   assert.match(await page.locator(".ob-fine").innerText(), /Anthropic/);
-  await page.click('.onboard [data-action="next"]'); // Not now
+  await page.click('.onboard [data-action="agree-next"]', { force: true }); // looks disabled; a tap only nudges
+  assert.ok(await page.locator("#obAgreeRow").isVisible(), "can't continue without agreeing");
+  await page.click("#obAgreeRow");
+  await page.click('.onboard [data-action="agree-next"]'); // continue without the AI
+  assert.ok(await page.locator("#obName").isVisible());
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1") || "{}").aiConsent || false), false);
 });
 
@@ -308,6 +324,8 @@ test("settings: store-ready pages, export and support links", async () => {
 
 test("the first notification asks for an App Store rating", async () => {
   const { page, errors } = await openApp({ firstRun: true });
+  await page.click("#skipBtn");
+  await page.click("#obAgreeRow");
   await page.click("#skipBtn");
   await page.click("#inboxBtn");
   assert.match(await page.locator(".note").first().innerText(), /welcome to Arguably[\s\S]*rating on the App Store/);
@@ -374,8 +392,10 @@ test("asking about the example keeps the example's conversation", async () => {
 test("App Store build: hard paywall after onboarding, then every verdict needs Pro", async () => {
   const { page, errors, calls } = await openApp({ images: true, store: true, firstRun: true });
   await page.click('[data-action="next"]');
+  await page.click("#obAgreeRow");
   await page.click('[data-action="consent-next"]');
-  await page.click('.onboard [data-action="import"]');
+  await page.click('.onboard [data-action="next"]');
+  await page.click('.onboard [data-action="photos"]');
   await page.waitForSelector(".paywall");
   await shot(page, "paywall");
   assert.deepEqual(await layoutProblems(page), []);
@@ -541,12 +561,76 @@ test("onboarding: swipe between steps; swiping never allows sending to Claude", 
   assert.equal(await step(), 0, "no step before the first");
   await swipe(320, 80);
   await swipe(320, 80);
-  assert.equal(await step(), 2, "swiped past the Claude step");
+  assert.equal(await step(), 1, "can't swipe past the Privacy Policy without agreeing");
+  await page.click("#obAgreeRow");
+  await swipe(320, 80);
+  assert.equal(await step(), 2, "swiped past the Claude step once agreed");
   assert.notEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1") || "{}").aiConsent), true, "a swipe is never consent");
   await page.click('.ob-dots [data-step="0"]');
   assert.equal(await step(), 0, "dots are tappable");
   await page.keyboard.press("ArrowRight");
   assert.equal(await step(), 1, "arrow keys work");
   assert.deepEqual(await layoutProblems(page), []);
+  assert.deepEqual(errors, []);
+});
+
+test("people who used Arguably before must agree to the new Privacy Policy first", async () => {
+  const { page, errors, calls } = await openApp({ images: true, prefs: { policy: null } });
+  assert.ok(await page.locator(".onboard.policy-only").isVisible(), "the agreement comes first");
+  assert.equal(await page.isVisible("#skipBtn"), false, "no skipping");
+  assert.equal(await page.locator(".ob-dots").count(), 0);
+  await page.click('[data-action="consent-next"]', { force: true });
+  assert.ok(await page.locator(".onboard.policy-only").isVisible(), "still blocked");
+  // Reading the policy returns to the agreement.
+  await page.click('[data-ob-doc="privacy"]');
+  assert.equal(await page.locator(".doc .page-title").innerText(), "Privacy Policy");
+  assert.match(await page.locator(".doc").innerText(), /Photos and videos[\s\S]*never browses/);
+  await page.click("#backBtn");
+  assert.ok(await page.locator("#obAgreeRow").isVisible());
+  await page.click("#obAgreeRow");
+  await page.click('[data-action="consent-next"]');
+  assert.ok(await page.locator("#thread .home").isVisible(), "home after agreeing");
+  assert.equal((await calls()).length, 0);
+  // (The harness resets saved settings on reload, so check what was saved instead.)
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).policy);
+  assert.equal(saved.version, "2026-09-25", "agreement is saved with the policy version");
+  assert.ok(saved.at > 0, "and when");
+  assert.deepEqual(errors, []);
+});
+
+test("a screen recording becomes screenshots, frame by frame, on the phone", async () => {
+  const { page, errors } = await openApp({ images: true });
+  // Record a canvas that shows three different chat screens, as a stand-in for a screen recording.
+  const b64 = await page.evaluate(async () => {
+    const c = Object.assign(document.createElement("canvas"), { width: 390, height: 844 });
+    const ctx = c.getContext("2d");
+    const rec = new MediaRecorder(c.captureStream(15), { mimeType: "video/webm" });
+    const parts = [];
+    rec.ondataavailable = (e) => parts.push(e.data);
+    rec.start(100);
+    for (let screen = 0; screen < 3; screen++) {
+      for (let f = 0; f < 12; f++) {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, 390, 844);
+        ctx.fillStyle = screen === 1 ? "#1f78e6" : "#e5e5ea";
+        for (let i = 0; i < 8; i++) ctx.fillRect(screen === 2 ? 20 : 150, 60 + i * 95 + screen * 30, 220, 70);
+        ctx.fillStyle = "#000";
+        ctx.font = "28px sans-serif";
+        ctx.fillText("Screen " + (screen + 1), 20, 40);
+        await new Promise((r) => setTimeout(r, 70));
+      }
+    }
+    await new Promise((r) => { rec.onstop = r; rec.stop(); });
+    const buf = await new Blob(parts, { type: "video/webm" }).arrayBuffer();
+    let s = "";
+    new Uint8Array(buf).forEach((x) => (s += String.fromCharCode(x)));
+    return btoa(s);
+  });
+  const file = path.join(OUT, "recording.webm");
+  require("node:fs").writeFileSync(file, Buffer.from(b64, "base64"));
+  await importFrom(page, HOME_IMPORT, [file]);
+  await page.waitForSelector(".attach-item", { timeout: 20000 });
+  const n = await page.locator(".attach-item").count();
+  assert.ok(n >= 2 && n <= 12, `pulled ${n} distinct frames`);
   assert.deepEqual(errors, []);
 });

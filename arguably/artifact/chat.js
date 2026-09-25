@@ -16,6 +16,9 @@ const SUPPORT_EMAIL = "support@arguably.app";
 // Set to the numeric App Store ID once the listing exists; the rating notification links to it.
 const APP_STORE_ID = "";
 const APP_VERSION = "1.0";
+// Bump when the Privacy Policy or Terms change: everyone is asked to agree again.
+const POLICY_VERSION = "2026-09-25";
+const POLICY_DATE = "September 25, 2026";
 // App Store build only (node scripts/build-artifact.mjs --store). On claude.ai, verdicts run on
 // the viewer's own Claude plan, so there is nothing to gate.
 // Hard paywall, Cal AI style: Pro (with a free trial) right after onboarding, no free verdicts.
@@ -186,14 +189,23 @@ let maxImages = 0;
 // Preferences and the notification inbox live on this device only.
 const PREFS_KEY = "arguably.prefs.v1";
 const INBOX_KEY = "arguably.inbox.v1";
-const DEFAULT_PREFS = { onboarded: false, aiConsent: false, freeUsed: 0, pro: null, proUsage: { month: "", n: 0 }, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
+const DEFAULT_PREFS = { onboarded: false, policy: null, photos: false, aiConsent: false, freeUsed: 0, pro: null, proUsage: { month: "", n: 0 }, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
 const savedPrefs = storage(() => JSON.parse(localStorage.getItem(PREFS_KEY)) || {}, {});
 let prefs = { ...DEFAULT_PREFS, ...savedPrefs, notify: { ...DEFAULT_PREFS.notify, ...(savedPrefs.notify || {}) } };
 let inbox = storage(() => JSON.parse(localStorage.getItem(INBOX_KEY)) || [], []);
 let onboardStep = 0;
-let onboardDir = 1; // 1 = moving forward, -1 = back; sets which way the next step slides in
+let onboardDir = 1;
+let docReturn = null; // a policy page opened from the intro goes back to the intro // 1 = moving forward, -1 = back; sets which way the next step slides in
 let confirmingDelete = false;
+const policyOk = () => prefs.policy?.version === POLICY_VERSION;
 if (!prefs.onboarded && !chats.length) page = "onboarding";
+// Anyone who hasn't agreed to the current Privacy Policy and Terms sees that step first.
+// People who finished the intro before only see the agreement step (gate mode).
+let gateMode = false;
+if (page !== "onboarding" && !policyOk()) {
+  page = "onboarding";
+  gateMode = true;
+}
 
 function savePrefs() {
   storage(() => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)));
@@ -247,6 +259,7 @@ function openPage(name) {
   page = name;
   confirmingDelete = false;
   if (name === "onboarding") {
+    gateMode = false;
     onboardStep = 0;
     onboardDir = 1;
   }
@@ -659,10 +672,18 @@ const PAGE_ICON = {
 const pageSvg = (d, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 
+const OB_STEPS = 4;
+const PHOTO_ICON = '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>';
+const VIDEO_ICON = '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3z"/>';
 function onboardingHTML() {
-  const dots = `<div class="ob-dots" role="tablist" aria-label="Intro steps">${[0, 1, 2]
-    .map((i) => `<button type="button" role="tab" aria-selected="${i === onboardStep}" aria-label="Step ${i + 1} of 3" data-step="${i}"><i class="${i === onboardStep ? "on" : ""}"></i></button>`)
-    .join("")}</div>`;
+  // Someone who finished the intro before only sees the agreement step.
+  if (gateMode) onboardStep = 1;
+  const agreed = policyOk();
+  const dots = gateMode
+    ? ""
+    : `<div class="ob-dots" role="tablist" aria-label="Intro steps">${Array.from({ length: OB_STEPS }, (_, i) =>
+        `<button type="button" role="tab" aria-selected="${i === onboardStep}" aria-label="Step ${i + 1} of ${OB_STEPS}" data-step="${i}"><i class="${i === onboardStep ? "on" : ""}"></i></button>`
+      ).join("")}</div>`;
   const steps = [
     `<div class="ob-art ob-logo"><img src="${MARK_URI}" alt="" width="84" height="77"></div>
      <h1>Settle it.<br><em>With receipts.</em></h1>
@@ -670,29 +691,44 @@ function onboardingHTML() {
      ${dots}
      <div class="ob-actions"><button class="cta" type="button" data-action="next">Get started</button></div>`,
     `<div class="ob-art">${pageSvg(PAGE_ICON.lock, 40)}</div>
-     <h1>Private by default</h1>
+     <h1>${gateMode ? "Before you continue" : "Private by default"}</h1>
      <ul class="ob-list">
        <li>${pageSvg(PAGE_ICON.device)}<span><strong>Screenshots aren't saved.</strong> They're read, then let go.</span></li>
        <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Chats stay on this device.</strong> Delete them anytime in Settings.</span></li>
        <li>${pageSvg(PAGE_ICON.spark)}<span>${HOSTED ? "<strong>No account needed.</strong> Import and go." : `<strong>Runs on your ${AI_NAME} account.</strong> Verdicts use your ${AI_NAME} plan. No subscription here.`}</span></li>
      </ul>
-     <p class="ob-fine">Verdicts are written by ${AI_NAME}, an AI by ${AI_MAKER}. Allowing sends the conversation you import, and nothing else, to ${AI_NAME}. Change it anytime in Settings.</p>
+     <label class="ob-agree${agreed ? " on" : ""}" id="obAgreeRow">
+       <input type="checkbox" id="obAgree"${agreed ? " checked" : ""}>
+       <span class="ob-check" aria-hidden="true">${svg(ICON.check, 16)}</span>
+       <span>I agree to the Privacy Policy and Terms of Use.</span>
+     </label>
+     <p class="ob-docs">Read the <button type="button" class="ob-link" data-ob-doc="privacy">Privacy Policy</button> · <button type="button" class="ob-link" data-ob-doc="terms">Terms of Use</button></p>
+     <p class="ob-fine">Verdicts are written by ${AI_NAME}, an AI by ${AI_MAKER}. Allowing sends only the conversations you import. Change it in Settings.</p>
      ${dots}
-     <div class="ob-actions">
-       <button class="cta" type="button" data-action="consent-next">Allow and continue</button>
-       <button class="ob-secondary" type="button" data-action="next">Not now</button>
+     <div class="ob-actions${agreed ? "" : " locked"}">
+       <button class="cta" type="button" data-action="consent-next" aria-disabled="${!agreed}">Allow and continue</button>
+       <button class="ob-secondary" type="button" data-action="agree-next" aria-disabled="${!agreed}">Continue without ${AI_NAME}</button>
      </div>`,
     `<div class="ob-art">${pageSvg(PAGE_ICON.who, 40)}</div>
      <h1>What should we call you?</h1>
      <p>So we can spot you in screenshots. Leave it blank if you're mostly judging other people's arguments.</p>
      <label class="field"><span>Your name</span><input id="obName" type="text" autocomplete="given-name" maxlength="40" value="${esc(prefs.name)}" placeholder="e.g. Maya"></label>
      ${dots}
+     <div class="ob-actions"><button class="cta" type="button" data-action="next">Next</button></div>`,
+    `<div class="ob-art">${pageSvg(PHOTO_ICON, 40)}</div>
+     <h1>Your photos,<br><em>your pick.</em></h1>
+     <ul class="ob-list">
+       <li>${pageSvg(PHOTO_ICON)}<span><strong>Screenshots from both phones.</strong> Any order. We line them up.</span></li>
+       <li>${pageSvg(VIDEO_ICON)}<span><strong>Screen recordings work too.</strong> Scroll through the chat once and we pull every message out.</span></li>
+       <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Only what you choose.</strong> Arguably never browses the rest of your Photos.</span></li>
+     </ul>
+     ${dots}
      <div class="ob-actions">
-       <button class="cta" type="button" data-action="import">Import screenshots</button>
+       <button class="cta" type="button" data-action="photos">Allow access to Photos</button>
        <button class="ob-secondary" type="button" data-action="example">Show me an example first</button>
      </div>`,
   ];
-  return `<section class="onboard${onboardDir < 0 ? " back" : ""}" aria-live="polite">${steps[onboardStep]}</section>`;
+  return `<section class="onboard${onboardDir < 0 ? " back" : ""}${gateMode ? " policy-only" : ""}" aria-live="polite">${steps[onboardStep]}</section>`;
 }
 
 const SET_ICON = {
@@ -827,14 +863,20 @@ function proSettingsHTML(link) {
 const DOCS = {
   privacy: {
     title: "Privacy Policy",
-    body: () => `<p class="doc-lede">Short version: your arguments stay yours. No account, no ads, no tracking.</p>
-      <h2>What we collect</h2><p>Nothing on our servers.${HOSTED ? " Arguably's server passes your request to " + AI_NAME + " and keeps no copy." : ""} Arguably keeps your chats (the text, who's who and verdicts), your name if you add one, and your settings on this device only.</p>
-      <h2>What leaves your device</h2><p>When you ask for a verdict, the conversation text, and the screenshots unless “Read screenshots on this phone” is on, is sent to ${AI_NAME}, an AI made by ${AI_MAKER}, to write the verdict. It's sent only after you allow it, and only to answer you.</p>
-      <h2>Screenshots</h2><p>Screenshots are read, then let go. They're never saved on your device or anywhere else by Arguably.</p>
-      <h2>Tracking</h2><p>Arguably doesn't track you across apps or websites, doesn't show ads, and doesn't sell or share data with data brokers.</p>
+    body: () => `<p class="doc-date">Effective ${POLICY_DATE}</p>
+      <p class="doc-lede">Short version: your arguments stay yours. No account, no ads, no tracking, and nothing sold.</p>
+      <h2>What Arguably keeps</h2><p>Only on this device: your chats (the conversation text, who's who and verdicts), your name if you add one, notifications and settings. Arguably has no account system and keeps no copy on a server.</p>
+      <h2>Photos and videos</h2><p>Arguably only sees the screenshots and screen recordings you pick. It never browses the rest of your photo library. Screen recordings are turned into still frames on your device; the video itself is never uploaded or saved. Screenshots are read, then let go. They aren't stored with your chats.</p>
+      <h2>What leaves your device</h2><p>When you ask for a verdict, the conversation, and the screenshots unless “Read screenshots on this phone” is on, is sent to ${AI_NAME}, an AI by ${AI_MAKER}, to write the verdict. It's sent only after you allow it, and only to answer you.</p>
+      ${HOSTED
+        ? `<h2>How ${AI_NAME} is run</h2><p>On this website, requests pass through Arguably's server, which keeps no copy, to Groq, which runs the model. Groq doesn't use your conversations to train AI and doesn't keep them by default. It may keep logs for up to 30 days to investigate abuse or keep the service reliable.</p>`
+        : `<h2>How ${AI_NAME} is run</h2><p>On claude.ai, verdicts run on your own ${AI_NAME} account, under Anthropic's terms and privacy policy for that account.</p>`}
+      <h2>Tracking and ads</h2><p>Arguably doesn't track you across apps or websites, doesn't show ads, and doesn't sell or share your data with data brokers or advertisers.</p>
       <h2>Your choices</h2><p>Turn off “Send chats to ${AI_NAME}” anytime. Export or delete everything from Settings › Privacy &amp; data. Deleting is immediate and permanent.</p>
-      <h2>Children</h2><p>Arguably isn't made for children under 13.</p>
-      <h2>Contact</h2><ul class="help-list"><li><a href="mailto:${SUPPORT_EMAIL}">Email us<span>${SUPPORT_EMAIL}</span></a></li></ul>`,
+      <h2>Children</h2><p>Arguably isn't for children under 13, and doesn't knowingly collect anything from them.</p>
+      <h2>Changes</h2><p>If this policy changes, Arguably asks you to agree again before you keep using it.</p>
+      <h2>Contact</h2><ul class="help-list"><li><a href="mailto:${SUPPORT_EMAIL}">Email us<span>${SUPPORT_EMAIL}</span></a></li></ul>
+      ${policyOk() ? `<p class="doc-state ok">${svg(ICON.check, 16)}You agreed on ${new Date(prefs.policy.at).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}.</p>` : ""}`,
   },
   ai: {
     title: "How AI is used",
@@ -846,7 +888,8 @@ const DOCS = {
   },
   terms: {
     title: "Terms of Use",
-    body: () => `<p class="doc-lede">By using Arguably you agree to these terms.</p>
+    body: () => `<p class="doc-date">Effective ${POLICY_DATE}</p>
+      <p class="doc-lede">By using Arguably you agree to these terms.</p>
       <h2>For fun and perspective</h2><p>Verdicts are AI opinions for entertainment and reflection. They aren't legal, medical, mental-health or relationship advice.</p>
       <h2>Your content</h2><p>Only import conversations you have the right to share. Don't use Arguably to harass, shame or threaten anyone.</p>
       <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
@@ -922,7 +965,7 @@ function renderHeader() {
   $("deleteBtn").hidden = !deletable;
   if (!deletable) $("deleteBtn").classList.remove("confirm");
   $("topActions").hidden = !onHome;
-  $("skipBtn").hidden = page !== "onboarding";
+  $("skipBtn").hidden = page !== "onboarding" || gateMode;
   const unread = unreadCount();
   $("inboxBadge").hidden = !unread;
   $("inboxBadge").textContent = unread > 9 ? "9+" : String(unread);
@@ -1063,16 +1106,102 @@ async function fileToShot(file) {
   }
 }
 
+// Screen recordings: step through the video on the phone and keep a frame whenever the
+// screen has changed, so scrolling through a chat once becomes a set of screenshots.
+// The video itself is never uploaded or saved.
+const isVideo = (f) => f.type.startsWith("video/") || /\.(mov|mp4|m4v|webm)$/i.test(f.name);
+async function videoToShots(file, room) {
+  const src = URL.createObjectURL(file);
+  const v = document.createElement("video");
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = "auto";
+  v.src = src;
+  try {
+    await new Promise((res, rej) => {
+      v.onloadeddata = res;
+      v.onerror = () => rej(new Error("video"));
+      setTimeout(() => rej(new Error("timeout")), 15000);
+    });
+    // Some recordings don't state their length up front; seeking far ahead makes the browser work it out.
+    if (!Number.isFinite(v.duration)) {
+      await new Promise((res) => {
+        v.ondurationchange = () => Number.isFinite(v.duration) && res();
+        v.onseeked = res;
+        v.currentTime = 1e7;
+        setTimeout(res, 3000);
+      });
+      v.ondurationchange = null;
+    }
+    const duration = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+    if (!duration || !v.videoWidth) throw new Error("empty");
+    const scale = Math.min(1, MAX_EDGE / v.videoWidth, 16000 / v.videoHeight);
+    const c = document.createElement("canvas");
+    c.width = Math.round(v.videoWidth * scale);
+    c.height = Math.round(v.videoHeight * scale);
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    const thumb = document.createElement("canvas");
+    thumb.width = 36;
+    thumb.height = 72;
+    const tctx = thumb.getContext("2d", { willReadFrequently: true });
+    const gray = () => {
+      tctx.drawImage(c, 0, 0, 36, 72);
+      const d = tctx.getImageData(0, 0, 36, 72).data;
+      const g = new Uint8Array(36 * 72);
+      for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+      return g;
+    };
+    const diff = (a, b) => {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+      return sum / a.length;
+    };
+    const step = Math.max(0.5, duration / 60);
+    const shots = [];
+    let last = null;
+    for (let t = Math.min(0.1, duration / 2); t < duration && shots.length < room; t += step) {
+      await new Promise((res) => {
+        v.onseeked = res;
+        v.currentTime = t;
+      });
+      ctx.drawImage(v, 0, 0, c.width, c.height);
+      const g = gray();
+      // Keep a frame once the screen has moved on; while it's still, skip.
+      if (last && diff(last, g) < 6) continue;
+      last = g;
+      shots.push({ id: uid(), url: c.toDataURL("image/jpeg", 0.88), key: pixelKey(c), fromVideo: true });
+    }
+    return shots;
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
 async function addFiles(fileList) {
-  const files = [...fileList].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
-  if (!files.length) return fileList.length ? toast("Only images can be imported. Try screenshots (PNG or JPEG).") : undefined;
+  const files = [...fileList].filter((f) => f.type.startsWith("image/") || isVideo(f) || /\.(heic|heif)$/i.test(f.name));
+  if (!files.length) return fileList.length ? toast("Only photos and screen recordings can be imported.") : undefined;
   ensureChat();
   const room = MAX_IMAGES - pending.length;
   if (room <= 0) return toast(`You can import up to ${MAX_IMAGES} screenshots at a time.`);
   if (files.length > room) toast(`Added ${room}. The limit is ${MAX_IMAGES} screenshots at a time.`);
   let failed = 0;
   let dupes = 0;
+  let frames = 0;
   for (const f of files.slice(0, room)) {
+    if (isVideo(f)) {
+      try {
+        const left = MAX_IMAGES - pending.length;
+        if (left <= 0) break;
+        toast("Pulling the messages out of your screen recording…");
+        const shots = await videoToShots(f, left);
+        for (const shot of shots) if (!pending.some((p) => p.key === shot.key)) pending.push(shot);
+        frames += shots.length;
+      } catch {
+        failed++;
+      }
+      continue;
+    }
+    if (pending.length >= MAX_IMAGES) break;
     try {
       const shot = await fileToShot(f);
       if (pending.some((p) => p.key === shot.key)) dupes++;
@@ -1083,6 +1212,7 @@ async function addFiles(fileList) {
   }
   render();
   const notes = [];
+  if (frames) notes.push(`${plural(frames, "frame")} from your recording`);
   if (failed) notes.push(`${failed} couldn't be opened`);
   if (dupes) notes.push(`skipped ${plural(dupes, "duplicate")}`);
   toast(pending.length ? `${plural(pending.length, "screenshot")} ready${notes.length ? ` (${notes.join(", ")})` : ""}. ${sampler ? "Tap send." : "Open Arguably on claude.ai while signed in to get a verdict."}` : "We couldn't open those images. Try PNG or JPEG.");
@@ -1623,6 +1753,12 @@ async function runPasted(c, text) {
 async function send(textOverride) {
   if (busy && !busyHere()) return toast("Arguably is finishing another argument. You'll get a notification when it's done.");
   if (busy || !sampler || pendingWho()) return;
+  if (!policyOk()) {
+    page = "onboarding";
+    onboardStep = 1;
+    gateMode = prefs.onboarded;
+    return render();
+  }
   if (!prefs.aiConsent) {
     consentReturn = chat;
     return openPage("ai");
@@ -1832,6 +1968,30 @@ $("thread").addEventListener("click", (e) => {
   const step = t.closest("[data-step]");
   if (step) return goStep(Number(step.dataset.step));
   if (action === "replay") return openPage("onboarding");
+  const obDoc = t.closest("[data-ob-doc]");
+  if (obDoc) {
+    e.preventDefault();
+    docReturn = "onboarding";
+    page = obDoc.dataset.obDoc;
+    return render();
+  }
+  if ((action === "consent-next" || action === "agree-next") && !policyOk()) return nudgeAgree();
+  if (action === "agree-next") {
+    if (gateMode) return finishOnboarding();
+    return goStep(onboardStep + 1);
+  }
+  if (action === "photos") {
+    prefs.photos = true;
+    savePrefs();
+    finishOnboarding();
+    if (page === "paywall") return; // App Store build: the trial comes first
+    return $("fileInput").click();
+  }
+  if (action === "consent-next" && gateMode) {
+    prefs.aiConsent = true;
+    savePrefs();
+    return finishOnboarding();
+  }
   if (action === "consent-next") {
     prefs.aiConsent = true;
     savePrefs();
@@ -2005,8 +2165,29 @@ async function exportData() {
   }
 }
 
+function nudgeAgree() {
+  toast("Agree to the Privacy Policy and Terms to continue.");
+  const row = $("obAgreeRow");
+  if (row) {
+    row.classList.remove("shake");
+    void row.offsetWidth;
+    row.classList.add("shake");
+  }
+}
+function agreePolicy() {
+  prefs.policy = { version: POLICY_VERSION, at: Date.now() };
+  savePrefs();
+}
 function goStep(n) {
-  n = Math.max(0, Math.min(2, n));
+  n = Math.max(0, Math.min(OB_STEPS - 1, n));
+  if (n > 1 && !policyOk()) {
+    if (onboardStep !== 1) {
+      onboardDir = 1;
+      onboardStep = 1;
+      render();
+    }
+    return nudgeAgree();
+  }
   if (n === onboardStep) return;
   onboardDir = n > onboardStep ? 1 : -1;
   onboardStep = n;
@@ -2049,9 +2230,14 @@ document.addEventListener("keydown", (e) => {
 });
 
 function finishOnboarding() {
+  if (!policyOk()) {
+    goStep(1);
+    return nudgeAgree();
+  }
+  gateMode = false;
   if (prefs.onboarded) {
     if (page === "onboarding") page = null;
-    return;
+    return render();
   }
   prefs.onboarded = true;
   savePrefs();
@@ -2074,12 +2260,33 @@ $("backBtn").addEventListener("click", () => {
     consentReturn = null;
     return render();
   }
+  if (DOC_PAGES.includes(page) && docReturn) {
+    page = docReturn;
+    docReturn = null;
+    return render();
+  }
   return DOC_PAGES.includes(page) ? openPage("settings") : goHome();
 });
 $("homeBtn").addEventListener("click", goHome);
 $("inboxBtn").addEventListener("click", () => openPage("inbox"));
 $("settingsBtn").addEventListener("click", () => openPage("settings"));
-$("skipBtn").addEventListener("click", finishOnboarding);
+$("skipBtn").addEventListener("click", () => {
+  if (policyOk()) return finishOnboarding();
+  onboardDir = 1;
+  onboardStep = 1;
+  render();
+  nudgeAgree();
+});
+// The agreement checkbox on the privacy step.
+$("thread").addEventListener("change", (e) => {
+  if (e.target.id !== "obAgree") return;
+  if (e.target.checked) agreePolicy();
+  else {
+    prefs.policy = null;
+    savePrefs();
+  }
+  render();
+});
 // Delete one chat: the first tap asks, the second (within a few seconds) deletes.
 let deleteTimer = 0;
 $("deleteBtn").addEventListener("click", () => {

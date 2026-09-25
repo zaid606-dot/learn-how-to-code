@@ -76,7 +76,9 @@ test("website build: no Claude account, Groq via the site's own API, full flow w
   // First run: onboarding names Grok and xAI in the consent step.
   await page.click('[data-action="next"]');
   assert.match(await page.locator(".ob-fine").innerText(), /Qwen, an AI by Alibaba, running on Groq/);
+  await page.click("#obAgreeRow");
   await page.click('[data-action="consent-next"]');
+  await page.click('.onboard [data-action="next"]');
   await page.click('.onboard [data-action="example"]');
   await page.click("#backBtn");
   assert.equal(await page.locator(".notice:visible").count(), 0, "no 'sign in to claude.ai' notice");
