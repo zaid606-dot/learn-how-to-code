@@ -383,7 +383,7 @@ body.on-page .thread { padding-bottom: calc(32px + env(safe-area-inset-bottom, 0
    Centered like a native welcome screen: the icon and message sit in the upper part,
    the progress dots and main button sit low, near the thumb. */
 .onboard {
-  min-height: calc(100dvh - var(--bar-h) - 36px); display: flex; flex-direction: column; align-items: center;
+  min-height: calc(100dvh - var(--bar-h, 56px) - 52px); box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
   text-align: center; gap: 16px; padding: 6vh 8px calc(12px + env(safe-area-inset-bottom, 0px));
   max-width: 440px; margin: 0 auto; width: 100%;
 }
@@ -588,17 +588,9 @@ body.on-page.scrolled #chatTitle { opacity: 1; }
 /* Onboarding fine print under the consent list. */
 .ob-fine { font-size: 13px !important; line-height: 1.45 !important; color: var(--ink-600); max-width: 30em; }
 
-/* App header: no divider. It blends into the page, and only when content scrolls under it
-   does it frost the content behind it with a soft shadow, like a native iOS nav bar. */
-.topbar {
-  border-bottom: 0;
-  background: color-mix(in srgb, var(--ember-50) 82%, transparent);
-  -webkit-backdrop-filter: saturate(180%) blur(18px);
-  backdrop-filter: saturate(180%) blur(18px);
-  box-shadow: 0 1px 0 transparent;
-  transition: box-shadow var(--dur-md) var(--ease-out), background-color var(--dur-md) var(--ease-out);
-}
-body.scrolled .topbar { box-shadow: 0 6px 20px rgba(36, 16, 14, 0.07); }
+/* App header: no divider, no shadow, ever. It's the page's own color, so the header and the
+   content read as one surface, like an app, not a website with a nav bar. */
+.topbar { border-bottom: 0; background: var(--ember-50); box-shadow: none; }
 body.on-home .thread { padding-top: 4px; }
 
 /* ---------- Resume card: a verdict that stopped, failed or waits on Pro ---------- */
