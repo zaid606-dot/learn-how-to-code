@@ -34,7 +34,7 @@ const constants = [
   `const SAMPLE_VERDICT = ${JSON.stringify(sampleVerdict)};`,
   `const SYSTEM_PROMPT = ${JSON.stringify(SYSTEM_PROMPT)};`,
 ].join("\n");
-const js = replaceOnce(read("artifact/chat.js"), "/*__CONSTANTS__*/", constants, "constants");
+const js = read("artifact/pipeline.cjs") + "\n" + replaceOnce(read("artifact/chat.js"), "/*__CONSTANTS__*/", constants, "constants");
 
 const page = `<title>Arguably</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">

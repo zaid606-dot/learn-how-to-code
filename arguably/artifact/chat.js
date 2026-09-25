@@ -1,11 +1,18 @@
 /* Arguably chat, for the claude.ai Artifact build.
  * Claude is reached through the Artifact `sample` capability (the viewer's own account).
- * Constants VERDICT_SCHEMA, SAMPLE_VERDICT and SYSTEM_PROMPT are injected by the build. */
+ * The build injects VERDICT_SCHEMA, SAMPLE_VERDICT and SYSTEM_PROMPT, and inlines
+ * pipeline.cjs (normText, joinSlices, phoneGroups, defaultMapping, buildTranscript,
+ * transcriptText, unverifiedQuotes, ...) ahead of this file.
+ *
+ * Screenshot flow:
+ *   import -> dedupe + smart slicing (on device) -> Claude reads every message in batches
+ *   -> "Who's who" check -> merge both phones into one transcript -> Claude judges the
+ *   transcript -> quotes checked against the transcript -> follow-ups see the transcript. */
 /*__CONSTANTS__*/
 
-const MAX_IMAGES = 12;
+const MAX_IMAGES = 30;
 const MAX_EDGE = 2000;
-const STORE_KEY = "arguably.chats.v1";
+const STORE_KEY = "arguably.chats.v2";
 const MAX_CHATS = 20;
 const PALETTE = [
   { bg: "#FF5A47", fg: "#24100E" }, // logo coral
@@ -17,8 +24,6 @@ const PALETTE = [
 ];
 const NEUTRAL = { bg: "#D8CBC3", fg: "#1F1B1A" };
 const VERDICT_STEPS = [
-  "Reading the screenshots",
-  "Working out who's who",
   "Finding where it started",
   "Comparing each side",
   "Checking for grudges and personal shots",
@@ -32,11 +37,39 @@ const SUGGESTIONS = [
   "What am I missing about the other side?",
 ];
 const CHAT_RULES = `You are Arguably, a fair referee for text-message arguments, talking with the person who uploaded the conversation.
-Earlier in this chat you reviewed their screenshots and gave the verdict(s) included below as JSON. Answer their follow-up questions about this argument: explain your reasoning, quote the actual messages, help them see the other side, suggest what to say next, and reconsider fairly if they add context (say plainly when new context changes your view and when it doesn't).
+Below are the full transcript of the conversation (read from their screenshots, with speakers they confirmed) and the verdict(s) you gave as JSON. Answer their follow-up questions about this argument: explain your reasoning, quote the actual messages from the transcript (cite them like [m12]), help them see the other side, suggest what to say next, and reconsider fairly if they add context (say plainly when new context changes your view and when it doesn't).
 Voice: clear, warm and grounded, like a thoughtful guide. Short paragraphs, concrete words, no exclamation marks. Judge the arguing, never the people, and never mock or shame anyone.
 When asked to write a message, give the message itself, ready to send, then at most one line on why it works.
 Format: plain text. You may use "- " bullet lines and **bold** sparingly. No headings, no tables.
-If there is no verdict yet, tell them to add screenshots with the image button or paste the conversation as text.`;
+If there is no verdict yet, tell them to import screenshots or paste the conversation as text.`;
+
+const TRANSCRIBE_RULES = `Transcribe these screenshots of a text-message conversation so it can be judged later. Do not judge or summarize anything.
+
+For each image, report the chat app (iMessage, WhatsApp, Instagram, Messenger, Discord, Slack, SMS, other) and the name or title shown in the chat header at the top. Use "" when no header is visible in that image (lower slices of a tall screenshot usually have none).
+
+Then list every message bubble in reading order, top to bottom, image by image. For each message give:
+- image: the image number
+- side: "right" for bubbles sent by the phone's owner (usually right-aligned and colored), "left" for received bubbles, "center" for system notices
+- sender_label: the name shown above or beside a left bubble in a group chat, else ""
+- text: exactly as written, including emoji and typos. Describe photos, stickers, GIFs and voice notes in square brackets, e.g. "[photo: a sink full of dishes]", "[voice message 0:12]". Deleted messages: "[deleted message]"
+- time: the time or date shown for it, if any (put a timestamp row like "Today 9:14 PM" on the next message instead of listing it separately)
+- kind: "text", "photo", "voice", "sticker", "link", "deleted", "reaction" or "system"
+- partial: true if the bubble is cut off at the top or bottom edge of the image
+- y: the bubble's vertical center as a percentage of the image height (0 = top, 100 = bottom)
+
+Reply with only one JSON object, for example:
+{"images":[{"image":1,"app":"iMessage","header_name":"Jordan"}],"messages":[{"image":1,"side":"right","sender_label":"","text":"You said you'd do the dishes?","time":"Today 9:14 PM","kind":"text","partial":false,"y":22}]}`;
+
+const SAMPLE_TRANSCRIPT = [
+  ["Maya", "Today 9:14 PM", "You said you'd do the dishes last night?"],
+  ["Jordan", "", "I was going to do them today"],
+  ["Jordan", "", "It's literally just dishes, why is this a whole thing"],
+  ["Maya", "", "You always do this, you're so unreliable"],
+  ["Jordan", "", "Ok and you left your laundry in the dryer for 3 days so"],
+  ["Maya", "9:21 PM", "This is literally the same thing that happened in March"],
+  ["Jordan", "", "Wow ok sorry I'm not perfect like you"],
+  ["Maya", "", "Can we just make a chore chart so this stops happening"],
+].map(([sender, time, text], i) => ({ id: "m" + (i + 1), sender, time, text, kind: "text", shots: [i < 4 ? 1 : 2] }));
 
 const SAMPLE_ERRORS = {
   not_granted: "Arguably needs permission to use Claude. Reload the page and choose Allow when asked.",
@@ -47,15 +80,17 @@ const SAMPLE_ERRORS = {
   images_unavailable: "This view can't send screenshots to Claude. Paste the conversation as text instead.",
   refused: "Claude couldn't review this. Try a different set of screenshots.",
   prompt_too_large: "That's too much to review at once. Try fewer screenshots or a shorter paste.",
-  invalid_json: "The verdict came back incomplete. Send it again to retry.",
+  invalid_json: "The reply came back incomplete. Try again.",
+  no_messages: "We couldn't find any messages in those screenshots. Check they show the conversation and try again.",
 };
-const errorCopy = (code) => SAMPLE_ERRORS[code] || "We couldn't finish that reply. Try again.";
+const errorCopy = (code) => SAMPLE_ERRORS[code] || "We couldn't finish that. Try again.";
 
 // ---------- helpers ----------
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 function storage(fn, fallback) {
   try {
     return fn();
@@ -68,14 +103,23 @@ function toast(msg) {
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (t.hidden = true), 2400);
+  toast.timer = setTimeout(() => (t.hidden = true), 2600);
+}
+function relTime(ts) {
+  const s = (Date.now() - ts) / 1000;
+  if (s < 60) return "Just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 172800) return "Yesterday";
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // Minimal, safe formatting for Claude's replies: paragraphs, "- " bullets, **bold**.
 function formatReply(text) {
   const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  const blocks = String(text).trim().split(/\n{2,}/);
-  return blocks
+  return String(text)
+    .trim()
+    .split(/\n{2,}/)
     .map((block) => {
       const lines = block.split("\n");
       if (lines.every((l) => /^\s*[-•*]\s+/.test(l))) {
@@ -87,42 +131,44 @@ function formatReply(text) {
 }
 
 // ---------- state ----------
-let chats = storage(() => JSON.parse(localStorage.getItem(STORE_KEY)) || [], []);
-let chat = null; // the open conversation
-let pending = []; // screenshots attached to the next message: {id, url}
-let busy = null; // {ctl, kind}
+// Chats saved by the previous version (v1) are carried over.
+let chats = storage(() => JSON.parse(localStorage.getItem(STORE_KEY)) || JSON.parse(localStorage.getItem("arguably.chats.v1")) || [], []);
+let chat = null; // null = home screen
+let pending = []; // screenshots attached to the next message: {id, url, hash}
+let busy = null; // {ctl}
 let sampler = null;
 let maxImages = 0;
 
+function newChatObject(saved = {}) {
+  return { id: uid(), title: "New argument", createdAt: Date.now(), updatedAt: Date.now(), messages: [], readings: [], groups: [], you: "", transcript: [], raw: "", shotTotal: 0, ...saved };
+}
+
 function saveChats() {
-  if (!chat || chat.example) return;
-  // Screenshots stay in memory only; saved chats keep their text and verdicts.
-  const clean = {
-    ...chat,
-    updatedAt: Date.now(),
-    messages: chat.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)),
-  };
+  if (!chat || chat.example || !chat.messages.length) return;
+  chat.updatedAt = Date.now();
+  // Screenshots stay in memory only; saved chats keep text, transcript and verdicts.
+  const clean = { ...chat, messages: chat.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)) };
   chats = [clean, ...chats.filter((c) => c.id !== chat.id)].slice(0, MAX_CHATS);
   storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
 }
 
-function newChat() {
+function goHome() {
   if (busy) busy.ctl.abort();
   chat = null;
   pending = [];
   $("messageInput").value = "";
-  autosize();
   render();
 }
 
 function ensureChat() {
-  if (!chat || chat.example) chat = { id: uid(), title: "New argument", createdAt: Date.now(), messages: [] };
+  if (!chat || chat.example) chat = newChatObject();
   return chat;
 }
 
 const verdictsOf = (c) => (c?.messages || []).filter((m) => m.kind === "verdict").map((m) => m.verdict);
+const pendingWho = () => chat?.messages.find((m) => m.kind === "who" && m.status === "pending");
 
-// ---------- rendering ----------
+// ---------- rendering: verdict ----------
 function colorMap(v) {
   const names = [];
   const add = (n) => {
@@ -148,10 +194,15 @@ function sourceLabel(src) {
   );
 }
 
-function verdictHTML(v, isExample) {
+function verdictHTML(m, c) {
+  const v = m.verdict;
+  const unverified = new Set(m.unverified || []);
   const color = colorMap(v);
   const person = (n) => `<span class="person"><span class="dot" style="background:${color(n).bg}"></span>${esc(n)}</span>`;
-  const quote = (text, who) => `<div class="quote" style="box-shadow: inset 3px 0 0 ${color(who).bg}">“${esc(text)}”</div>`;
+  const quote = (text, who) =>
+    `<div class="quote" style="box-shadow: inset 3px 0 0 ${color(who).bg}">“${esc(text)}”${
+      unverified.has(text) ? '<span class="tag unverified">Not found in the screenshots</span>' : ""
+    }</div>`;
   const tag = (value, labels) => `<span class="tag ${esc(value)}">${esc(labels[value] || value)}</span>`;
   const sev = (s) => tag(s, { low: "Low", medium: "Medium", high: "High" });
   const strength = (s) => tag(s, { strong: "Strong", mixed: "Mixed", weak: "Weak" });
@@ -162,10 +213,18 @@ function verdictHTML(v, isExample) {
   const conf = Math.max(0, Math.min(100, Number(w.confidence) || 0));
   const scores = [...(w.scores || [])].sort((a, b) => b.score - a.score);
   const o = v.origin || {};
+  const transcript = m.transcript || c.transcript || [];
 
   return `
-    ${isExample ? '<span class="tag example-tag">Example verdict</span>' : ""}
+    ${c.example ? '<span class="tag example-tag">Example verdict</span>' : ""}
     <h2 class="v-title">${esc(v.title)}</h2>
+    ${
+      unverified.size
+        ? `<p class="banner warn" role="note">${(m.unverified || []).length === 1 ? "1 quote" : `${(m.unverified || []).length} quotes`} in this verdict couldn't be matched to the screenshots. They're marked below.</p>`
+        : transcript.length || c.raw
+          ? `<p class="checked"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Every quote checked against the ${transcript.length ? "screenshots" : "conversation"}</p>`
+          : ""
+    }
     ${v.safety_note?.trim() ? `<section class="card safety" role="note"><h2>A note on safety</h2><p>${esc(v.safety_note)}</p></section>` : ""}
     <section class="card winner-card">
       <div class="winner-head">
@@ -270,64 +329,197 @@ function verdictHTML(v, isExample) {
         )
         .join("") || empty("No logical fallacies found.")
     )}
+    ${
+      transcript.length
+        ? sec(
+            "What we read",
+            transcript.filter((t) => t.kind !== "gap").length,
+            `<p class="expl">Every message read from the screenshots, in order, with both phones merged. Check this if something in the verdict looks off.</p>
+            <ol class="transcript">${transcript
+              .map((t) =>
+                t.kind === "gap"
+                  ? '<li class="gap">Possible missing messages here. These screenshots don\'t overlap.</li>'
+                  : `<li><div class="t-head">${person(t.sender)}${t.time ? `<span class="t-time">${esc(t.time)}</span>` : ""}<span class="t-src">${t.shots?.length ? `Screenshot ${t.shots.join(", ")}` : ""}</span></div><div class="t-text">${esc(t.text)}</div></li>`
+              )
+              .join("")}</ol>`
+          )
+        : ""
+    }
     <section class="card takeaway-card"><h2>How to move forward</h2><p class="takeaway">${esc(v.takeaway)}</p></section>`;
 }
 
+// ---------- rendering: who's who ----------
+function whoHTML(m) {
+  if (m.status === "done") {
+    const names = [...new Set(m.groups.flatMap((g) => [g.me, g.them]).filter(Boolean))];
+    return `<div class="msg who done"><span class="who-icon" aria-hidden="true">✓</span><div><strong>Who's who confirmed</strong><div class="who-line">${esc(
+      names.join(" and ")
+    )}${m.you ? ` · You're ${esc(m.you)}` : ""}</div></div></div>`;
+  }
+  const phones = m.groups.length;
+  return `<div class="msg who" id="${m.id}">
+    <h3>Check who's who</h3>
+    <p class="who-sub">We read ${plural(m.messageCount, "message")} from ${plural(m.shotCount, "screenshot")}${
+      phones > 1 ? ` taken on ${phones} phones` : ""
+    }. Each phone shows its owner on the right, so check the names before the verdict.</p>
+    ${m.groups
+      .map(
+        (g, i) => `<fieldset class="who-group">
+        <legend>${g.shots.length > 1 ? "Screenshots" : "Screenshot"} ${g.shots.join(", ")}${g.header ? ` · chat with “${esc(g.header)}”` : ""}</legend>
+        <label class="side-row"><span class="side-chip left">Left side</span>
+          ${
+            g.isGroup
+              ? '<span class="group-note">Group chat: names come from the labels above each bubble</span>'
+              : `<input type="text" id="who-${m.id}-${i}-them" data-g="${i}" data-side="them" value="${esc(g.them)}" autocomplete="off" aria-label="Name for the left bubbles">`
+          }
+        </label>
+        <label class="side-row"><span class="side-chip right">Right side</span>
+          <input type="text" id="who-${m.id}-${i}-me" data-g="${i}" data-side="me" value="${esc(g.me)}" autocomplete="off" aria-label="Name for the right bubbles">
+        </label>
+      </fieldset>`
+      )
+      .join("")}
+    <div class="you-row" role="radiogroup" aria-label="Which one are you?">
+      <span class="label">Which one are you?</span>
+      <div class="you-chips" id="you-${m.id}"></div>
+    </div>
+    <button class="cta" type="button" data-confirm="${m.id}">Looks right, get the verdict</button>
+  </div>`;
+}
+
+function renderYouChips(m) {
+  const box = document.getElementById("you-" + m.id);
+  if (!box) return;
+  const names = [...new Set(m.groups.flatMap((g) => [g.me, g.them]).map((s) => String(s || "").trim()).filter(Boolean))];
+  if (m.you && m.you !== "__none" && !names.includes(m.you)) m.you = "";
+  box.innerHTML =
+    names
+      .map((n) => `<button type="button" role="radio" aria-checked="${m.you === n}" class="you-chip${m.you === n ? " on" : ""}" data-you="${esc(n)}">${esc(n)}</button>`)
+      .join("") +
+    `<button type="button" role="radio" aria-checked="${m.you === "__none"}" class="you-chip${m.you === "__none" ? " on" : ""}" data-you="__none">Neither</button>`;
+}
+
+// ---------- rendering: messages and screens ----------
 function messageHTML(m) {
   if (m.role === "user") {
     const shots = m.shots?.length
       ? `<div class="shots">${m.shots.map((s, i) => `<img src="${s}" alt="Screenshot ${i + 1}">`).join("")}</div>`
       : m.shotCount
-        ? `<div class="shot-count">${m.shotCount} screenshot${m.shotCount > 1 ? "s" : ""}</div>`
+        ? `<div class="shot-count">${plural(m.shotCount, "screenshot")}</div>`
         : "";
-    return `<div class="msg user">${shots}${m.text ? `<div class="u-text">${esc(m.text)}</div>` : ""}</div>`;
+    return `<div class="msg user">${shots}${m.text ? `<div class="u-text">${esc(m.text.length > 600 ? m.text.slice(0, 600) + "…" : m.text)}</div>` : ""}</div>`;
   }
-  if (m.kind === "verdict") return `<article class="msg verdict">${verdictHTML(m.verdict, chat?.example)}</article>`;
+  if (m.kind === "verdict") return `<article class="msg verdict">${verdictHTML(m, chat)}</article>`;
+  if (m.kind === "who") return whoHTML(m);
   if (m.kind === "error") return `<div class="msg error"><p class="banner" role="alert">${esc(m.text)}</p></div>`;
   if (m.kind === "thinking")
-    return `<div class="msg reply" id="${m.id}"><div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="step">${esc(m.text)}</span></div></div>`;
+    return `<div class="msg reply" id="${m.id}"><div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="step">${esc(m.text)}</span></div>${
+      m.progress != null ? `<div class="progress" aria-hidden="true"><i style="width:${Math.round(m.progress * 100)}%"></i></div>` : ""
+    }</div>`;
   return `<div class="msg reply" id="${m.id || ""}">${formatReply(m.text)}${m.interrupted ? '<p class="interrupted">Reply stopped before it finished.</p>' : ""}</div>`;
 }
 
-function welcomeHTML() {
+const ICON = {
+  upload: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+  paste: '<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/>',
+  example: '<path d="M12 3v18M5 7h14M7 7l-3 7a3 3 0 0 0 6 0L7 7zM17 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>',
+  read: '<path d="M4 6h16M4 12h10M4 18h7"/>',
+  people: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 20a5 5 0 0 1 5.5-5"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+};
+const svg = (d, size = 22) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+
+function homeHTML() {
   const recent = chats.slice(0, 8);
-  return `<section class="welcome">
-    <h1>Who's <em>actually</em> right?</h1>
-    <p>Add screenshots from both sides of a text argument, or paste the conversation. Arguably finds where it started, who made the stronger case, and every grudge, personal shot and logical fallacy. Then ask it anything about the argument.</p>
-    <label class="dropzone import-zone" for="fileInput">
-      <span class="dz-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
-      </span>
-      <span class="dz-title">Import screenshots</span>
-      <span class="dz-sub">From your photos, both sides of the conversation</span>
-    </label>
-    <ol class="steps">
-      <li><b>1</b><span>Import your screenshots, oldest first.</span></li>
-      <li><b>2</b><span>Add a line of background if it helps, then send.</span></li>
-      <li><b>3</b><span>Ask follow-ups: who should apologize, what to say back, what you might be missing.</span></li>
-    </ol>
-    <button class="link-btn" id="exampleBtn" type="button">See an example verdict</button>
+  const notice = !sampler
+    ? '<p class="notice">Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.</p>'
+    : !maxImages
+      ? '<p class="notice">This view can\'t send screenshots to Claude. Use Paste text instead.</p>'
+      : "";
+  return `<section class="home">
+    ${notice}
+    <div class="home-hero">
+      <h1>Who's <em>actually</em> right?</h1>
+      <p>Import the screenshots. Get a fair verdict you can question.</p>
+    </div>
+    <div class="tiles">
+      <label class="tile tile-primary" for="fileInput">
+        <span class="tile-icon">${svg(ICON.upload, 26)}</span>
+        <span class="tile-text"><span class="tile-title">Import screenshots</span><span class="tile-sub">Both phones, any order, up to ${MAX_IMAGES}</span></span>
+        <span class="tile-go">${svg(ICON.chevron, 20)}</span>
+      </label>
+      <button class="tile" type="button" id="pasteTile">
+        <span class="tile-icon">${svg(ICON.paste)}</span>
+        <span class="tile-title">Paste text</span>
+        <span class="tile-sub">Copied from the chat</span>
+      </button>
+      <button class="tile" type="button" id="exampleTile">
+        <span class="tile-icon">${svg(ICON.example)}</span>
+        <span class="tile-title">See an example</span>
+        <span class="tile-sub">The dishwasher standoff</span>
+      </button>
+    </div>
+    <ul class="how">
+      <li><span class="how-icon">${svg(ICON.read, 18)}</span><span><strong>Reads every message</strong> and merges screenshots from both phones.</span></li>
+      <li><span class="how-icon">${svg(ICON.people, 18)}</span><span><strong>Checks who's who</strong> with you before judging.</span></li>
+      <li><span class="how-icon">${svg(ICON.check, 18)}</span><span><strong>Checks every quote</strong> against what was actually said.</span></li>
+    </ul>
     ${
       recent.length
-        ? `<div class="recent"><h2>Recent arguments</h2><ul>${recent
+        ? `<section class="recent"><h2>Recent</h2><ul>${recent
             .map((c) => {
               const v = verdictsOf(c).at(-1);
-              const meta = v ? (v.winner?.is_draw ? "Even match" : `Winner: ${esc(v.winner?.name)}`) : `${c.messages.length} messages`;
-              return `<li><button type="button" data-chat="${esc(c.id)}"><span class="r-title">${esc(c.title)}</span><span class="r-meta">${meta}</span></button></li>`;
+              const names = v ? (v.participants || []).map((p) => p.name).slice(0, 2) : [];
+              const meta = v ? (v.winner?.is_draw ? "Even match" : `${esc(v.winner?.name)} won`) : "No verdict yet";
+              return `<li><button type="button" data-chat="${esc(c.id)}">
+                <span class="pair" aria-hidden="true">${(names.length ? names : ["?"])
+                  .map((n, i) => `<span style="background:${PALETTE[i].bg};color:${PALETTE[i].fg}">${esc(String(n).trim().charAt(0).toUpperCase())}</span>`)
+                  .join("")}</span>
+                <span class="r-main"><span class="r-title">${esc(c.title)}</span><span class="r-meta">${meta} · ${relTime(c.updatedAt || c.createdAt)}</span></span>
+                <span class="r-go">${svg(ICON.chevron, 18)}</span>
+              </button></li>`;
             })
-            .join("")}</ul></div>`
+            .join("")}</ul></section>`
         : ""
     }
   </section>`;
 }
 
+function emptyChatHTML() {
+  return `<section class="start-hint">
+    <h2>New argument</h2>
+    <p>${pending.length ? "Add a note if it helps, like how you know each other, then send." : "Import screenshots with the image button, or paste the conversation below. Include names if you paste, like “Maya: …”."}</p>
+  </section>`;
+}
+
 function render() {
+  const onHome = !chat;
+  document.body.classList.toggle("on-home", onHome);
+  $("backBtn").hidden = onHome;
+  $("homeBtn").hidden = !onHome;
+  $("chatTitle").hidden = onHome;
+  $("newBtn").hidden = onHome;
+  $("chatTitle").textContent = chat?.title || "";
+  $("composer").hidden = onHome;
+
   const thread = $("thread");
-  thread.innerHTML = chat?.messages.length ? chat.messages.map(messageHTML).join("") : welcomeHTML();
+  thread.innerHTML = onHome ? homeHTML() : chat.messages.length ? chat.messages.map(messageHTML).join("") : emptyChatHTML();
+  const who = pendingWho();
+  if (who) renderYouChips(who);
   renderSuggestions();
   renderComposer();
-  const top = chat?.messages.length ? document.documentElement.scrollHeight : 0;
-  requestAnimationFrame(() => window.scrollTo({ top }));
+  // New verdicts and who's-who cards open at their top; everything else follows the latest message.
+  requestAnimationFrame(() => {
+    const last = !onHome && chat.messages.at(-1);
+    let top = last ? document.documentElement.scrollHeight : 0;
+    if (last && (last.kind === "verdict" || last.kind === "who")) {
+      const el = thread.lastElementChild;
+      if (el) top = el.getBoundingClientRect().top + window.scrollY - $("thread").offsetTop + 8;
+    }
+    window.scrollTo({ top });
+  });
 }
 
 function renderSuggestions() {
@@ -351,131 +543,306 @@ function renderComposer() {
         <button class="remove" type="button" data-remove="${p.id}" aria-label="Remove screenshot ${i + 1}"><span>
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span></button></div>`
       )
-      .join("") + (pending.length ? '<span class="attach-hint">Sent in this order. Add them oldest first.</span>' : "");
+      .join("") + (pending.length ? '<span class="attach-hint">Any order works. We line them up by the messages.</span>' : "");
   const form = $("composer");
   form.classList.toggle("busy", !!busy);
+  const waitingOnWho = !!pendingWho();
   const hasInput = pending.length > 0 || $("messageInput").value.trim().length > 0;
-  $("sendBtn").disabled = !busy && (!sampler || !hasInput);
+  $("sendBtn").disabled = !busy && (!sampler || !hasInput || waitingOnWho);
   $("sendBtn").setAttribute("aria-label", busy ? "Stop" : "Send");
-  $("attachBtn").classList.toggle("disabled", !!busy);
-  $("messageInput").placeholder = pending.length
-    ? "Add a note, or just send"
-    : verdictsOf(chat).length
-      ? "Ask about this argument"
-      : "Or paste the conversation";
-  document.documentElement.style.setProperty("--composer-h", form.offsetHeight + "px");
+  $("attachBtn").classList.toggle("disabled", !!busy || waitingOnWho);
+  $("messageInput").disabled = waitingOnWho;
+  $("messageInput").placeholder = waitingOnWho
+    ? "Confirm who's who first"
+    : pending.length
+      ? "Add a note, or just send"
+      : verdictsOf(chat).length
+        ? "Ask about this argument"
+        : "Or paste the conversation";
+  document.documentElement.style.setProperty("--composer-h", (form.hidden ? 0 : form.offsetHeight) + "px");
 }
 
-function updateMessage(id, html) {
-  const el = document.getElementById(id);
-  if (el) el.outerHTML = html;
+function updateThinking(m, text, progress) {
+  m.text = text;
+  if (progress != null) m.progress = progress;
+  const el = document.getElementById(m.id);
+  if (el) el.outerHTML = messageHTML(m);
 }
 
-// ---------- screenshots ----------
-async function fileToShot(file) {
-  const img = await new Promise((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = () => reject(new Error("decode"));
-    el.src = URL.createObjectURL(file);
+// ---------- screenshots: import, dedupe, smart slicing ----------
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = url;
   });
-  const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+}
+
+// 64-bit average hash: near-identical screenshots get near-identical hashes.
+function imageHash(img) {
   const c = document.createElement("canvas");
-  c.width = Math.round(img.width * scale);
-  c.height = Math.round(img.height * scale);
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, c.width, c.height);
-  ctx.drawImage(img, 0, 0, c.width, c.height);
-  URL.revokeObjectURL(img.src);
-  return { id: uid(), url: c.toDataURL("image/jpeg", 0.88) };
+  c.width = 8;
+  c.height = 16;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, 8, 16);
+  const d = ctx.getImageData(0, 0, 8, 16).data;
+  const lum = [];
+  for (let i = 0; i < d.length; i += 4) lum.push(d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11);
+  const avg = lum.reduce((a, b) => a + b, 0) / lum.length;
+  return lum.map((v) => (v > avg ? 1 : 0));
+}
+const hashDistance = (a, b) => a.reduce((n, bit, i) => n + (bit !== b[i] ? 1 : 0), 0);
+
+async function fileToShot(file) {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(src);
+    const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * scale);
+    c.height = Math.round(img.height * scale);
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return { id: uid(), url: c.toDataURL("image/jpeg", 0.88), hash: imageHash(c) };
+  } finally {
+    URL.revokeObjectURL(src);
+  }
 }
 
 async function addFiles(fileList) {
   const files = [...fileList].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
   if (!files.length) return;
-  const limit = Math.min(MAX_IMAGES, maxImages || MAX_IMAGES);
-  const room = limit - pending.length;
-  if (room <= 0) return toast(`You can send up to ${limit} screenshots at a time.`);
-  if (files.length > room) toast(`Added ${room}. The limit is ${limit} screenshots at a time.`);
+  ensureChat();
+  const room = MAX_IMAGES - pending.length;
+  if (room <= 0) return toast(`You can import up to ${MAX_IMAGES} screenshots at a time.`);
+  if (files.length > room) toast(`Added ${room}. The limit is ${MAX_IMAGES} screenshots at a time.`);
   let failed = 0;
+  let dupes = 0;
   for (const f of files.slice(0, room)) {
     try {
-      pending.push(await fileToShot(f));
+      const shot = await fileToShot(f);
+      if (pending.some((p) => hashDistance(p.hash, shot.hash) <= 3)) dupes++;
+      else pending.push(shot);
     } catch {
       failed++;
     }
-    renderComposer();
   }
-  if (failed) toast(`We couldn't open ${failed} image${failed > 1 ? "s" : ""}. Try PNG or JPEG.`);
-  else if (pending.length) toast(`${pending.length} screenshot${pending.length > 1 ? "s" : ""} ready. Tap send for the verdict.`);
+  render();
+  const notes = [];
+  if (failed) notes.push(`${failed} couldn't be opened`);
+  if (dupes) notes.push(`skipped ${plural(dupes, "duplicate")}`);
+  toast(pending.length ? `${plural(pending.length, "screenshot")} ready${notes.length ? ` (${notes.join(", ")})` : ""}. Tap send.` : "We couldn't open those images. Try PNG or JPEG.");
 }
 
-// Claude sees images at about 1.2 megapixels, so tall screenshots are cut into
-// overlapping slices to keep the text readable.
-async function sliceShots(urls) {
-  const load = (url) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-  const imgs = await Promise.all(urls.map(load));
-  const parts = imgs.map((im) => Math.max(1, Math.ceil(im.height / (im.width * 1.15))));
-  while (parts.reduce((a, b) => a + b, 0) > maxImages && parts.some((p) => p > 1)) parts[parts.indexOf(Math.max(...parts))]--;
-  const blobs = [];
-  const labels = [];
-  imgs.forEach((im, s) => {
-    const n = parts[s];
-    const overlap = n > 1 ? Math.round(im.width * 0.08) : 0;
-    const step = Math.ceil(im.height / n);
-    for (let p = 0; p < n; p++) {
-      const y0 = Math.max(0, p * step - overlap);
-      const y1 = Math.min(im.height, (p + 1) * step + overlap);
+// Where to cut a tall screenshot: blank rows between bubbles, close to evenly spaced.
+function findCuts(img, parts) {
+  const W = 96;
+  const H = Math.max(1, Math.round((img.height * W) / img.width));
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, W, H);
+  const d = ctx.getImageData(0, 0, W, H).data;
+  const spread = [];
+  for (let y = 0; y < H; y++) {
+    let min = 255;
+    let max = 0;
+    for (let x = 6; x < W - 6; x++) {
+      const i = (y * W + x) * 4;
+      const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+      if (l < min) min = l;
+      if (l > max) max = l;
+    }
+    spread.push(max - min);
+  }
+  const cuts = [];
+  const step = H / parts;
+  for (let k = 1; k < parts; k++) {
+    const target = k * step;
+    const win = step * 0.18;
+    let best = null;
+    for (let y = Math.max(2, Math.floor(target - win)); y <= Math.min(H - 3, Math.ceil(target + win)); y++) {
+      const blank = spread[y - 1] < 10 && spread[y] < 10 && spread[y + 1] < 10;
+      if (blank && (best === null || Math.abs(y - target) < Math.abs(best - target))) best = y;
+    }
+    cuts.push({ y: Math.round(((best ?? target) * img.height) / H), clean: best !== null });
+  }
+  return cuts;
+}
+
+// Claude sees each image at about 1.2 megapixels, so tall screenshots are cut into
+// readable slices: in the blank space between bubbles where possible.
+async function sliceShots(shots) {
+  const slices = [];
+  for (const s of shots) {
+    const im = await loadImage(s.url);
+    const parts = Math.max(1, Math.min(4, Math.ceil(im.height / (im.width * 1.15))));
+    const cuts = parts > 1 ? findCuts(im, parts) : [];
+    const bounds = [0, ...cuts.map((c) => c.y), im.height];
+    for (let p = 0; p < parts; p++) {
+      const overlapTop = p > 0 && !cuts[p - 1].clean ? Math.round(im.width * 0.06) : 0;
+      const overlapBottom = p < parts - 1 && !cuts[p].clean ? Math.round(im.width * 0.06) : 0;
+      const y0 = Math.max(0, bounds[p] - overlapTop);
+      const y1 = Math.min(im.height, bounds[p + 1] + overlapBottom);
       const c = document.createElement("canvas");
       c.width = im.width;
       c.height = y1 - y0;
       c.getContext("2d").drawImage(im, 0, y0, im.width, c.height, 0, 0, im.width, c.height);
-      blobs.push(new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)));
-      labels.push(
-        n > 1
-          ? `Image ${blobs.length}: screenshot ${s + 1}, part ${p + 1} of ${n} (top to bottom; slices overlap slightly)`
-          : `Image ${blobs.length}: screenshot ${s + 1}`
-      );
+      slices.push({ n: s.n, part: p + 1, parts, blob: await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)) });
     }
-  });
-  return { blobs: await Promise.all(blobs), labels };
+  }
+  return slices;
 }
 
-// ---------- talking to Claude ----------
-function verdictPrompt({ labels, note, transcript, earlier }) {
+// ---------- Claude: reading, judging, chatting ----------
+function batchSlices(slices, size) {
+  // Keep a screenshot's slices together when that doesn't overflow a batch.
+  const batches = [];
+  let cur = [];
+  for (let i = 0; i < slices.length; ) {
+    const shot = slices.filter((s) => s.n === slices[i].n);
+    if (cur.length && cur.length + shot.length > size) {
+      batches.push(cur);
+      cur = [];
+    }
+    for (const s of shot) {
+      if (cur.length === size) {
+        batches.push(cur);
+        cur = [];
+      }
+      cur.push(s);
+    }
+    i += shot.length;
+  }
+  if (cur.length) batches.push(cur);
+  return batches;
+}
+
+async function readScreenshots(shots, thinking, signal) {
+  const slices = await sliceShots(shots);
+  const batches = batchSlices(slices, Math.max(1, maxImages));
+  const bySlice = [];
+  for (let b = 0; b < batches.length; b++) {
+    const batch = batches[b];
+    updateThinking(thinking, batches.length > 1 ? `Reading screenshots · part ${b + 1} of ${batches.length}` : "Reading every message", b / (batches.length + 1));
+    const labels = batch.map((s, i) => `Image ${i + 1}: screenshot ${s.n}${s.parts > 1 ? `, slice ${s.part} of ${s.parts} (top to bottom)` : ""}`);
+    const out = await sampler.json(`${TRANSCRIBE_RULES}\n\nImages in this batch:\n${labels.join("\n")}`, {
+      images: batch.map((s) => s.blob),
+      modelTier: "default",
+      signal,
+    });
+    if (!out || !Array.isArray(out.messages)) throw { code: "invalid_json" };
+    batch.forEach((s, i) => {
+      const info = (out.images || []).find((x) => Number(x.image) === i + 1) || {};
+      const msgs = out.messages
+        .filter((m) => Number(m.image) === i + 1)
+        .map((m) => ({ ...m, part: s.part, text: String(m.text ?? "") }))
+        .sort((a, c) => (Number(a.y) || 0) - (Number(c.y) || 0));
+      bySlice.push({ n: s.n, part: s.part, header: String(info.header_name || "").trim(), app: info.app || "", msgs });
+    });
+  }
+  // One reading per screenshot: header from its top slice, slices joined without repeats.
+  return shots.map((s) => {
+    const parts = bySlice.filter((x) => x.n === s.n).sort((a, b) => a.part - b.part);
+    const msgs = joinSlices(parts.flatMap((p) => p.msgs));
+    return {
+      n: s.n,
+      header: parts.find((p) => p.header)?.header || "",
+      app: parts[0]?.app || "",
+      isGroup: msgs.some((m) => m.side === "left" && String(m.sender_label || "").trim()),
+      msgs,
+    };
+  });
+}
+
+async function runImport(shots, note) {
+  const thinking = { id: uid(), role: "assistant", kind: "thinking", text: "Preparing screenshots", progress: 0, transient: true };
+  chat.messages.push(thinking);
+  busy = { ctl: new AbortController() };
+  render();
+  try {
+    const numbered = shots.map((s, i) => ({ ...s, n: chat.shotTotal + i + 1 }));
+    const readings = await readScreenshots(numbered, thinking, busy.ctl.signal);
+    const messageCount = readings.reduce((a, r) => a + r.msgs.filter((m) => m.side !== "center").length, 0);
+    if (!messageCount) throw { code: "no_messages" };
+    chat.shotTotal += shots.length;
+    chat.readings.push(...readings);
+    const groups = defaultMapping(phoneGroups(readings), chat.groups);
+    chat.messages = chat.messages.filter((m) => m !== thinking);
+    chat.messages.push({
+      id: uid(), role: "assistant", kind: "who", status: "pending", groups, note, readingNs: readings.map((r) => r.n),
+      you: chat.you || "", shotCount: shots.length, messageCount,
+    });
+  } catch (err) {
+    chat.messages = chat.messages.filter((m) => m !== thinking);
+    if (err?.code !== "cancelled") chat.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
+  } finally {
+    busy = null;
+    saveChats();
+    render();
+  }
+}
+
+function confirmWho(id) {
+  const m = chat.messages.find((x) => x.id === id);
+  if (!m || m.status !== "pending") return;
+  m.groups.forEach((g, i) => {
+    for (const side of ["them", "me"]) {
+      const input = document.getElementById(`who-${m.id}-${i}-${side}`);
+      if (input) g[side] = input.value.trim() || (side === "me" ? "Me" : "Them");
+    }
+  });
+  m.status = "done";
+  chat.you = m.you === "__none" ? "" : m.you;
+  m.you = chat.you;
+  // Remember names per phone for the next import in this chat.
+  chat.groups = [...m.groups, ...chat.groups.filter((g) => !m.groups.some((x) => x.key === g.key))];
+  const readings = chat.readings.filter((r) => m.readingNs.includes(r.n));
+  chat.transcript = buildTranscript(readings, m.groups, chat.transcript);
+  runVerdict(m.note);
+}
+
+function verdictPrompt(note) {
+  const earlier = verdictsOf(chat).at(-1);
+  const convo = chat.transcript.length ? transcriptText(chat.transcript) : chat.raw;
   let p = SYSTEM_PROMPT;
-  if (labels.length) p += "\n\nThe screenshots are attached as images, in this order:\n" + labels.join("\n");
-  if (transcript) p += "\n\nThe conversation was pasted as text instead of screenshots:\n<conversation>\n" + transcript.slice(0, 40000) + "\n</conversation>";
-  if (earlier) p += `\n\nThis chat already has an earlier verdict ("${earlier.title}"). If these screenshots continue that argument, judge the whole argument; otherwise judge them on their own.`;
-  if (note) p += "\n\nMessage from the person who uploaded these (background, not evidence):\n" + note.slice(0, 2000);
-  p += "\n\nReply with only one JSON object that matches this JSON Schema exactly (every key present, no extra keys):\n" + JSON.stringify(VERDICT_SCHEMA);
+  p += chat.transcript.length
+    ? "\n\nThe screenshots have already been read for you. Below is the full transcript, with both phones merged and speakers confirmed by the person who uploaded them. Work only from this transcript and quote messages exactly as written in it."
+    : "\n\nThe conversation was pasted as text instead of screenshots. Quote messages exactly as written in it.";
+  p += `\n\n<conversation>\n${convo.slice(-45000)}\n</conversation>`;
+  if (chat.you) p += `\n\nThe person asking is ${chat.you}. Judge both sides by the same standard regardless.`;
+  if (earlier) p += `\n\nYou gave an earlier verdict in this chat ("${earlier.title}"). New screenshots were added since; judge the whole conversation as it stands now.`;
+  if (note) p += `\n\nNote from the person who uploaded this (background, not evidence):\n${note.slice(0, 2000)}`;
+  p += `\n\nReply with only one JSON object that matches this JSON Schema exactly (every key present, no extra keys):\n${JSON.stringify(VERDICT_SCHEMA)}`;
   return p;
 }
 
 const looksLikeVerdict = (v) => v && typeof v === "object" && v.winner && v.origin && Array.isArray(v.participants);
 
-async function runVerdict({ shotUrls, note, transcript }) {
-  const earlier = verdictsOf(chat).at(-1);
+async function runVerdict(note) {
   const thinking = { id: uid(), role: "assistant", kind: "thinking", text: VERDICT_STEPS[0], transient: true };
   chat.messages.push(thinking);
-  busy = { ctl: new AbortController(), kind: "verdict" };
+  busy = { ctl: new AbortController() };
   render();
   let step = 0;
   const timer = setInterval(() => {
     step = Math.min(step + 1, VERDICT_STEPS.length - 1);
-    const el = document.querySelector(`#${thinking.id} .step`);
-    if (el) el.textContent = VERDICT_STEPS[step];
-  }, 6000);
+    updateThinking(thinking, VERDICT_STEPS[step]);
+  }, 7000);
   try {
-    const { blobs, labels } = shotUrls.length ? await sliceShots(shotUrls) : { blobs: [], labels: [] };
-    const opts = { modelTier: "complex", signal: busy.ctl.signal };
-    if (blobs.length) opts.images = blobs;
-    const verdict = await sampler.json(verdictPrompt({ labels, note, transcript, earlier }), opts);
+    const verdict = await sampler.json(verdictPrompt(note), { modelTier: "complex", signal: busy.ctl.signal });
     if (!looksLikeVerdict(verdict)) throw { code: "invalid_json" };
     for (const k of ["subjects", "grudges", "personal_shots", "fallacies"]) if (!Array.isArray(verdict[k])) verdict[k] = [];
     chat.messages = chat.messages.filter((m) => m !== thinking);
-    chat.messages.push({ id: uid(), role: "assistant", kind: "verdict", verdict });
+    chat.messages.push({
+      id: uid(), role: "assistant", kind: "verdict", verdict,
+      unverified: unverifiedQuotes(verdict, chat.transcript, chat.raw),
+      transcript: chat.transcript.length ? chat.transcript.slice() : undefined,
+    });
     chat.title = verdict.title || chat.title;
   } catch (err) {
     chat.messages = chat.messages.filter((m) => m !== thinking);
@@ -489,31 +856,32 @@ async function runVerdict({ shotUrls, note, transcript }) {
 }
 
 function chatTurns() {
-  const verdicts = verdictsOf(chat).slice(-3);
+  const verdicts = verdictsOf(chat).slice(-2);
+  let convo = chat.transcript.length ? transcriptText(chat.transcript) : chat.raw;
+  if (convo.length > 30000) convo = convo.slice(0, 4000) + "\n[...middle of the conversation omitted...]\n" + convo.slice(-26000);
   const context =
     CHAT_RULES +
-    (verdicts.length
-      ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n")
-      : "\n\nNo verdict has been given yet.");
-  let vCount = 0;
+    (chat.you ? `\n\nThe person you're talking with is ${chat.you}.` : "") +
+    (convo ? `\n\n<conversation>\n${convo}\n</conversation>` : "") +
+    (verdicts.length ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n") : "\n\nNo verdict has been given yet.");
   const turns = [];
   for (const m of chat.messages) {
-    if (m.transient || m.kind === "error" || m.kind === "thinking") continue;
+    if (m.transient || m.kind === "error" || m.kind === "thinking" || m.kind === "who") continue;
     if (m.role === "user") {
-      const shots = m.shotCount || m.shots?.length ? `(shared ${m.shotCount || m.shots.length} screenshots) ` : "";
-      const content = (shots + (m.text || "")).trim();
-      if (content) turns.push({ role: "user", content });
+      const n = m.shotCount || m.shots?.length;
+      const content = ((n ? `(imported ${plural(n, "screenshot")}) ` : "") + (m.text || "")).trim();
+      if (content) turns.push({ role: "user", content: content.slice(0, 4000) });
     } else if (m.kind === "verdict") {
-      vCount++;
       const w = m.verdict.winner || {};
       turns.push({ role: "assistant", content: `I gave my verdict "${m.verdict.title}": ${w.is_draw ? "an even match" : `${w.name} made the stronger case`} (${w.confidence}% confidence). Full details are in the verdict JSON above.` });
     } else if (m.text) {
       turns.push({ role: "assistant", content: m.text });
     }
   }
-  // Keep the request under the 64 KiB limit: drop the oldest turns, never the context.
+  // Stay under the 64 KiB limit: drop the oldest turns, never the context.
   let recent = turns.slice(-24);
-  while (recent.length > 1 && new TextEncoder().encode(context + JSON.stringify(recent)).length > 60000) recent = recent.slice(1);
+  const size = () => new TextEncoder().encode(context + JSON.stringify(recent)).length;
+  while (recent.length > 1 && size() > 60000) recent = recent.slice(1);
   while (recent.length && recent[0].role !== "user") recent = recent.slice(1);
   return [{ role: "user", content: context }, ...recent];
 }
@@ -521,7 +889,7 @@ function chatTurns() {
 async function runChat() {
   const reply = { id: uid(), role: "assistant", kind: "thinking", text: "Thinking", transient: true };
   chat.messages.push(reply);
-  busy = { ctl: new AbortController(), kind: "chat" };
+  busy = { ctl: new AbortController() };
   render();
   let streamed = "";
   try {
@@ -530,7 +898,8 @@ async function runChat() {
       signal: busy.ctl.signal,
       onText: ({ text }) => {
         streamed = text;
-        updateMessage(reply.id, `<div class="msg reply" id="${reply.id}">${formatReply(text)}</div>`);
+        const el = document.getElementById(reply.id);
+        if (el) el.outerHTML = `<div class="msg reply" id="${reply.id}">${formatReply(text)}</div>`;
         window.scrollTo({ top: document.documentElement.scrollHeight });
       },
     });
@@ -547,24 +916,44 @@ async function runChat() {
   }
 }
 
+async function runPasted(text) {
+  chat.raw = (chat.raw ? chat.raw + "\n" : "") + text;
+  return runVerdict("");
+}
+
 async function send(textOverride) {
-  if (busy) return;
-  if (!sampler) return;
+  if (busy || !sampler || pendingWho()) return;
   const input = $("messageInput");
   const text = (textOverride ?? input.value).trim();
-  const shots = pending.map((p) => p.url);
+  const shots = pending.slice();
   if (!text && !shots.length) return;
   ensureChat();
-  // Drop stale error banners once the person tries again.
   chat.messages = chat.messages.filter((m) => m.kind !== "error");
-  chat.messages.push({ id: uid(), role: "user", text, shots, shotCount: shots.length });
+  chat.messages.push({ id: uid(), role: "user", text, shots: shots.map((s) => s.url), shotCount: shots.length });
   pending = [];
   input.value = "";
   autosize();
-  if (shots.length) return runVerdict({ shotUrls: shots, note: text });
+  if (shots.length) return runImport(shots, text);
   // A long paste before any verdict is treated as the conversation itself.
-  if (!verdictsOf(chat).length && text.length >= 80) return runVerdict({ shotUrls: [], transcript: text });
+  if (!verdictsOf(chat).length && text.length >= 80) return runPasted(text);
   return runChat();
+}
+
+function openExample() {
+  chat = {
+    ...newChatObject(),
+    id: "example",
+    example: true,
+    title: SAMPLE_VERDICT.title,
+    transcript: SAMPLE_TRANSCRIPT,
+    you: "Maya",
+    messages: [
+      { id: uid(), role: "user", text: "Who's right here? We're roommates.", shotCount: 2 },
+      { id: uid(), role: "assistant", kind: "who", status: "done", groups: [{ me: "Maya", them: "Jordan" }], you: "Maya" },
+      { id: uid(), role: "assistant", kind: "verdict", verdict: SAMPLE_VERDICT, unverified: [], transcript: SAMPLE_TRANSCRIPT },
+    ],
+  };
+  render();
 }
 
 // ---------- wiring ----------
@@ -593,7 +982,7 @@ $("fileInput").addEventListener("change", async (e) => {
 });
 document.addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.files || [])];
-  if (files.length && !busy) {
+  if (files.length && !busy && !pendingWho()) {
     e.preventDefault();
     addFiles(files);
   }
@@ -601,40 +990,60 @@ document.addEventListener("paste", (e) => {
 document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => {
   e.preventDefault();
-  if (e.dataTransfer?.files?.length && !busy) addFiles(e.dataTransfer.files);
+  if (e.dataTransfer?.files?.length && !busy && !pendingWho()) addFiles(e.dataTransfer.files);
 });
 $("attachStrip").addEventListener("click", (e) => {
   const b = e.target.closest("[data-remove]");
   if (!b) return;
   pending = pending.filter((p) => p.id !== b.dataset.remove);
-  renderComposer();
+  render();
 });
 $("suggestions").addEventListener("click", (e) => {
   const b = e.target.closest("[data-say]");
   if (b) send(b.dataset.say);
 });
+$("thread").addEventListener("input", (e) => {
+  const input = e.target.closest(".who input");
+  if (!input) return;
+  const m = pendingWho();
+  if (!m) return;
+  m.groups[Number(input.dataset.g)][input.dataset.side] = input.value.trim();
+  renderYouChips(m);
+});
 $("thread").addEventListener("click", (e) => {
-  if (e.target.closest("#exampleBtn")) {
-    chat = {
-      id: "example",
-      example: true,
-      title: SAMPLE_VERDICT.title,
-      messages: [
-        { id: uid(), role: "user", text: "Who's right here? We're roommates.", shotCount: 3 },
-        { id: uid(), role: "assistant", kind: "verdict", verdict: SAMPLE_VERDICT },
-      ],
-    };
+  const t = e.target;
+  if (t.closest("#exampleTile")) return openExample();
+  if (t.closest("#pasteTile")) {
+    ensureChat();
     render();
+    $("messageInput").focus();
     return;
   }
-  const open = e.target.closest("[data-chat]");
+  const you = t.closest("[data-you]");
+  if (you) {
+    const m = pendingWho();
+    if (m) {
+      m.you = m.you === you.dataset.you ? "" : you.dataset.you;
+      renderYouChips(m);
+    }
+    return;
+  }
+  const confirm = t.closest("[data-confirm]");
+  if (confirm) return confirmWho(confirm.dataset.confirm);
+  const open = t.closest("[data-chat]");
   if (open) {
-    chat = chats.find((c) => c.id === open.dataset.chat) || null;
+    const saved = chats.find((c) => c.id === open.dataset.chat);
+    chat = saved ? newChatObject(saved) : null;
     render();
   }
 });
-$("newBtn").addEventListener("click", newChat);
-$("homeBtn").addEventListener("click", newChat);
+$("newBtn").addEventListener("click", () => {
+  goHome();
+  ensureChat();
+  render();
+});
+$("backBtn").addEventListener("click", goHome);
+$("homeBtn").addEventListener("click", goHome);
 window.addEventListener("resize", renderComposer);
 
 render();
@@ -649,7 +1058,7 @@ render();
   }
   const notice = $("notice");
   if (!sampler) {
-    notice.textContent = "Open Arguably on claude.ai while signed in to chat with it. You can still see the example verdict.";
+    notice.textContent = "Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.";
     notice.hidden = false;
   } else if (!maxImages) {
     notice.textContent = "This view can't send screenshots to Claude. Paste the conversation as text instead.";

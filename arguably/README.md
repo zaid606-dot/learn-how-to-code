@@ -30,7 +30,13 @@ To open it on your phone, run it on your computer and visit `http://<your-comput
 
 ## Use it without a server (claude.ai Artifact)
 
-`node scripts/build-artifact.mjs` builds `dist/arguably.html` from `artifact/` (chat UI) plus the shared styles, schema and prompt. It's a chat app: send screenshots or paste the conversation, get the verdict as a message, then ask follow-ups (who should apologize, draft a reply, and so on). It talks to Claude through the Artifact `sample` capability, so published as a claude.ai Artifact with `capabilities: {sample: {}}` it runs on the signed-in viewer's own Claude plan with no API key or hosting. Tall screenshots are cut into overlapping slices so the text stays readable.
+`node scripts/build-artifact.mjs` builds `dist/arguably.html` from `artifact/` (chat UI) plus the shared styles, schema and prompt. It's a chat app: send screenshots or paste the conversation, get the verdict as a message, then ask follow-ups (who should apologize, draft a reply, and so on). It talks to Claude through the Artifact `sample` capability, so published as a claude.ai Artifact with `capabilities: {sample: {}}` it runs on the signed-in viewer's own Claude plan with no API key or hosting. How screenshots are handled (`artifact/pipeline.cjs`, tested in `test/pipeline.test.js`):
+
+1. On the device: duplicates are skipped, and tall screenshots are cut in the blank space between bubbles so text stays readable at Claude's image size.
+2. Claude reads every message in batches (as many images per call as the view allows), so up to 30 screenshots can go in at once.
+3. "Who's who": each phone shows its owner on the right, so names are inferred per phone from the chat header and confirmed by the person before judging.
+4. Both phones are merged into one transcript using overlapping messages, in any import order; stretches that don't overlap are marked as possible gaps.
+5. Claude judges the transcript. Every quote in the verdict is checked against it, and quotes that can't be found are flagged. Follow-up questions get the full transcript.
 
 ## How it works
 
