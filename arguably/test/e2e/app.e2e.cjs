@@ -1,6 +1,6 @@
 // End-to-end tests for the Artifact build. Run: npm run test:e2e
 // Needs vendor/ocr (scripts/fetch-ocr.sh) and Playwright with Chromium.
-const { test, before, after } = require("node:test");
+const { test, before, after, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { chromium, devices, build, serve, makeFixtures, layoutProblems, OUT } = require("./harness.cjs");
@@ -8,15 +8,20 @@ const { chromium, devices, build, serve, makeFixtures, layoutProblems, OUT } = r
 let browser;
 let fixtures;
 const servers = [];
+const contexts = [];
 
 before(async () => {
   build();
   browser = await chromium.launch();
   fixtures = await makeFixtures(browser);
 });
+// Close each test's pages so background work (OCR workers, streams) can't slow the next test.
+afterEach(async () => {
+  while (contexts.length) await contexts.pop().close();
+  while (servers.length) servers.pop().close();
+});
 after(async () => {
   await browser?.close();
-  for (const s of servers) s.close();
 });
 
 // A phone-sized page running the app with the given stub configuration.
@@ -25,6 +30,7 @@ async function openApp(stubConfig, { width } = {}) {
   servers.push(server);
   const device = devices["iPhone 13"];
   const context = await browser.newContext(width ? { ...device, viewport: { width, height: 800 } } : device);
+  contexts.push(context);
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -45,6 +51,17 @@ async function importFrom(page, selector, files) {
   await page.waitForFunction(() => /ready|couldn't/.test(document.getElementById("toast")?.textContent || ""));
 }
 
+// Polls from Node rather than from inside the page, so in-page timer throttling in headless
+// Chromium can't delay the check (it measured 30s for a card that appeared in under 1s).
+async function waitUntil(page, fn, timeout = 30000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (await page.evaluate(fn)) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`timed out after ${timeout} ms waiting for ${fn}`);
+}
+
 async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, `${name}.png`) });
 }
@@ -52,6 +69,7 @@ async function shot(page, name) {
 test("home screen: loads cleanly and fits phones", async () => {
   for (const width of [undefined, 360]) {
     const { page, errors } = await openApp({}, { width });
+    await page.waitForTimeout(700); // let the entrance animation settle before the screenshot
     await shot(page, `home-${width || 390}`);
     assert.deepEqual(errors, []);
     assert.deepEqual(await layoutProblems(page), []);
@@ -115,9 +133,10 @@ test("Claude iPhone app (no images): screenshots are read on the phone", async (
   await importFrom(page, HOME_IMPORT, [fixtures.darkGroup]);
   const started = Date.now();
   await page.click("#sendBtn");
-  await page.waitForSelector(".msg.who:not(.done), .msg.error", { timeout: 90000 });
-  assert.equal(await page.locator(".msg.error").count(), 0, await page.locator(".msg.error").innerText().catch(() => ""));
+  await waitUntil(page, () => !!document.querySelector(".msg.who:not(.done), .msg.error"), 90000);
   const readMs = Date.now() - started;
+  const error = await page.evaluate(() => document.querySelector(".msg.error")?.innerText || "");
+  assert.equal(error, "", "reading failed");
   assert.ok(!(await calls()).some((c) => c.images > 0), "no images sent to Claude");
   await page.click("[data-confirm]");
   await page.waitForSelector(".msg.verdict", { timeout: 15000 });
@@ -126,6 +145,7 @@ test("Claude iPhone app (no images): screenshots are read on the phone", async (
     assert.match(transcript, expected);
   }
   console.log(`  on-device reading took ${readMs} ms`);
+  assert.ok(readMs < 15000, `on-device reading should take seconds, took ${readMs} ms`);
   assert.deepEqual(errors, []);
 });
 
