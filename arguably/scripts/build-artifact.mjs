@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { verdictSchema } from "../src/schema.js";
 import { sampleVerdict } from "../src/sample.js";
 import { SYSTEM_PROMPT } from "../src/analyze.js";
+import { provider } from "../api/_ai.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (p) => readFileSync(root + p, "utf8");
@@ -18,10 +19,11 @@ const store = process.argv.includes("--store");
 // --web builds a standalone site for Vercel (web-dist/): the AI is reached through this
 // site's /api functions (see api/) instead of the claude.ai capability.
 const web = process.argv.includes("--web");
+// The website names the AI from the same rule the server uses to pick the provider, so the
+// consent screen always names the company that actually gets the conversation.
+const webProvider = provider();
 const AI = web
-  ? process.env.XAI_API_KEY && !process.env.GROQ_API_KEY
-    ? { name: process.env.AI_NAME || "Grok", maker: process.env.AI_MAKER || "xAI" }
-    : { name: process.env.AI_NAME || "Qwen", maker: process.env.AI_MAKER || "Alibaba, running on Groq" }
+  ? { name: process.env.AI_NAME || webProvider.name, maker: process.env.AI_MAKER || webProvider.maker }
   : { name: "Claude", maker: "Anthropic" };
 const out =
   process.argv.slice(2).find((a) => !a.startsWith("--")) ||
