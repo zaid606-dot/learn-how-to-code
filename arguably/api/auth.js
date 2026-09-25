@@ -129,6 +129,7 @@ export default async function handler(req, res) {
       if (!checkPassword(body.password, user.pw)) return send(res, 401, { code: "wrong_password" });
       await endAllSessions(user.id);
       await redis(["DEL", `chats:${user.id}`]);
+      await redis(["DEL", `deleted:${user.id}`]);
       await redis(["DEL", `prefs:${user.id}`]);
       await redis(["DEL", `user:${user.id}`]);
       await redis(["DEL", `user:email:${user.email}`]);

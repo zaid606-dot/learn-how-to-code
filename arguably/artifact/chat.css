@@ -840,3 +840,24 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .demo-dots { display: flex; justify-content: center; gap: 6px; margin-top: 12px; }
 .demo-dots i { width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--sand-300); transition: width var(--dur-md) var(--ease-out); }
 .demo-dots i.on { width: 18px; background: var(--ember-500); }
+
+/* Account */
+.account { display: grid; gap: 14px; max-width: 460px; margin: 0 auto; padding-bottom: 32px; }
+.account .doc-lede { margin: -4px 0 4px; }
+.auth-form { display: grid; gap: 14px; }
+.auth-form .cta { width: 100%; margin-top: 4px; }
+.auth-form .cta[aria-busy="true"] { opacity: .7; }
+.field-hint { margin: -8px 0 0; font-size: 13px; color: var(--ink-600); }
+.auth-error { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--danger-soft); color: var(--danger); font-size: 14px; line-height: 1.4; }
+.auth-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--success-soft); color: var(--success); font-size: 14px; line-height: 1.4; }
+.text-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 2px; border: 0; background: none; color: var(--ember-700); font: 600 15px/1.2 var(--font-body); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; justify-self: center; }
+.auth-switch, .auth-fine { margin: 0; text-align: center; color: var(--ink-600); font-size: 14px; }
+.auth-fine .text-btn, .auth-switch .text-btn { min-height: 0; font-size: inherit; display: inline; }
+.account-card { display: flex; align-items: center; gap: 14px; padding: 16px; }
+.account-card .set-title { display: block; overflow-wrap: anywhere; }
+.account-card .set-sub { display: block; margin-top: 2px; }
+.account .cta.secondary { width: 100%; }
+.danger-zone { padding: 16px; border: 1.5px solid var(--danger-soft); border-radius: 18px; background: var(--white); }
+.danger-zone h2 { margin: 0; font-size: 18px; color: var(--danger); }
+.danger-zone p { margin: 0; color: var(--ink-600); font-size: 14px; line-height: 1.5; }
+.auth-row { display: flex; gap: 10px; }

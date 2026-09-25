@@ -14,17 +14,12 @@ const xaiCalls = [];
 
 // Fake xAI: reading requests get a transcript, verdict requests the sample verdict, chat streams.
 const realFetch = globalThis.fetch;
-// Fake Upstash Redis for the verdict vault.
-const redis = new Map();
-async function fakeRedis(init) {
-  const [cmd, key, value, nx] = JSON.parse(init.body);
-  if (cmd === "GET") return Response.json({ result: redis.get(key) ?? null });
-  if (nx === "NX" && redis.has(key)) return Response.json({ result: null });
-  redis.set(key, value);
-  return Response.json({ result: "OK" });
-}
+// Fake Upstash Redis for accounts and the verdict vault.
+const { fakeRedis: makeRedis } = require("./fake-redis.cjs");
+const store = makeRedis();
+const redis = { get size() { return [...store.data.keys()].filter((k) => k.startsWith("v:")).length; }, values: () => [...store.data].filter(([k]) => k.startsWith("v:")).map(([, e]) => e.v) };
 async function fakeXai(input, init) {
-  if (String(input).startsWith("https://fake-redis.test")) return fakeRedis(init);
+  if (String(input).startsWith("https://fake-redis.test")) return store.handle(init);
   if (!String(input).startsWith("https://api.groq.com/")) return realFetch(input, init);
   const body = JSON.parse(init.body);
   const prompt = typeof body.messages[0].content === "string" ? body.messages.at(-1).content : body.messages[0].content[0].text;
@@ -60,6 +55,8 @@ before(async () => {
     "/api/chat": (await import(path.join(ROOT, "api/chat.js"))).default,
     "/api/limits": (await import(path.join(ROOT, "api/limits.js"))).default,
     "/api/verdicts": (await import(path.join(ROOT, "api/verdicts.js"))).default,
+    "/api/auth": (await import(path.join(ROOT, "api/auth.js"))).default,
+    "/api/sync": (await import(path.join(ROOT, "api/sync.js"))).default,
   };
   server = http.createServer((req, res) => {
     const p = new URL(req.url, "http://x").pathname;
@@ -176,7 +173,7 @@ test("website build: a shared link opens the full verdict for someone new, then 
 test("website build: the same screenshots get the same verdict on a different phone, without asking the AI again", async () => {
   const phone = async () => {
     const context = await browser.newContext(devices["iPhone 13"]);
-    await context.addInitScript(() => localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25", at: 1 }, aiConsent: true })));
+    await context.addInitScript(() => localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true })));
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -199,7 +196,7 @@ test("website build: the same screenshots get the same verdict on a different ph
   const first = await judge(a.page, [fixtures.mayaPhone, fixtures.jordanPhone]);
   assert.equal(verdictCalls(), before + 1, "judged once");
   assert.equal(redis.size >= 1, true, "locked in the vault");
-  assert.ok([...redis.values()].every((v) => !/Maya|Jordan|2 a\.m/.test(v)), "the server only holds ciphertext");
+  assert.ok(redis.values().every((v) => !/Maya|Jordan|2 a\.m/.test(v)), "the server only holds ciphertext");
 
   // A different phone, screenshots in the other order: the exact same verdict, no AI call.
   const b = await phone();
@@ -207,6 +204,100 @@ test("website build: the same screenshots get the same verdict on a different ph
   assert.deepEqual(second, first);
   assert.equal(verdictCalls(), before + 1, "the AI wasn't asked again");
   assert.ok(await b.page.locator(".msg.verdict .repeat").isVisible(), "labelled as judged before");
+  assert.deepEqual([...a.errors, ...b.errors], []);
+  await a.context.close();
+  await b.context.close();
+});
+
+test("website build: accounts: sign up, chats sync to a second phone, deletes stick, sign out and delete account", async () => {
+  const phone = async () => {
+    const context = await browser.newContext(devices["iPhone 13"]);
+    await context.addInitScript(() => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true })); } });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(url);
+    return { context, page, errors };
+  };
+  const toAccount = async (page) => {
+    await page.click("#settingsBtn");
+    await page.waitForSelector('.settings [data-action="account"]');
+    await page.click('.settings [data-action="account"]');
+    await page.waitForSelector(".account");
+  };
+  const serverChats = () => [...store.data].filter(([k]) => k.startsWith("chats:")).flatMap(([, e]) => [...e.v.keys()]);
+
+  // Phone A: get a verdict first, then create an account; the chat is saved to it.
+  const a = await phone();
+  await a.page.locator('#thread [data-action="paste"]').first().click();
+  await a.page.fill("#messageInput", "Sam: you ate my leftovers again\nPriya: there wasn't a name on it\nSam: third time this month");
+  await a.page.click("#sendBtn");
+  await a.page.waitForSelector(".msg.verdict", { timeout: 30000 });
+  await a.page.click("#backBtn");
+  await toAccount(a.page);
+  assert.equal(await a.page.locator(".page-title").innerText(), "Create your account");
+  await a.page.click('.auth-form [type="submit"]');
+  assert.match(await a.page.locator(".auth-error").innerText(), /email/i, "checked on the phone first");
+  await a.page.fill("#acEmail", "sam@example.com");
+  await a.page.fill("#acPassword", "short");
+  await a.page.click('.auth-form [type="submit"]');
+  assert.match(await a.page.locator(".auth-error").innerText(), /8 characters/);
+  await a.page.fill("#acPassword", "leftovers forever");
+  await a.page.screenshot({ path: path.join(OUT, "web-signup.png") });
+  await a.page.click('.auth-form [type="submit"]');
+  await a.page.waitForSelector('.settings [data-action="account"]');
+  assert.match(await a.page.locator(".settings").innerText(), /sam@example\.com/);
+  await a.page.waitForFunction(() => true);
+  const until = async (fn, ms = 8000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await new Promise((r) => setTimeout(r, 100)); } return false; };
+  assert.ok(await until(() => serverChats().length === 1), "the chat reached the account");
+  const cookies = await a.context.cookies();
+  assert.ok(cookies.find((c) => c.name === "arguably_session")?.httpOnly, "session cookie is HttpOnly");
+  assert.equal(await a.page.evaluate(() => document.cookie.includes("arguably_session")), false, "scripts can't read it");
+
+  // Phone B: sign in, the chat shows up with its verdict.
+  const b = await phone();
+  await toAccount(b.page);
+  await b.page.click('[data-auth-mode="login"]');
+  assert.equal(await b.page.locator(".page-title").innerText(), "Welcome back");
+  await b.page.fill("#acEmail", "sam@example.com");
+  await b.page.fill("#acPassword", "wrong password");
+  await b.page.click('.auth-form [type="submit"]');
+  await b.page.waitForSelector(".auth-error");
+  assert.match(await b.page.locator(".auth-error").innerText(), /don't match/);
+  await b.page.fill("#acPassword", "leftovers forever");
+  await b.page.click('.auth-form [type="submit"]');
+  await b.page.waitForSelector('.settings [data-action="account"]');
+  await b.page.click("#backBtn");
+  await b.page.waitForSelector(".recent [data-chat]");
+  await b.page.click(".recent [data-chat]");
+  await b.page.waitForSelector(".msg.verdict");
+  assert.match(await b.page.locator(".winner-name").innerText(), /\S/);
+
+  // Phone B deletes it; after a reload, phone A doesn't have it either and doesn't bring it back.
+  await b.page.click("#deleteBtn");
+  await b.page.click("#deleteBtn");
+  assert.ok(await until(() => serverChats().length === 0), "deleted in the account");
+  await a.page.reload();
+  await a.page.waitForTimeout(1500);
+  await a.page.click("#homeBtn").catch(() => {});
+  assert.equal(await a.page.locator(".recent [data-chat]").count(), 0, "gone on phone A too");
+  assert.equal(serverChats().length, 0, "not uploaded back");
+
+  // Sign out on A: its chats leave the phone. Delete the account on B.
+  await toAccount(a.page);
+  await a.page.click('[data-action="sign-out"]');
+  await a.page.waitForFunction(() => !document.querySelector(".account"));
+  assert.equal(await a.page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2") || "[]").length), 0);
+  await toAccount(b.page);
+  await b.page.click('[data-action="delete-account"]');
+  await b.page.fill("#acDeletePw", "not it at all");
+  await b.page.click('.danger-zone [type="submit"]');
+  await b.page.waitForSelector(".auth-error");
+  await b.page.screenshot({ path: path.join(OUT, "web-delete-account.png") });
+  await b.page.fill("#acDeletePw", "leftovers forever");
+  await b.page.click('.danger-zone [type="submit"]');
+  await b.page.waitForFunction(() => !document.querySelector(".account"));
+  assert.deepEqual([...store.data.keys()].filter((k) => /^(user|chats|prefs|session|sessions|deleted):/.test(k)), [], "account erased from the server");
   assert.deepEqual([...a.errors, ...b.errors], []);
   await a.context.close();
   await b.context.close();

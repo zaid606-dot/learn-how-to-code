@@ -17,7 +17,8 @@ const SUPPORT_EMAIL = "support@arguably.app";
 const APP_STORE_ID = "";
 const APP_VERSION = "1.0";
 // Bump when the Privacy Policy or Terms change: everyone is asked to agree again.
-const POLICY_VERSION = "2026-09-25";
+// The website version adds accounts and the verdict vault, so its policy is a new version.
+const POLICY_VERSION = HOSTED ? "2026-09-25.2" : "2026-09-25";
 const POLICY_DATE = "September 25, 2026";
 // App Store build only (node scripts/build-artifact.mjs --store). On claude.ai, verdicts run on
 // the viewer's own Claude plan, so there is nothing to gate.
@@ -219,8 +220,9 @@ if (page !== "onboarding" && !policyOk()) {
   gateMode = true;
 }
 
-function savePrefs() {
+function savePrefs(sync = true) {
   storage(() => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)));
+  if (sync) pushPrefs(); // signed in: settings follow you to other phones
 }
 function saveInbox() {
   storage(() => localStorage.setItem(INBOX_KEY, JSON.stringify(inbox.slice(0, 50))));
@@ -271,6 +273,7 @@ function saveChats(c = chat) {
     if (chats.some((x) => x.id === c.id)) {
       chats = chats.filter((x) => x.id !== c.id);
       writeChats();
+      removeFromAccount(c.id);
     }
     return;
   }
@@ -284,6 +287,7 @@ function saveChats(c = chat) {
   chats = all.slice(0, MAX_CHATS);
   let dropped = all.slice(MAX_CHATS);
   let saved = writeChats();
+  queueUpload(clean); // signed in: saved to the account too
   // Out of room: drop the oldest chats until it fits. (If storage can't be used at all, e.g. in
   // a private window, nothing is dropped: chats just live until the page closes.)
   while (saved === false && chats.length > 1) {
@@ -909,6 +913,14 @@ function settingsHTML() {
       <p class="set-foot">Used to spot you in screenshots. Leave it blank if you mostly judge other people's arguments.</p>
     </div>
 
+    ${accountsOn ? `<div class="set-group">
+      <h2>Account</h2>
+      <div class="set-card">
+        ${account
+          ? link('data-action="account"', "person", "navy", esc(account.email), "Chats and settings saved to your account")
+          : link('data-action="account"', "person", "navy", "Create account or sign in", "Save your chats and verdicts, and use them on any phone")}
+      </div>
+    </div>` : ""}
     ${STORE_BUILD ? proSettingsHTML(link) : ""}
     <div class="set-group">
       <h2>Verdicts</h2>
@@ -947,13 +959,13 @@ function settingsHTML() {
         ${link('data-action="export"', "download", "blue", "Export my data", `${plural(saved, "chat")} on this device`)}
         ${
           confirmingDelete
-            ? `<div class="confirm-row" role="alert"><span>Erase all chats, notifications and settings on this device? This can't be undone.</span>
+            ? `<div class="confirm-row" role="alert"><span>Erase all chats, notifications and settings on this device${account ? " and in your account" : ""}? This can't be undone.</span>
                  <button class="ghost-btn" type="button" data-action="delete-cancel">Cancel</button>
                  <button class="danger-btn" type="button" data-action="delete-confirm">Erase everything</button></div>`
             : `<button class="set-row danger-row" type="button" data-action="delete-all">${tile("trash", "red")}${text("Delete all data")}</button>`
         }
       </div>
-      <p class="set-foot">No account. No ads. No tracking. Screenshots are never saved.</p>
+      <p class="set-foot">${account ? "No ads. No tracking. Screenshots are never saved." : "No account needed. No ads. No tracking. Screenshots are never saved."}</p>
     </div>
 
     <div class="set-group">
@@ -1000,15 +1012,20 @@ const DOCS = {
   privacy: {
     title: "Privacy Policy",
     body: () => `<p class="doc-date">Effective ${POLICY_DATE}</p>
-      <p class="doc-lede">Short version: your arguments stay yours. No account, no ads, no tracking, and nothing sold.</p>
-      <h2>What Arguably keeps</h2><p>Only on this device: your chats (the conversation text, who's who and verdicts), your name if you add one, notifications and settings. Arguably has no account system and keeps no copy on a server.</p>
+      ${HOSTED
+        ? `<p class="doc-lede">Short version: your arguments stay yours. Accounts are optional, there are no ads or tracking, and nothing is sold.</p>
+      <h2>What Arguably keeps</h2><p>On this device: your chats (the conversation text, who's who and verdicts), your name if you add one, notifications and settings.</p>
+      <h2>If you create an account</h2><p>Your email, your chats (conversation text, who's who and verdicts) and your settings are also saved on Arguably's servers, so you can use them on any phone you sign in on. Your password is never stored, only a one-way hash of it. Everything is kept until you delete it or your account. Without an account, nothing about you is kept on a server.</p>
+      <h2>Same screenshots, same verdict</h2><p>So the same conversation always gets the same verdict, each verdict is kept on Arguably's server, encrypted with a key made from the conversation itself and filed under a one-way fingerprint of it. Arguably can't read these; only someone with the same screenshots can open one. They're deleted after two years.</p>`
+        : `<p class="doc-lede">Short version: your arguments stay yours. No account, no ads, no tracking, and nothing sold.</p>
+      <h2>What Arguably keeps</h2><p>Only on this device: your chats (the conversation text, who's who and verdicts), your name if you add one, notifications and settings. Arguably has no account system and keeps no copy on a server.</p>`}
       <h2>Photos and videos</h2><p>Arguably only sees the screenshots and screen recordings you pick. It never browses the rest of your photo library. Screen recordings are turned into still frames on your device; the video itself is never uploaded or saved. Screenshots are read, then let go. They aren't stored with your chats.</p>
       <h2>What leaves your device</h2><p>When you ask for a verdict, the conversation, and the screenshots unless “Read screenshots on this phone” is on, is sent to ${AI_NAME}, an AI by ${AI_MAKER}, to write the verdict. It's sent only after you allow it, and only to answer you.</p>
       ${HOSTED
         ? `<h2>How ${AI_NAME} is run</h2><p>On this website, requests pass through Arguably's server, which keeps no copy, to Groq, which runs the model. Groq doesn't use your conversations to train AI and doesn't keep them by default. It may keep logs for up to 30 days to investigate abuse or keep the service reliable.</p>`
         : `<h2>How ${AI_NAME} is run</h2><p>On claude.ai, verdicts run on your own ${AI_NAME} account, under Anthropic's terms and privacy policy for that account.</p>`}
       <h2>Tracking and ads</h2><p>Arguably doesn't track you across apps or websites, doesn't show ads, and doesn't sell or share your data with data brokers or advertisers.</p>
-      <h2>Your choices</h2><p>Turn off “Send chats to ${AI_NAME}” anytime. Export or delete everything from Settings › Privacy &amp; data. Deleting is immediate and permanent.</p>
+      <h2>Your choices</h2><p>Turn off “Send chats to ${AI_NAME}” anytime. Export or delete everything from Settings › Privacy &amp; data.${HOSTED ? " Delete your account from Settings › Account: it erases the account and everything saved in it, on every phone." : ""} Deleting is immediate and permanent.</p>
       <h2>Children</h2><p>Arguably isn't for children under 13, and doesn't knowingly collect anything from them.</p>
       <h2>Changes</h2><p>If this policy changes, Arguably asks you to agree again before you keep using it.</p>
       <h2>Contact</h2><ul class="help-list"><li><a href="mailto:${SUPPORT_EMAIL}">Email us<span>${SUPPORT_EMAIL}</span></a></li></ul>
@@ -1029,6 +1046,7 @@ const DOCS = {
       <h2>For fun and perspective</h2><p>Verdicts are AI opinions for entertainment and reflection. They aren't legal, medical, mental-health or relationship advice.</p>
       <h2>Your content</h2><p>Only import conversations you have the right to share. Don't use Arguably to harass, shame or threaten anyone.</p>
       <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
+      ${HOSTED ? "<h2>Your account</h2><p>Accounts are optional. Keep your password to yourself; you're responsible for what happens under your account. Arguably may close accounts used to harass or threaten people. You can delete your account anytime in Settings.</p>" : ""}
       <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
       ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, or ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
       ${HOSTED ? "" : "<h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>"}`,
@@ -1088,7 +1106,7 @@ function emptyChatHTML() {
   </section>`;
 }
 
-const PAGE_TITLES = { share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Open-source licenses" };
+const PAGE_TITLES = { account: "Account", share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Open-source licenses" };
 
 function renderHeader() {
   const onHome = !chat && !page;
@@ -1130,6 +1148,8 @@ function render() {
           ? paywallHTML()
         : page === "share"
           ? shareHTML()
+        : page === "account"
+          ? accountHTML()
         : page === "shared"
           ? sharedHTML()
         : DOC_PAGES.includes(page)
@@ -2582,24 +2602,32 @@ $("thread").addEventListener("click", (e) => {
     return render();
   }
   if (action === "delete-confirm") {
-    [...chats, ...live.values(), chat].forEach(forget);
-    if (busy) busy.ctl.abort();
-    busy = null;
-    chat = null;
-    pending = [];
-    paywallFor = null;
-    consentReturn = null;
-    docReturn = null;
-    chats = [];
-    inbox = [];
-    storage(() => [STORE_KEY, INBOX_KEY, PREFS_KEY, "arguably.chats.v1"].forEach((k) => localStorage.removeItem(k)));
-    // Your content goes; the record that you agreed to the policy and any purchase stay,
-    // so erasing can't be used to reset a subscription's monthly allowance.
-    prefs = { ...DEFAULT_PREFS, onboarded: true, notify: { ...DEFAULT_PREFS.notify }, policy: prefs.policy, pro: prefs.pro, proUsage: prefs.proUsage, freeUsed: prefs.freeUsed };
-    savePrefs();
+    if (account) api("/api/sync?all=1", { method: "DELETE" });
+    eraseDevice();
     confirmingDelete = false;
     render();
-    return toast("Everything on this device is erased.");
+    return toast(account ? "Everything on this device and in your account is erased." : "Everything on this device is erased.");
+  }
+  if (action === "account") return openAccount(account ? "" : "signup");
+  if (action === "sign-out") return signOut();
+  if (action === "delete-account") {
+    deletingAccount = true;
+    authError = "";
+    render();
+    return $("acDeletePw")?.focus();
+  }
+  if (action === "delete-account-cancel") {
+    deletingAccount = false;
+    authError = "";
+    return render();
+  }
+  const authSwitch = t.closest("[data-auth-mode]");
+  if (authSwitch) {
+    authMode = authSwitch.dataset.authMode;
+    authError = "";
+    if (authMode !== "login") authNote = "";
+    render();
+    return $("acEmail")?.focus();
   }
   const tone = t.closest("[data-tone]");
   if (tone) {
@@ -3065,6 +3093,292 @@ function leaveShared() {
   render();
 }
 
+// ---------- accounts (website) ----------
+// Optional. Signed in, chats and settings are saved to the account and sync to any phone
+// signed in to it; signed out, everything stays on this phone as before. Password and session
+// handling live on the server (api/auth.js); the session is an HttpOnly cookie this code never sees.
+let account = null; // { email, name } when signed in
+let accountsOn = false; // the server has storage for accounts
+let resetByEmail = false;
+let authMode = "signup"; // signup | login | forgot | reset
+let authEmail = "";
+let authError = "";
+let authNote = "";
+let authBusy = false;
+let resetToken = "";
+let deletingAccount = false;
+let lastSynced = 0;
+const AUTH_ERRORS = {
+  email_invalid: "That email doesn't look right.",
+  password_short: "Use at least 8 characters for your password.",
+  password_long: "That password is too long.",
+  email_taken: "There's already an account with that email. Sign in instead.",
+  wrong_login: "That email and password don't match.",
+  wrong_password: "That password isn't right.",
+  too_many_attempts: "Too many tries. Wait 15 minutes, then try again.",
+  rate_limited: "Too many tries. Wait a few minutes, then try again.",
+  reset_expired: "That reset link has expired or was already used. Ask for a new one.",
+  reset_unavailable: "Password reset isn't set up yet.",
+  signed_out: "You've been signed out. Sign in again.",
+  accounts_off: "Accounts aren't available right now.",
+  network_error: "Couldn't reach Arguably. Check your connection and try again.",
+};
+async function api(path, { method = "GET", body } = {}) {
+  try {
+    const res = await fetch(path, {
+      method, credentials: "same-origin",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  } catch {
+    return { ok: false, status: 0, data: { code: "network_error" } };
+  }
+}
+
+async function refreshAccount() {
+  if (!HOSTED) return;
+  const r = await api("/api/auth?op=me");
+  accountsOn = !!r.data?.accounts;
+  resetByEmail = !!r.data?.resetByEmail;
+  account = r.data?.user || null;
+  if (account) await syncDown();
+  if (page === "settings" || page === "account") render();
+}
+
+// Merge the account's chats with this phone's: the newer copy of each chat wins; chats only on
+// this phone are uploaded. Chats deleted here stay deleted.
+async function syncDown() {
+  const r = await api("/api/sync");
+  if (r.status === 401) return signedOutElsewhere();
+  if (!r.ok) return;
+  // Chats deleted on another phone are deleted here too.
+  const deletedThere = new Set(Array.isArray(r.data.deleted) ? r.data.deleted : []);
+  for (const id of deletedThere) {
+    const gone = chats.find((c) => c.id === id);
+    if (gone) forget(gone);
+    inbox = inbox.filter((n) => n.chatId !== id);
+  }
+  if (chat && deletedThere.has(chat.id)) chat = null;
+  const byId = new Map(chats.filter((c) => !deletedThere.has(c.id)).map((c) => [c.id, c]));
+  for (const sc of Array.isArray(r.data.chats) ? r.data.chats : []) {
+    if (!sc || typeof sc.id !== "string" || !Array.isArray(sc.messages) || deletedIds.has(sc.id) || live.has(sc.id)) continue;
+    const local = byId.get(sc.id);
+    if (!local || (Number(sc.updatedAt) || 0) > (Number(local.updatedAt) || 0)) byId.set(sc.id, sc);
+  }
+  const serverIds = new Set((r.data.chats || []).map((c) => c?.id));
+  chats = [...byId.values()].sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)).slice(0, MAX_CHATS);
+  writeChats();
+  for (const c of chats) if (!serverIds.has(c.id)) queueUpload(c);
+  const p = r.data.prefs;
+  if (p && typeof p === "object") {
+    if (typeof p.name === "string") prefs.name = p.name.slice(0, 40);
+    if (typeof p.tone === "string" && TONES[p.tone]) prefs.tone = p.tone;
+    if (p.notify && typeof p.notify === "object") prefs.notify = { ...prefs.notify, ...Object.fromEntries(Object.entries(p.notify).filter(([, v]) => typeof v === "boolean")) };
+    if (typeof p.readOnPhone === "boolean") prefs.readOnPhone = p.readOnPhone;
+    savePrefs(false);
+  } else pushPrefs();
+  lastSynced = Date.now();
+  if (!chat && !page) render();
+}
+
+const uploads = new Map(); // chat id -> latest saved copy waiting to go up
+let uploadTimer = 0;
+function queueUpload(c) {
+  if (!account || !c?.id || c.example) return;
+  uploads.set(c.id, c);
+  clearTimeout(uploadTimer);
+  uploadTimer = setTimeout(flushUploads, 700);
+}
+async function flushUploads() {
+  for (const [id, c] of [...uploads]) {
+    if (uploads.get(id) !== c) continue;
+    const r = await api("/api/sync", { method: "PUT", body: { chat: c } });
+    if (r.status === 401) return signedOutElsewhere();
+    if (r.ok || r.status === 400 || r.status === 413 || r.status === 409 || r.status === 410) {
+      if (uploads.get(id) === c) uploads.delete(id); // sent, or will never fit: don't retry forever
+      if (r.status === 413) toast(`“${c.title}” is too big to save to your account. It stays on this phone.`);
+      if (r.status === 409) toast("Your account is full. Delete old chats to save new ones.");
+    }
+  }
+  if (uploads.size) uploadTimer = setTimeout(flushUploads, 15000); // offline: try again later
+  else lastSynced = Date.now();
+}
+function removeFromAccount(id) {
+  uploads.delete(id);
+  if (account) api(`/api/sync?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+let prefsTimer = 0;
+function pushPrefs() {
+  if (!account) return;
+  clearTimeout(prefsTimer);
+  prefsTimer = setTimeout(() => api("/api/sync", { method: "PUT", body: { prefs: { name: prefs.name, tone: prefs.tone, notify: prefs.notify, readOnPhone: prefs.readOnPhone } } }), 800);
+}
+
+// Everything this phone holds, gone (erase all, sign out, delete account).
+function eraseDevice() {
+  [...chats, ...live.values(), chat].forEach(forget);
+  if (busy) busy.ctl.abort();
+  busy = null;
+  chat = null;
+  pending = [];
+  paywallFor = null;
+  consentReturn = null;
+  docReturn = null;
+  chats = [];
+  inbox = [];
+  uploads.clear();
+  storage(() => [STORE_KEY, INBOX_KEY, PREFS_KEY, "arguably.chats.v1"].forEach((k) => localStorage.removeItem(k)));
+  // The policy agreement and any purchase stay, so erasing can't reset a monthly allowance.
+  prefs = { ...DEFAULT_PREFS, onboarded: true, notify: { ...DEFAULT_PREFS.notify }, policy: prefs.policy, pro: prefs.pro, proUsage: prefs.proUsage, freeUsed: prefs.freeUsed };
+  savePrefs(false);
+}
+function signedOutElsewhere() {
+  if (!account) return;
+  account = null;
+  uploads.clear();
+  toast("You've been signed out. Your chats stay on this phone until you sign in again.");
+  if (page === "settings" || page === "account") render();
+}
+
+async function submitAuth(form) {
+  if (authBusy) return;
+  const email = form.querySelector("#acEmail")?.value.trim() || authEmail;
+  const password = form.querySelector("#acPassword")?.value || "";
+  authEmail = email;
+  authError = "";
+  authNote = "";
+  // Check the obvious on the phone first.
+  if (authMode !== "reset" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) authError = AUTH_ERRORS.email_invalid;
+  else if ((authMode === "signup" || authMode === "reset") && password.length < 8) authError = AUTH_ERRORS.password_short;
+  else if (authMode === "login" && !password) authError = "Enter your password.";
+  if (authError) return render();
+  authBusy = true;
+  render();
+  const op = { signup: "signup", login: "login", forgot: "reset-request", reset: "reset" }[authMode];
+  const body = authMode === "forgot" ? { email } : authMode === "reset" ? { token: resetToken, password } : { email, password };
+  const r = await api(`/api/auth?op=${op}`, { method: "POST", body });
+  authBusy = false;
+  if (!r.ok) {
+    authError = AUTH_ERRORS[r.data?.code] || "Something went wrong. Try again.";
+    return render();
+  }
+  if (authMode === "forgot") {
+    authNote = `If there's an account for ${email}, a reset link is on its way. It works for 1 hour.`;
+    authMode = "login";
+    return render();
+  }
+  account = r.data.user;
+  resetToken = "";
+  if (location.hash.startsWith("#reset=")) history.replaceState(null, "", location.pathname + location.search);
+  const welcome = authMode === "signup" ? "Account created. Your chats are saved to it." : authMode === "reset" ? "Password changed. You're signed in." : "Signed in. Your chats are syncing.";
+  await syncDown();
+  page = "settings";
+  render();
+  toast(welcome);
+}
+
+async function signOut() {
+  await flushUploads();
+  await api("/api/auth?op=logout", { method: "POST", body: {} });
+  account = null;
+  eraseDevice();
+  page = null;
+  render();
+  toast("Signed out. Your chats are saved to your account, not this phone.");
+}
+
+async function deleteAccount(form) {
+  if (authBusy) return;
+  const password = form.querySelector("#acDeletePw")?.value || "";
+  if (!password) {
+    authError = "Enter your password to delete your account.";
+    return render();
+  }
+  authBusy = true;
+  authError = "";
+  render();
+  const r = await api("/api/auth?op=delete", { method: "POST", body: { password } });
+  authBusy = false;
+  if (!r.ok) {
+    authError = AUTH_ERRORS[r.data?.code] || "Couldn't delete your account. Try again.";
+    return render();
+  }
+  account = null;
+  deletingAccount = false;
+  eraseDevice();
+  page = null;
+  render();
+  toast("Your account and everything in it are deleted.");
+}
+
+function accountHTML() {
+  const err = authError ? `<p class="auth-error" role="alert">${esc(authError)}</p>` : "";
+  const note = authNote ? `<p class="auth-note" role="status">${esc(authNote)}</p>` : "";
+  const busyAttr = authBusy ? ' aria-busy="true" disabled' : "";
+  if (account) {
+    return `<section class="account">
+      <h1 class="page-title">Your account</h1>
+      <div class="set-card account-card">
+        <span class="avatar" aria-hidden="true">${esc((account.name || prefs.name || account.email).charAt(0).toUpperCase())}</span>
+        <span><span class="set-title">${esc(account.email)}</span><span class="set-sub">${plural(chats.length, "chat")} saved · syncs to every phone you sign in on</span></span>
+      </div>
+      ${deletingAccount ? "" : err}
+      <button class="cta secondary" type="button" data-action="sign-out">Sign out</button>
+      <p class="set-foot">Signing out removes your chats from this phone. They stay in your account.</p>
+      ${
+        deletingAccount
+          ? `<form class="auth-form danger-zone" data-form="delete-account" novalidate>
+              <h2>Delete your account?</h2>
+              <p>This permanently deletes your account, every saved chat and verdict, and your settings, on every phone. It can't be undone.</p>
+              <label class="field"><span>Password</span><input id="acDeletePw" type="password" autocomplete="current-password" required></label>
+              ${err}
+              <div class="auth-row"><button class="ghost-btn" type="button" data-action="delete-account-cancel">Cancel</button>
+              <button class="danger-btn" type="submit"${busyAttr}>${authBusy ? "Deleting…" : "Delete forever"}</button></div>
+            </form>`
+          : `<button class="set-row danger-row" type="button" data-action="delete-account">${tile("trash", "red")}<span class="set-text"><span class="set-title">Delete account</span></span></button>`
+      }
+    </section>`;
+  }
+  const field = (id, label, type, auto, extra = "") =>
+    `<label class="field"><span>${label}</span><input id="${id}" type="${type}" autocomplete="${auto}" ${extra}></label>`;
+  const heads = {
+    signup: ["Create your account", "Save your chats and verdicts, and pick them up on any phone. Optional: Arguably works without one."],
+    login: ["Welcome back", "Sign in to get your saved chats and verdicts."],
+    forgot: ["Reset your password", resetByEmail ? "Enter your email and we'll send you a link to choose a new password." : ""],
+    reset: ["Choose a new password", "You'll be signed out on your other phones."],
+  };
+  const [h, lede] = heads[authMode];
+  let body;
+  if (authMode === "forgot" && !resetByEmail) {
+    body = `<p>Email <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Reset my Arguably password")}">${SUPPORT_EMAIL}</a> from the address on your account and we'll help you get back in.</p>
+      <button class="text-btn" type="button" data-auth-mode="login">Back to sign in</button>`;
+  } else {
+    body = `<form class="auth-form" data-form="auth" novalidate>
+      ${authMode !== "reset" ? field("acEmail", "Email", "email", "email", `inputmode="email" autocapitalize="off" spellcheck="false" required value="${esc(authEmail)}"`) : ""}
+      ${authMode !== "forgot" ? field("acPassword", authMode === "reset" ? "New password" : "Password", "password", authMode === "login" ? "current-password" : "new-password", `required minlength="8"`) : ""}
+      ${authMode === "signup" || authMode === "reset" ? '<p class="field-hint">At least 8 characters.</p>' : ""}
+      ${err}${note}
+      <button class="cta" type="submit"${busyAttr}>${authBusy ? "One moment…" : { signup: "Create account", login: "Sign in", forgot: "Send reset link", reset: "Save new password" }[authMode]}</button>
+    </form>
+    ${authMode === "login" ? '<button class="text-btn" type="button" data-auth-mode="forgot">Forgot password?</button>' : ""}
+    ${authMode === "signup" ? '<p class="auth-switch">Already have an account? <button class="text-btn" type="button" data-auth-mode="login">Sign in</button></p>' : ""}
+    ${authMode === "login" ? '<p class="auth-switch">New here? <button class="text-btn" type="button" data-auth-mode="signup">Create an account</button></p>' : ""}
+    ${authMode === "forgot" ? '<button class="text-btn" type="button" data-auth-mode="login">Back to sign in</button>' : ""}
+    ${authMode === "signup" ? '<p class="auth-fine">By creating an account you agree to the <button class="text-btn" type="button" data-doc="terms">Terms</button> and <button class="text-btn" type="button" data-doc="privacy">Privacy Policy</button>.</p>' : ""}`;
+  }
+  return `<section class="account"><h1 class="page-title">${h}</h1>${lede ? `<p class="doc-lede">${lede}</p>` : ""}${body}</section>`;
+}
+function openAccount(mode) {
+  if (mode) authMode = mode;
+  authError = "";
+  authNote = "";
+  deletingAccount = false;
+  openPage("account");
+}
+
 function nudgeAgree() {
   toast("Agree to the Privacy Policy and Terms to continue.");
   const row = $("obAgreeRow");
@@ -3167,6 +3481,10 @@ $("backBtn").addEventListener("click", () => {
     return render();
   }
   if (page === "shared") return leaveShared();
+  if (page === "account") {
+    deletingAccount = false;
+    return openPage("settings");
+  }
   if (consentReturn) {
     page = null;
     chat = consentReturn.chat;
@@ -3223,6 +3541,7 @@ $("deleteBtn").addEventListener("click", () => {
   forget(chat);
   chats = chats.filter((x) => x.id !== id);
   storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
+  removeFromAccount(id);
   inbox = inbox.filter((n) => n.chatId !== id);
   saveInbox();
   goHome();
@@ -3230,6 +3549,20 @@ $("deleteBtn").addEventListener("click", () => {
 });
 window.addEventListener("resize", renderComposer);
 window.addEventListener("hashchange", openSharedFromHash);
+$("thread").addEventListener("submit", (e) => {
+  const form = e.target.closest("[data-form]");
+  if (!form) return;
+  e.preventDefault();
+  if (form.dataset.form === "auth") submitAuth(form);
+  if (form.dataset.form === "delete-account") deleteAccount(form);
+});
+// A password-reset link from the email opens the "choose a new password" page.
+if (HOSTED && location.hash.startsWith("#reset=")) {
+  resetToken = location.hash.slice(7);
+  authMode = "reset";
+  page = "account";
+}
+refreshAccount();
 openSharedFromHash();
 // The header only shows a (soft) edge once something scrolls under it.
 window.addEventListener("scroll", () => document.body.classList.toggle("scrolled", window.scrollY > 4), { passive: true });
