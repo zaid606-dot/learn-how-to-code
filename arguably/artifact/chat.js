@@ -158,31 +158,83 @@ function formatReply(text) {
 // Chats saved by the previous version (v1) are carried over.
 let chats = storage(() => JSON.parse(localStorage.getItem(STORE_KEY)) || JSON.parse(localStorage.getItem("arguably.chats.v1")) || [], []);
 let chat = null; // null = home screen
+let page = null; // null, "onboarding", "settings" or "inbox": a full page shown instead of home/chat
 let pending = []; // screenshots attached to the next message: {id, url, hash}
-let busy = null; // {ctl}
+let busy = null; // {ctl, chatId}: one reading/verdict/reply job at a time; it keeps running if you leave the chat
+const live = new Map(); // chat id -> chat object with a job in progress, so reopening it shows the progress
 let sampler = null;
 let maxImages = 0;
+
+// Preferences and the notification inbox live on this device only.
+const PREFS_KEY = "arguably.prefs.v1";
+const INBOX_KEY = "arguably.inbox.v1";
+const DEFAULT_PREFS = { onboarded: false, name: "", tone: "straight", readOnPhone: false, notify: { verdict: true, who: true, tips: true } };
+const savedPrefs = storage(() => JSON.parse(localStorage.getItem(PREFS_KEY)) || {}, {});
+let prefs = { ...DEFAULT_PREFS, ...savedPrefs, notify: { ...DEFAULT_PREFS.notify, ...(savedPrefs.notify || {}) } };
+let inbox = storage(() => JSON.parse(localStorage.getItem(INBOX_KEY)) || [], []);
+let onboardStep = 0;
+let confirmingDelete = false;
+if (!prefs.onboarded && !chats.length) page = "onboarding";
+
+function savePrefs() {
+  storage(() => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)));
+}
+function saveInbox() {
+  storage(() => localStorage.setItem(INBOX_KEY, JSON.stringify(inbox.slice(0, 50))));
+}
+const unreadCount = () => inbox.filter((n) => !n.read).length;
+
+// Add a notification. It's marked read straight away if you're already looking at that chat.
+function notify(kind, title, body, chatId) {
+  if (!prefs.notify[kind]) return;
+  const seen = !page && chatId && chat?.id === chatId && document.visibilityState === "visible";
+  inbox.unshift({ id: uid(), kind, title, body, chatId: chatId || "", at: Date.now(), read: !!seen });
+  inbox = inbox.slice(0, 50);
+  saveInbox();
+  renderHeader();
+  if (!seen) toast(title);
+}
 
 function newChatObject(saved = {}) {
   return { id: uid(), title: "New argument", createdAt: Date.now(), updatedAt: Date.now(), messages: [], readings: [], groups: [], you: "", transcript: [], raw: "", shotTotal: 0, ...saved };
 }
 
-function saveChats() {
-  if (!chat || chat.example || !chat.messages.length) return;
-  chat.updatedAt = Date.now();
+function saveChats(c = chat) {
+  if (!c || c.example || !c.messages.length) return;
+  c.updatedAt = Date.now();
   // Screenshots stay in memory only; saved chats keep text, transcript and verdicts.
-  const clean = { ...chat, messages: chat.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)) };
-  chats = [clean, ...chats.filter((c) => c.id !== chat.id)].slice(0, MAX_CHATS);
+  const clean = { ...c, messages: c.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)) };
+  chats = [clean, ...chats.filter((x) => x.id !== c.id)].slice(0, MAX_CHATS);
   storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
 }
 
+// Leaving a chat doesn't stop its work: the result is saved and shows up in Notifications.
 function goHome() {
-  if (busy) busy.ctl.abort();
   chat = null;
+  page = null;
   pending = [];
   $("messageInput").value = "";
   render();
 }
+
+function openPage(name) {
+  page = name;
+  confirmingDelete = false;
+  if (name === "onboarding") onboardStep = 0;
+  render();
+}
+
+function openChat(id) {
+  const saved = live.get(id) || chats.find((c) => c.id === id);
+  if (!saved) return toast("That chat isn't on this device anymore.");
+  page = null;
+  chat = live.get(id) || newChatObject(saved);
+  inbox.forEach((n) => { if (n.chatId === id) n.read = true; });
+  saveInbox();
+  render();
+}
+
+const busyHere = () => !!busy && busy.chatId === chat?.id;
 
 function ensureChat() {
   if (!chat || chat.example) chat = newChatObject();
@@ -190,7 +242,7 @@ function ensureChat() {
 }
 
 const verdictsOf = (c) => (c?.messages || []).filter((m) => m.kind === "verdict").map((m) => m.verdict);
-const pendingWho = () => chat?.messages.find((m) => m.kind === "who" && m.status === "pending");
+const pendingWho = (c = chat) => c?.messages.find((m) => m.kind === "who" && m.status === "pending");
 
 // ---------- rendering: verdict ----------
 function colorMap(v) {
@@ -519,7 +571,7 @@ function homeHTML() {
             .map((c) => {
               const v = verdictsOf(c).at(-1);
               const names = v ? (v.participants || []).map((p) => p.name).slice(0, 2) : [];
-              const meta = v ? (v.winner?.is_draw ? "Even match" : `${esc(v.winner?.name)} won`) : "No verdict yet";
+              const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.winner?.is_draw ? "Even match" : `${esc(v.winner?.name)} won`) : "No verdict yet";
               return `<li><button type="button" data-chat="${esc(c.id)}">
                 <span class="pair" aria-hidden="true">${(names.length ? names : ["?"])
                   .map((n, i) => `<span style="background:${PALETTE[i].bg};color:${PALETTE[i].fg}">${esc(String(n).trim().charAt(0).toUpperCase())}</span>`)
@@ -534,6 +586,132 @@ function homeHTML() {
   </section>`;
 }
 
+const PAGE_ICON = {
+  bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  device: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+  scale: '<path d="M12 3v18M5 7h14M7 7l-3 7a3 3 0 0 0 6 0L7 7zM17 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>',
+  who: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 3.5a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
+};
+const pageSvg = (d, size = 22) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+
+function onboardingHTML() {
+  const dots = `<div class="ob-dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i === onboardStep ? "on" : ""}"></i>`).join("")}</div>`;
+  const steps = [
+    `<div class="ob-art ob-logo"><img src="${$("homeBtn").querySelector("img").src}" alt="" width="96" height="96"></div>
+     <h1>Settle it.<br><em>With receipts.</em></h1>
+     <p>Import screenshots of any argument, yours or someone else's. See where it started, who made the stronger case, and every cheap shot along the way.</p>
+     ${dots}
+     <div class="ob-actions"><button class="cta" type="button" data-action="next">Get started</button></div>`,
+    `<div class="ob-art">${pageSvg(PAGE_ICON.lock, 40)}</div>
+     <h1>Private by default</h1>
+     <ul class="ob-list">
+       <li>${pageSvg(PAGE_ICON.device)}<span><strong>Screenshots aren't saved.</strong> They're read, then let go.</span></li>
+       <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Chats stay on this device.</strong> Delete them anytime in Settings.</span></li>
+       <li>${pageSvg(PAGE_ICON.spark)}<span><strong>Verdicts run on your Claude account.</strong> Nobody else sees your chats.</span></li>
+     </ul>
+     ${dots}
+     <div class="ob-actions"><button class="cta" type="button" data-action="next">Next</button></div>`,
+    `<div class="ob-art">${pageSvg(PAGE_ICON.who, 40)}</div>
+     <h1>What should we call you?</h1>
+     <p>So we can spot you in screenshots. Leave it blank if you're mostly judging other people's arguments.</p>
+     <label class="field"><span>Your name</span><input id="obName" type="text" autocomplete="given-name" maxlength="40" value="${esc(prefs.name)}" placeholder="e.g. Maya"></label>
+     ${dots}
+     <div class="ob-actions">
+       <button class="cta" type="button" data-action="import">Import screenshots</button>
+       <button class="ob-secondary" type="button" data-action="example">Show me an example first</button>
+     </div>`,
+  ];
+  return `<section class="onboard" aria-live="polite">${steps[onboardStep]}</section>`;
+}
+
+function settingsHTML() {
+  const sw = (key, on, title, sub) => `<button class="set-row switch-row" type="button" role="switch" aria-checked="${on}" data-toggle="${key}">
+      <span class="set-text"><span class="set-title">${title}</span><span class="set-sub">${sub}</span></span>
+      <span class="switch${on ? " on" : ""}" aria-hidden="true"><i></i></span></button>`;
+  const saved = chats.length;
+  return `<section class="settings">
+    <div class="set-group">
+      <h2>You</h2>
+      <label class="set-card field"><span>Your name</span>
+        <input id="setName" type="text" autocomplete="given-name" maxlength="40" value="${esc(prefs.name)}" placeholder="Add your name">
+        <small>Used to spot you in screenshots and fill in who's who. Leave blank if you mostly judge other people's arguments.</small></label>
+    </div>
+    <div class="set-group">
+      <h2>Verdicts</h2>
+      <div class="set-card">
+        <div class="set-text"><span class="set-title">Tone</span><span class="set-sub">How Arguably talks in verdicts and replies.</span></div>
+        <div class="segmented" role="radiogroup" aria-label="Verdict tone">
+          <button type="button" role="radio" aria-checked="${prefs.tone === "straight"}" data-tone="straight" class="${prefs.tone === "straight" ? "on" : ""}">Straight talk</button>
+          <button type="button" role="radio" aria-checked="${prefs.tone === "gentle"}" data-tone="gentle" class="${prefs.tone === "gentle" ? "on" : ""}">Gentle</button>
+        </div>
+      </div>
+    </div>
+    <div class="set-group">
+      <h2>Screenshots</h2>
+      <div class="set-card flush">${sw("readOnPhone", prefs.readOnPhone, "Always read on this phone", "Claude sees the text, never the images. A little less accurate with photos and emoji.")}</div>
+    </div>
+    <div class="set-group">
+      <h2>Notifications</h2>
+      <div class="set-card flush">
+        ${sw("verdict", prefs.notify.verdict, "Verdict ready", "When a verdict finishes while you're somewhere else.")}
+        ${sw("who", prefs.notify.who, "Screenshots read", "When it's time to check who's who.")}
+        ${sw("tips", prefs.notify.tips, "Tips", "Occasional ways to get fairer verdicts.")}
+        <button class="set-row link-row" type="button" data-action="inbox"><span class="set-title">See notifications</span>${svg(ICON.chevron, 18)}</button>
+      </div>
+    </div>
+    <div class="set-group">
+      <h2>Your data</h2>
+      <div class="set-card">
+        <div class="set-text"><span class="set-title">${plural(saved, "chat")} saved on this device</span><span class="set-sub">Screenshots are never saved. Only the text, who's who and verdicts.</span></div>
+        ${
+          confirmingDelete
+            ? `<div class="confirm-row" role="alert"><span>Delete ${plural(saved, "chat")}? This can't be undone.</span>
+                 <button class="danger-btn" type="button" data-action="delete-confirm">Delete</button>
+                 <button class="ghost-btn" type="button" data-action="delete-cancel">Cancel</button></div>`
+            : `<button class="danger-link" type="button" data-action="delete-all"${saved ? "" : " disabled"}>${pageSvg(PAGE_ICON.trash, 18)}Delete all chats</button>`
+        }
+      </div>
+    </div>
+    <div class="set-group">
+      <h2>Help</h2>
+      <div class="set-card flush">
+        <button class="set-row link-row" type="button" data-action="replay"><span class="set-title">Replay the intro</span>${svg(ICON.chevron, 18)}</button>
+        <button class="set-row link-row" type="button" data-action="example"><span class="set-title">See an example verdict</span>${svg(ICON.chevron, 18)}</button>
+      </div>
+      <p class="set-about">Arguably · Verdicts by Claude, using your Claude account.</p>
+    </div>
+  </section>`;
+}
+
+function inboxHTML() {
+  const unread = unreadCount();
+  const icon = { verdict: PAGE_ICON.scale, who: PAGE_ICON.who, tips: PAGE_ICON.spark };
+  return `<section class="inbox">
+    <div class="inbox-top">
+      <p>${unread ? `${plural(unread, "new notification")}` : "You're all caught up."}</p>
+      ${unread ? '<button class="ghost-btn" type="button" data-action="read-all">Mark all as read</button>' : ""}
+    </div>
+    ${
+      inbox.length
+        ? `<ul class="notes">${inbox
+            .map(
+              (n) => `<li><button type="button" class="note${n.read ? "" : " unread"}" data-note="${esc(n.id)}">
+                <span class="note-icon ${esc(n.kind)}">${pageSvg(icon[n.kind] || PAGE_ICON.bell, 20)}</span>
+                <span class="note-main"><span class="note-title">${esc(n.title)}</span><span class="note-body">${esc(n.body)}</span><span class="note-time">${relTime(n.at)}</span></span>
+                ${n.read ? "" : '<span class="note-dot" aria-label="Unread"></span>'}
+              </button></li>`
+            )
+            .join("")}</ul>`
+        : `<div class="inbox-empty">${pageSvg(PAGE_ICON.bell, 36)}<h2>Nothing yet</h2><p>When screenshots are read or a verdict is ready, it shows up here. You can leave a chat while it works.</p></div>`
+    }
+    <p class="inbox-note">Phone notifications come with the App Store version. For now, updates show here and as a badge on the bell.</p>
+  </section>`;
+}
+
 function emptyChatHTML() {
   return `<section class="start-hint">
     <h2>New argument</h2>
@@ -541,25 +719,53 @@ function emptyChatHTML() {
   </section>`;
 }
 
+const PAGE_TITLES = { settings: "Settings", inbox: "Notifications", onboarding: "" };
+
+function renderHeader() {
+  const onHome = !chat && !page;
+  $("backBtn").hidden = onHome || page === "onboarding";
+  $("homeBtn").hidden = !onHome && page !== "onboarding";
+  $("chatTitle").hidden = onHome || page === "onboarding";
+  $("chatTitle").textContent = page ? PAGE_TITLES[page] : chat?.title || "";
+  $("newBtn").hidden = !!page || onHome;
+  $("topActions").hidden = !onHome;
+  $("skipBtn").hidden = page !== "onboarding";
+  const unread = unreadCount();
+  $("inboxBadge").hidden = !unread;
+  $("inboxBadge").textContent = unread > 9 ? "9+" : String(unread);
+  $("inboxBtn").setAttribute("aria-label", unread ? `Notifications, ${unread} unread` : "Notifications");
+}
+
 function render() {
-  const onHome = !chat;
+  const onHome = !chat && !page;
   document.body.classList.toggle("on-home", onHome);
-  $("backBtn").hidden = onHome;
-  $("homeBtn").hidden = !onHome;
-  $("chatTitle").hidden = onHome;
-  $("newBtn").hidden = onHome;
-  $("chatTitle").textContent = chat?.title || "";
-  $("composer").hidden = onHome;
+  document.body.classList.toggle("on-page", !!page);
+  renderHeader();
+  $("composer").hidden = onHome || !!page;
 
   const thread = $("thread");
-  thread.innerHTML = onHome ? homeHTML() : chat.messages.length ? chat.messages.map(messageHTML).join("") : emptyChatHTML();
+  thread.innerHTML = page === "onboarding"
+    ? onboardingHTML()
+    : page === "settings"
+      ? settingsHTML()
+      : page === "inbox"
+        ? inboxHTML()
+        : onHome
+          ? homeHTML()
+          : chat.messages.length
+            ? chat.messages.map(messageHTML).join("")
+            : emptyChatHTML();
+  if (page) {
+    requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+    return;
+  }
   const who = pendingWho();
   if (who) renderYouChips(who);
   renderSuggestions();
   renderComposer();
   // New verdicts and who's-who cards open at their top; everything else follows the latest message.
   requestAnimationFrame(() => {
-    const last = !onHome && chat.messages.at(-1);
+    const last = !onHome && chat?.messages.at(-1);
     let top = last ? document.documentElement.scrollHeight : 0;
     if (last && (last.kind === "verdict" || last.kind === "who")) {
       const el = thread.lastElementChild;
@@ -572,7 +778,7 @@ function render() {
 function renderSuggestions() {
   const box = $("suggestions");
   const last = chat?.messages.at(-1);
-  const show = !busy && last?.kind === "verdict" && sampler;
+  const show = !busyHere() && last?.kind === "verdict" && sampler;
   box.hidden = !show;
   box.innerHTML = show
     ? '<label class="import-chip" for="fileInput">Import more screenshots</label>' +
@@ -592,12 +798,13 @@ function renderComposer() {
       )
       .join("") + (pending.length ? '<span class="attach-hint">Any order works. We line them up by the messages.</span>' : "");
   const form = $("composer");
-  form.classList.toggle("busy", !!busy);
+  const here = busyHere();
+  form.classList.toggle("busy", here);
   const waitingOnWho = !!pendingWho();
   const hasInput = pending.length > 0 || $("messageInput").value.trim().length > 0;
-  $("sendBtn").disabled = !busy && (!sampler || !hasInput || waitingOnWho);
-  $("sendBtn").setAttribute("aria-label", busy ? "Stop" : "Send");
-  $("attachBtn").classList.toggle("disabled", !!busy || waitingOnWho);
+  $("sendBtn").disabled = !here && (!sampler || !hasInput || waitingOnWho);
+  $("sendBtn").setAttribute("aria-label", here ? "Stop" : "Send");
+  $("attachBtn").classList.toggle("disabled", here || waitingOnWho);
   $("messageInput").disabled = waitingOnWho;
   $("messageInput").placeholder = waitingOnWho
     ? "Confirm who's who first"
@@ -937,7 +1144,7 @@ function closerLook(blocks, signal) {
 
 // Claude reads the screenshots itself when this view can send images; otherwise the phone does.
 function readScreenshots(shots, thinking, signal) {
-  return maxImages ? readWithVision(shots, thinking, signal) : readWithOcr(shots, thinking, signal);
+  return maxImages && !prefs.readOnPhone ? readWithVision(shots, thinking, signal) : readWithOcr(shots, thinking, signal);
 }
 
 async function readWithVision(shots, thinking, signal) {
@@ -977,36 +1184,56 @@ async function readWithVision(shots, thinking, signal) {
   });
 }
 
-async function runImport(shots, note) {
+// Start a job for chat c. Returns its abort signal.
+function startJob(c) {
+  busy = { ctl: new AbortController(), chatId: c.id };
+  live.set(c.id, c);
+  saveChats(c);
+  return busy.ctl.signal;
+}
+function endJob(c) {
+  busy = null;
+  live.delete(c.id);
+  saveChats(c);
+  if (chat?.id === c.id || (!chat && !page)) render();
+  else renderHeader();
+}
+
+async function runImport(c, shots, note) {
   const thinking = { id: uid(), role: "assistant", kind: "thinking", text: "Preparing screenshots", progress: 0, transient: true };
-  chat.messages.push(thinking);
-  busy = { ctl: new AbortController() };
+  c.messages.push(thinking);
+  const signal = startJob(c);
   render();
   try {
-    const numbered = shots.map((s, i) => ({ ...s, n: chat.shotTotal + i + 1 }));
-    const readings = await readScreenshots(numbered, thinking, busy.ctl.signal);
+    const numbered = shots.map((s, i) => ({ ...s, n: c.shotTotal + i + 1 }));
+    const readings = await readScreenshots(numbered, thinking, signal);
     const messageCount = readings.reduce((a, r) => a + r.msgs.filter((m) => m.side !== "center").length, 0);
     if (!messageCount) throw { code: "no_messages" };
-    chat.shotTotal += shots.length;
-    chat.readings.push(...readings);
-    const groups = defaultMapping(phoneGroups(readings), chat.groups);
-    chat.messages = chat.messages.filter((m) => m !== thinking);
-    chat.messages.push({
+    c.shotTotal += shots.length;
+    c.readings.push(...readings);
+    const groups = defaultMapping(phoneGroups(readings), c.groups);
+    // Your name from Settings stands in for "Me" on your own phone's screenshots.
+    if (prefs.name) groups.forEach((g) => { if (g.me === "Me") g.me = prefs.name; });
+    const names = groups.flatMap((g) => [g.me, g.them]);
+    const you = c.you || (prefs.name && names.includes(prefs.name) ? prefs.name : "");
+    c.messages = c.messages.filter((m) => m !== thinking);
+    c.messages.push({
       id: uid(), role: "assistant", kind: "who", status: "pending", groups, note, readingNs: readings.map((r) => r.n),
-      you: chat.you || "", shotCount: shots.length, messageCount,
+      you, shotCount: shots.length, messageCount,
     });
+    notify("who", "Screenshots read. Check who's who", `${plural(messageCount, "message")} from ${plural(shots.length, "screenshot")}.`, c.id);
   } catch (err) {
-    chat.messages = chat.messages.filter((m) => m !== thinking);
-    if (err?.code !== "cancelled") chat.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
+    c.messages = c.messages.filter((m) => m !== thinking);
+    if (err?.code !== "cancelled") c.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
   } finally {
-    busy = null;
-    saveChats();
-    render();
+    endJob(c);
   }
 }
 
 function confirmWho(id) {
-  const m = chat.messages.find((x) => x.id === id);
+  if (busy) return toast("Arguably is finishing another argument. Try again in a moment.");
+  const c = chat;
+  const m = c.messages.find((x) => x.id === id);
   if (!m || m.status !== "pending") return;
   m.groups.forEach((g, i) => {
     for (const side of ["them", "me"]) {
@@ -1015,16 +1242,21 @@ function confirmWho(id) {
     }
   });
   m.status = "done";
-  chat.you = m.you === "__none" ? "" : m.you;
-  m.you = chat.you;
+  c.you = m.you === "__none" ? "" : m.you;
+  m.you = c.you;
   // Remember names per phone for the next import in this chat.
-  chat.groups = [...m.groups, ...chat.groups.filter((g) => !m.groups.some((x) => x.key === g.key))];
-  const readings = chat.readings.filter((r) => m.readingNs.includes(r.n));
-  chat.transcript = buildTranscript(readings, m.groups, chat.transcript);
-  runVerdict(m.note);
+  c.groups = [...m.groups, ...c.groups.filter((g) => !m.groups.some((x) => x.key === g.key))];
+  const readings = c.readings.filter((r) => m.readingNs.includes(r.n));
+  c.transcript = buildTranscript(readings, m.groups, c.transcript);
+  runVerdict(c, m.note);
 }
 
-function verdictPrompt(note) {
+const TONES = {
+  straight: "Tone: straight talk. Be plain and direct about who argued better, without cushioning, and never cruel.",
+  gentle: "Tone: gentle. Lead with what each person got right, soften how criticism is worded, and make the takeaway especially kind.",
+};
+
+function verdictPrompt(chat, note) {
   const earlier = verdictsOf(chat).at(-1);
   const convo = chat.transcript.length ? transcriptText(chat.transcript) : chat.raw;
   let p = SYSTEM_PROMPT;
@@ -1037,16 +1269,17 @@ function verdictPrompt(note) {
     : "\n\nThe person asking isn't part of this conversation (or didn't say). Write about everyone in the third person, and address the takeaway to both sides.";
   if (earlier) p += `\n\nYou gave an earlier verdict in this chat ("${earlier.title}"). New screenshots were added since; judge the whole conversation as it stands now.`;
   if (note) p += `\n\nNote from the person who uploaded this (background, not evidence):\n${note.slice(0, 2000)}`;
+  p += `\n\n${TONES[prefs.tone] || TONES.straight}`;
   p += `\n\nReply with only one JSON object that matches this JSON Schema exactly (every key present, no extra keys):\n${JSON.stringify(VERDICT_SCHEMA)}`;
   return p;
 }
 
 const looksLikeVerdict = (v) => v && typeof v === "object" && v.winner && v.origin && Array.isArray(v.participants);
 
-async function runVerdict(note) {
+async function runVerdict(c, note) {
   const thinking = { id: uid(), role: "assistant", kind: "thinking", text: VERDICT_STEPS[0], transient: true };
-  chat.messages.push(thinking);
-  busy = { ctl: new AbortController() };
+  c.messages.push(thinking);
+  const signal = startJob(c);
   render();
   let step = 0;
   const timer = setInterval(() => {
@@ -1054,33 +1287,34 @@ async function runVerdict(note) {
     updateThinking(thinking, VERDICT_STEPS[step]);
   }, 7000);
   try {
-    const verdict = await sampler.json(verdictPrompt(note), { modelTier: "complex", signal: busy.ctl.signal });
+    const verdict = await sampler.json(verdictPrompt(c, note), { modelTier: "complex", signal });
     if (!looksLikeVerdict(verdict)) throw { code: "invalid_json" };
     for (const k of ["subjects", "grudges", "personal_shots", "fallacies"]) if (!Array.isArray(verdict[k])) verdict[k] = [];
-    chat.messages = chat.messages.filter((m) => m !== thinking);
-    chat.messages.push({
+    c.messages = c.messages.filter((m) => m !== thinking);
+    c.messages.push({
       id: uid(), role: "assistant", kind: "verdict", verdict,
-      unverified: unverifiedQuotes(verdict, chat.transcript, chat.raw),
-      transcript: chat.transcript.length ? chat.transcript.slice() : undefined,
+      unverified: unverifiedQuotes(verdict, c.transcript, c.raw),
+      transcript: c.transcript.length ? c.transcript.slice() : undefined,
     });
-    chat.title = verdict.title || chat.title;
+    c.title = verdict.title || c.title;
+    const w = verdict.winner || {};
+    notify("verdict", `Verdict ready: ${c.title}`, w.is_draw ? "It's an even match." : `${w.name} has the stronger case.`, c.id);
   } catch (err) {
-    chat.messages = chat.messages.filter((m) => m !== thinking);
-    if (err?.code !== "cancelled") chat.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
+    c.messages = c.messages.filter((m) => m !== thinking);
+    if (err?.code !== "cancelled") c.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
   } finally {
     clearInterval(timer);
-    busy = null;
-    saveChats();
-    render();
+    endJob(c);
   }
 }
 
-function chatTurns() {
+function chatTurns(chat) {
   const verdicts = verdictsOf(chat).slice(-2);
   let convo = chat.transcript.length ? transcriptText(chat.transcript) : chat.raw;
   if (convo.length > 30000) convo = convo.slice(0, 4000) + "\n[...middle of the conversation omitted...]\n" + convo.slice(-26000);
   const context =
     CHAT_RULES +
+    `\n\n${TONES[prefs.tone] || TONES.straight}` +
     (chat.you ? `\n\nThe person you're talking with is ${chat.you}.` : "\n\nThe person you're talking with isn't part of this conversation (or didn't say which one they are). Refer to everyone by name.") +
     (convo ? `\n\n<conversation>\n${convo}\n</conversation>` : "") +
     (verdicts.length ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n") : "\n\nNo verdict has been given yet.");
@@ -1106,20 +1340,21 @@ function chatTurns() {
   return [{ role: "user", content: context }, ...recent];
 }
 
-async function runChat() {
+async function runChat(c) {
   const reply = { id: uid(), role: "assistant", kind: "thinking", text: "Thinking", transient: true };
-  chat.messages.push(reply);
-  busy = { ctl: new AbortController() };
+  c.messages.push(reply);
+  const signal = startJob(c);
   render();
   let streamed = "";
   try {
-    const { text, truncated } = await sampler(chatTurns(), {
+    const { text, truncated } = await sampler(chatTurns(c), {
       cache: false,
-      signal: busy.ctl.signal,
+      signal,
       onText: ({ text }) => {
         streamed = text;
         const el = document.getElementById(reply.id);
-        if (el) el.outerHTML = `<div class="msg reply" id="${reply.id}">${formatReply(text)}</div>`;
+        if (!el) return;
+        el.outerHTML = `<div class="msg reply" id="${reply.id}">${formatReply(text)}</div>`;
         window.scrollTo({ top: document.documentElement.scrollHeight });
       },
     });
@@ -1127,21 +1362,20 @@ async function runChat() {
   } catch (err) {
     const kept = err?.text || (err?.code === "cancelled" ? streamed : "");
     if (kept) Object.assign(reply, { kind: "text", text: kept, transient: false, interrupted: true });
-    else chat.messages = chat.messages.filter((m) => m !== reply);
-    if (err?.code !== "cancelled") chat.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
+    else c.messages = c.messages.filter((m) => m !== reply);
+    if (err?.code !== "cancelled") c.messages.push({ id: uid(), role: "assistant", kind: "error", text: errorCopy(err?.code), transient: true });
   } finally {
-    busy = null;
-    saveChats();
-    render();
+    endJob(c);
   }
 }
 
-async function runPasted(text) {
-  chat.raw = (chat.raw ? chat.raw + "\n" : "") + text;
-  return runVerdict("");
+async function runPasted(c, text) {
+  c.raw = (c.raw ? c.raw + "\n" : "") + text;
+  return runVerdict(c, "");
 }
 
 async function send(textOverride) {
+  if (busy && !busyHere()) return toast("Arguably is finishing another argument. You'll get a notification when it's done.");
   if (busy || !sampler || pendingWho()) return;
   const input = $("messageInput");
   const text = (textOverride ?? input.value).trim();
@@ -1153,13 +1387,15 @@ async function send(textOverride) {
   pending = [];
   input.value = "";
   autosize();
-  if (shots.length) return runImport(shots, text);
+  const c = chat;
+  if (shots.length) return runImport(c, shots, text);
   // A long paste before any verdict is treated as the conversation itself.
-  if (!verdictsOf(chat).length && text.length >= 80) return runPasted(text);
-  return runChat();
+  if (!verdictsOf(c).length && text.length >= 80) return runPasted(c, text);
+  return runChat(c);
 }
 
 function openExample() {
+  page = null;
   chat = {
     ...newChatObject(),
     id: "example",
@@ -1186,7 +1422,7 @@ function autosize() {
 
 $("composer").addEventListener("submit", (e) => {
   e.preventDefault();
-  if (busy) busy.ctl.abort();
+  if (busyHere()) busy.ctl.abort();
   else send();
 });
 $("messageInput").addEventListener("input", autosize);
@@ -1202,7 +1438,7 @@ $("fileInput").addEventListener("change", async (e) => {
 });
 document.addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.files || [])];
-  if (files.length && !busy && !pendingWho()) {
+  if (files.length && !busyHere() && !pendingWho() && page !== "settings") {
     e.preventDefault();
     addFiles(files);
   }
@@ -1210,7 +1446,7 @@ document.addEventListener("paste", (e) => {
 document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => {
   e.preventDefault();
-  if (e.dataTransfer?.files?.length && !busy && !pendingWho()) addFiles(e.dataTransfer.files);
+  if (e.dataTransfer?.files?.length && !busyHere() && !pendingWho()) addFiles(e.dataTransfer.files);
 });
 $("attachStrip").addEventListener("click", (e) => {
   const b = e.target.closest("[data-remove]");
@@ -1233,8 +1469,66 @@ $("thread").addEventListener("input", (e) => {
 $("thread").addEventListener("click", (e) => {
   const t = e.target;
   const action = t.closest("[data-action]")?.dataset.action;
-  if (action === "example") return openExample();
-  if (action === "import") return $("fileInput").click();
+  if (action === "example") {
+    finishOnboarding();
+    return openExample();
+  }
+  if (action === "import") {
+    if (page === "onboarding") finishOnboarding();
+    return $("fileInput").click();
+  }
+  if (action === "next") {
+    onboardStep = Math.min(onboardStep + 1, 2);
+    return render();
+  }
+  if (action === "replay") return openPage("onboarding");
+  if (action === "inbox") return openPage("inbox");
+  if (action === "read-all") {
+    inbox.forEach((n) => (n.read = true));
+    saveInbox();
+    return render();
+  }
+  if (action === "delete-all") {
+    confirmingDelete = true;
+    return render();
+  }
+  if (action === "delete-cancel") {
+    confirmingDelete = false;
+    return render();
+  }
+  if (action === "delete-confirm") {
+    const n = chats.length;
+    chats = chats.filter((c) => live.has(c.id));
+    storage(() => localStorage.setItem(STORE_KEY, JSON.stringify(chats)));
+    inbox = inbox.filter((x) => !x.chatId || live.has(x.chatId));
+    saveInbox();
+    confirmingDelete = false;
+    render();
+    return toast(`Deleted ${plural(n, "chat")}.`);
+  }
+  const tone = t.closest("[data-tone]");
+  if (tone) {
+    prefs.tone = tone.dataset.tone;
+    savePrefs();
+    return render();
+  }
+  const toggle = t.closest("[data-toggle]");
+  if (toggle) {
+    const key = toggle.dataset.toggle;
+    if (key === "readOnPhone") prefs.readOnPhone = !prefs.readOnPhone;
+    else prefs.notify[key] = !prefs.notify[key];
+    savePrefs();
+    return render();
+  }
+  const note = t.closest("[data-note]");
+  if (note) {
+    const n = inbox.find((x) => x.id === note.dataset.note);
+    if (!n) return;
+    n.read = true;
+    saveInbox();
+    if (n.chatId) return openChat(n.chatId);
+    return render();
+  }
   if (action === "paste") {
     ensureChat();
     render();
@@ -1253,20 +1547,50 @@ $("thread").addEventListener("click", (e) => {
   const confirm = t.closest("[data-confirm]");
   if (confirm) return confirmWho(confirm.dataset.confirm);
   const open = t.closest("[data-chat]");
-  if (open) {
-    const saved = chats.find((c) => c.id === open.dataset.chat);
-    chat = saved ? newChatObject(saved) : null;
-    render();
+  if (open) openChat(open.dataset.chat);
+});
+
+// Settings: your name saves as you type.
+$("thread").addEventListener("input", (e) => {
+  if (e.target.id === "setName" || e.target.id === "obName") {
+    prefs.name = e.target.value.trim().slice(0, 40);
+    savePrefs();
   }
 });
+$("thread").addEventListener("keydown", (e) => {
+  if (e.target.id === "obName" && e.key === "Enter") {
+    e.preventDefault();
+    finishOnboarding();
+    $("fileInput").click();
+  }
+});
+
+function finishOnboarding() {
+  if (prefs.onboarded) {
+    if (page === "onboarding") page = null;
+    return;
+  }
+  prefs.onboarded = true;
+  savePrefs();
+  page = null;
+  notify("tips", "Tip: use screenshots from both phones", "Arguably merges them in order, so each side's messages count. You can also judge arguments you're not in.");
+  render();
+}
 $("newBtn").addEventListener("click", () => {
-  goHome();
+  chat = null;
+  page = null;
+  pending = [];
   ensureChat();
   render();
 });
 $("backBtn").addEventListener("click", goHome);
 $("homeBtn").addEventListener("click", goHome);
+$("inboxBtn").addEventListener("click", () => openPage("inbox"));
+$("settingsBtn").addEventListener("click", () => openPage("settings"));
+$("skipBtn").addEventListener("click", finishOnboarding);
 window.addEventListener("resize", renderComposer);
+// The header only shows a (soft) edge once something scrolls under it.
+window.addEventListener("scroll", () => document.body.classList.toggle("scrolled", window.scrollY > 4), { passive: true });
 
 render();
 

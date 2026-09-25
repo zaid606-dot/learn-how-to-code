@@ -166,3 +166,86 @@ test("a failed Claude call shows a clear error and the app stays usable", async 
   assert.match(await page.locator(".msg.error").innerText(), /Try again/);
   assert.ok(await page.isEnabled("#fileInput"), "can import again");
 });
+
+test("first run: onboarding in three steps, name saved, lands on import", async () => {
+  const { page, errors } = await openApp({ images: true, firstRun: true });
+  assert.ok(await page.locator(".onboard").isVisible(), "onboarding shows on first run");
+  await shot(page, "onboarding-1");
+  assert.deepEqual(await layoutProblems(page), []);
+  await page.click('[data-action="next"]');
+  await page.click('[data-action="next"]');
+  await page.fill("#obName", "Maya");
+  await shot(page, "onboarding-3");
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('.onboard [data-action="import"]')]);
+  assert.ok(chooser, "finishing onboarding opens the photo picker");
+  const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")));
+  assert.equal(prefs.onboarded, true);
+  assert.equal(prefs.name, "Maya");
+  assert.ok(await page.locator("#thread .home").isVisible(), "home is behind the picker");
+  assert.deepEqual(errors, []);
+});
+
+test("first run: Skip goes straight to home", async () => {
+  const { page } = await openApp({ firstRun: true });
+  await page.click("#skipBtn");
+  assert.ok(await page.locator("#thread .home").isVisible());
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).onboarded), true);
+});
+
+test("settings: name, tone, on-phone reading and delete all change real behavior", async () => {
+  const { page, errors, calls } = await openApp({
+    images: true,
+    shots: { 1: { header: "Jordan", msgs: [["right", "You said you'd do the dishes last night?"], ["left", "Ok and you left your laundry in the dryer for 3 days so"]] } },
+  });
+  await page.click("#settingsBtn");
+  await page.fill("#setName", "Maya");
+  await page.click('[data-tone="gentle"]');
+  await shot(page, "settings");
+  assert.deepEqual(await layoutProblems(page), []);
+  await page.click("#backBtn");
+  // Name fills "Me" and preselects "you"; tone reaches the verdict prompt.
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone]);
+  await page.click("#sendBtn");
+  await waitUntil(page, () => !!document.querySelector(".msg.who:not(.done)"));
+  assert.deepEqual(await page.$$eval(".who input", (els) => els.map((e) => e.value)), ["Jordan", "Maya"]);
+  assert.equal(await page.getAttribute('.you-chip[data-you="Maya"]', "aria-checked"), "true");
+  await page.click("[data-confirm]");
+  await waitUntil(page, () => !!document.querySelector(".msg.verdict"));
+  const verdictCall = (await calls()).find((c) => c.kind === "verdict");
+  assert.equal(verdictCall.you, "Maya");
+  // Always read on this phone: no images go to Claude even though the view supports them.
+  await page.click("#backBtn");
+  await page.click("#settingsBtn");
+  await page.click('[data-toggle="readOnPhone"]');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).readOnPhone), true);
+  // Delete all asks first, then clears saved chats.
+  await page.click('[data-action="delete-all"]');
+  assert.match(await page.locator(".confirm-row").innerText(), /can't be undone/);
+  await page.click('[data-action="delete-confirm"]');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2")).length), 0);
+  assert.deepEqual(errors, []);
+});
+
+test("notifications: a verdict that finishes while you're home shows up with a badge", async () => {
+  const { page, errors } = await openApp({
+    images: true,
+    shots: {
+      1: { header: "Jordan", msgs: [["right", "You said you'd do the dishes last night?"], ["left", "Ok and you left your laundry in the dryer for 3 days so"]] },
+    },
+  });
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone]);
+  await page.click("#sendBtn");
+  await waitUntil(page, () => !!document.querySelector(".msg.who:not(.done)"));
+  await page.click("[data-confirm]");
+  await page.click("#backBtn"); // leave while the verdict is being judged
+  await waitUntil(page, () => !document.getElementById("inboxBadge").hidden, 15000);
+  assert.match(await page.locator("#inboxBadge").innerText(), /^\d+$/);
+  await page.click("#inboxBtn");
+  await shot(page, "notifications");
+  assert.match(await page.locator(".notes").innerText(), /Verdict ready/);
+  assert.deepEqual(await layoutProblems(page), []);
+  await page.locator(".note", { hasText: "Verdict ready" }).first().click();
+  await waitUntil(page, () => !!document.querySelector(".msg.verdict"));
+  assert.ok(await page.locator("#inboxBadge").isHidden() || /^\d+$/.test(await page.locator("#inboxBadge").innerText()));
+  assert.deepEqual(errors, []);
+});
