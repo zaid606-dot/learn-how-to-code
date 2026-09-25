@@ -863,3 +863,11 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .auth-row { display: flex; gap: 10px; }
 .v-foot { margin: 4px 0 0; text-align: center; color: var(--ink-600); font-size: 13px; line-height: 1.5; }
 .v-foot a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; color: var(--ember-700); font-weight: 600; }
+/* Short phones (iPhone SE): a slimmer import panel so the demo stays visible above it. */
+@media (max-height: 640px) {
+  .home-sheet { padding-top: 12px; }
+  .sheet-prompt { display: none; }
+  .import-note { margin: 6px 0 8px; }
+  .sheet-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; gap: 8px; }
+  .sheet-btn { font-size: 14px; }
+}
