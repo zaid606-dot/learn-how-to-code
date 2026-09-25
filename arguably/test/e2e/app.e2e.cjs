@@ -342,14 +342,15 @@ test("settings: store-ready pages, export and support links", async () => {
   assert.deepEqual(errors, []);
 });
 
-test("App Store build: the first notification asks for a rating (other builds don't)", async () => {
+test("App Store build: no custom rating prompt (Apple 5.6.1); the welcome is a plain tip", async () => {
   const { page, errors } = await openApp({ firstRun: true, store: true });
   await page.click("#skipBtn");
   await page.click("#obAgreeRow");
   await page.click("#skipBtn");
   await page.click('[data-action="paywall-close"]');
   await page.click("#inboxBtn");
-  assert.match(await page.locator(".note").first().innerText(), /welcome to Arguably[\s\S]*rating on the App Store/);
+  assert.match(await page.locator(".note").first().innerText(), /welcome to Arguably/);
+  assert.doesNotMatch(await page.locator("#thread").innerText(), /rating|review/i);
   await shot(page, "inbox-rate");
   assert.deepEqual(await layoutProblems(page), []);
   await page.click(".note");
@@ -582,11 +583,12 @@ test("share a verdict: card image, hide names, back to the chat", async () => {
   assert.equal(await page.locator('[data-action="share-link"]').count(), 0, "no link inside claude.ai");
   assert.deepEqual(await layoutProblems(page), []);
   await shot(page, "share-page");
-  // Hide names: the card is redrawn and no real name is left anywhere in the shared verdict.
+  // Names are hidden unless you choose to show them; switching redraws the card.
+  assert.equal(await page.getAttribute('[data-action="share-hide"]', "aria-checked"), "true", "hidden by default");
   const before = await page.$eval(".share-preview img", (i) => i.src);
   await page.click('[data-action="share-hide"]');
   await page.waitForFunction((src) => { const i = document.querySelector(".share-preview img"); return i && i.src !== src && i.complete; }, before);
-  assert.equal(await page.getAttribute('[data-action="share-hide"]', "aria-checked"), "true");
+  assert.equal(await page.getAttribute('[data-action="share-hide"]', "aria-checked"), "false");
   const hidden = await page.evaluate(() => JSON.stringify(anonymize(SAMPLE_VERDICT)));
   assert.doesNotMatch(hidden, /Maya|Jordan/);
   assert.match(hidden, /Person A/);

@@ -45,7 +45,7 @@ async function fakeXai(input, init) {
 }
 
 before(async () => {
-  execSync("node scripts/build-artifact.mjs --web", { cwd: ROOT, stdio: "pipe" });
+  execSync("node scripts/build-artifact.mjs --web", { cwd: ROOT, stdio: "pipe", env: { ...process.env, REVENUECAT_IOS_KEY: "appl_test" } });
   process.env.GROQ_API_KEY = "test-key";
   process.env.KV_REST_API_URL = "https://fake-redis.test";
   process.env.KV_REST_API_TOKEN = "tok";
@@ -301,4 +301,108 @@ test("website build: accounts: sign up, chats sync to a second phone, deletes st
   assert.deepEqual([...a.errors, ...b.errors], []);
   await a.context.close();
   await b.context.close();
+});
+
+test("iPhone app (website inside the native shell): App Store mode, RevenueCat buy / cancel / restore / expiry, native share sheet", async () => {
+  const context = await browser.newContext(devices["iPhone 13"]);
+  await context.addInitScript(() => {
+    if (!sessionStorage.getItem("seeded")) {
+      sessionStorage.setItem("seeded", "1");
+      localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true }));
+    }
+    const pkg = (id) => ({ identifier: id.includes("yearly") ? "$rc_annual" : "$rc_monthly", product: { identifier: id } });
+    const state = (window.__rc = JSON.parse(sessionStorage.getItem("rc") || '{"calls":[],"active":null,"cancel":false,"restorable":null}'));
+    const save = () => sessionStorage.setItem("rc", JSON.stringify(state));
+    const info = () => ({ customerInfo: { entitlements: { active: state.active ? { pro: { productIdentifier: state.active, expirationDate: "2027-01-01" } } : {} } } });
+    const call = (name, arg) => { state.calls.push([name, arg]); save(); };
+    window.__share = [];
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: {
+        Purchases: {
+          configure: async (o) => call("configure", o),
+          getCustomerInfo: async () => (call("getCustomerInfo"), info()),
+          getOfferings: async () => (call("getOfferings"), { current: { availablePackages: [pkg("arguably.pro.monthly"), pkg("arguably.pro.yearly")] } }),
+          purchasePackage: async ({ aPackage }) => {
+            call("purchasePackage", aPackage.product.identifier);
+            if (state.cancel) throw Object.assign(new Error("Purchase was cancelled."), { code: "1", userCancelled: true });
+            state.active = aPackage.product.identifier;
+            save();
+            return info();
+          },
+          restorePurchases: async () => { call("restorePurchases"); state.active = state.restorable; save(); return info(); },
+        },
+        Share: { share: async (o) => { window.__share.push(o); } },
+        Filesystem: { writeFile: async ({ path }) => ({ uri: "file:///cache/" + path }) },
+      },
+    };
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(url);
+  const rc = () => page.evaluate(() => window.__rc);
+  const pro = () => page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).pro);
+  await page.waitForFunction(() => window.__rc.calls.some(([n]) => n === "getCustomerInfo"));
+  assert.deepEqual((await rc()).calls[0], ["configure", { apiKey: "appl_test" }], "RevenueCat set up with the app's key");
+
+  // App Store mode: the home screen offers the trial, Settings shows Arguably Pro.
+  assert.match(await page.locator(".import-note").innerText(), /try Pro free for 3 days/);
+  await page.click("#settingsBtn");
+  await page.click('[data-action="paywall"]');
+  await page.waitForSelector(".paywall");
+  await page.screenshot({ path: path.join(OUT, "ios-paywall.png") });
+
+  // Cancel in Apple's sheet: nothing happens, no scary error.
+  await page.evaluate(() => { window.__rc.cancel = true; sessionStorage.setItem("rc", JSON.stringify(window.__rc)); });
+  await page.click(".pw-cta");
+  await page.waitForFunction(() => window.__rc.calls.some(([n]) => n === "purchasePackage"));
+  await page.waitForTimeout(300);
+  assert.equal(await pro(), null);
+  assert.equal(await page.locator("#toast:not([hidden])").count(), 0, "no error for a cancel");
+
+  // Buy the yearly plan for real (through the plugin).
+  await page.evaluate(() => { window.__rc.cancel = false; sessionStorage.setItem("rc", JSON.stringify(window.__rc)); });
+  await page.click(".pw-cta");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).pro);
+  assert.equal((await pro()).plan, "yearly");
+  assert.deepEqual((await rc()).calls.filter(([n]) => n === "purchasePackage").map(([, id]) => id), ["arguably.pro.yearly", "arguably.pro.yearly"]);
+
+  // The subscription ends (cancelled in iPhone Settings): on next launch, Pro is gone.
+  await page.evaluate(() => { window.__rc.active = null; sessionStorage.setItem("rc", JSON.stringify(window.__rc)); });
+  await page.reload();
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem("arguably.prefs.v1")).pro);
+
+  // Restore on a new phone: the monthly plan comes back.
+  await page.evaluate(() => { window.__rc.restorable = "arguably.pro.monthly"; sessionStorage.setItem("rc", JSON.stringify(window.__rc)); });
+  await page.click("#settingsBtn");
+  await page.click('[data-action="paywall"]');
+  await page.click('.paywall [data-action="restore"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).pro);
+  assert.equal((await pro()).plan, "monthly");
+
+  // Sharing uses the iPhone share sheet with the card as a file.
+  await page.goto(url);
+  await page.locator('#thread [data-action="example"]').first().click();
+  await page.click(".share-btn");
+  await page.waitForSelector(".share-preview img");
+  await page.click('[data-action="share-image"]');
+  await page.waitForFunction(() => window.__share.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.__share[0].files), ["file:///cache/arguably-verdict.png"]);
+  await page.click('[data-action="share-link"]');
+  await page.waitForFunction(() => window.__share.length === 2);
+  assert.match(await page.evaluate(() => window.__share[1].url), /#v=z/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("website in a normal browser is not App Store mode", async () => {
+  const context = await browser.newContext(devices["iPhone 13"]);
+  await context.addInitScript(() => localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 } })));
+  const page = await context.newPage();
+  await page.goto(url);
+  assert.doesNotMatch(await page.locator(".import-note").innerText(), /Pro/);
+  await page.click("#settingsBtn");
+  assert.equal(await page.locator('[data-action="paywall"]').count(), 0);
+  await context.close();
 });

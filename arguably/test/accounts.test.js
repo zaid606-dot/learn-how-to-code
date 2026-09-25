@@ -106,7 +106,7 @@ test("sign in: same answer for unknown email and wrong password; locks after 10 
   for (let i = 0; i < 9; i++) await p.req("/api/auth?op=login", { method: "POST", body: { email: "maya@example.com", password: "wrong pass" } });
   const locked = await p.req("/api/auth?op=login", { method: "POST", body: { email: "maya@example.com", password: "correct horse" } });
   assert.equal(locked.data.code, "too_many_attempts", "even the right password waits");
-  redis.data.delete("fail:maya@example.com");
+  for (const k of redis.keys()) if (k.startsWith("fail:")) redis.data.delete(k);
   const ok = await p.req("/api/auth?op=login", { method: "POST", body: { email: "Maya@Example.com", password: "correct horse" } });
   assert.equal(ok.status, 200);
 });
@@ -210,4 +210,52 @@ test("a chat deleted on one phone can't be brought back by another phone's old c
   const got = await a.req("/api/sync");
   assert.deepEqual(got.data.chats, []);
   assert.deepEqual(got.data.deleted.sort(), ["c1", "c2"]);
+});
+
+test("a stranger's wrong guesses from another network don't lock the owner out", async () => {
+  await signup(phone());
+  const attacker = phone();
+  for (let i = 0; i < 12; i++) await attacker.req("/api/auth?op=login", { method: "POST", body: { email: "maya@example.com", password: "guess guess" }, headers: { "X-Real-IP": "203.0.113.9" } });
+  const blocked = await attacker.req("/api/auth?op=login", { method: "POST", body: { email: "maya@example.com", password: "correct horse" }, headers: { "X-Real-IP": "203.0.113.9" } });
+  assert.equal(blocked.data.code, "too_many_attempts", "the guessing network is blocked");
+  const owner = await phone().req("/api/auth?op=login", { method: "POST", body: { email: "maya@example.com", password: "correct horse" }, headers: { "X-Real-IP": "198.51.100.7" } });
+  assert.equal(owner.status, 200, "the owner, elsewhere, still gets in");
+  assert.ok(redis.keys().filter((k) => k.startsWith("fail:")).every((k) => redis.data.get(k).exp > 0), "every counter expires");
+});
+
+test("a new reset link cancels the old one, and the used one can't reset again", async () => {
+  await signup(phone());
+  const p = phone();
+  await p.req("/api/auth?op=reset-request", { method: "POST", body: { email: "maya@example.com" } });
+  await p.req("/api/auth?op=reset-request", { method: "POST", body: { email: "maya@example.com" } });
+  const [first, second] = mail.map((m) => m.text.match(/#reset=([A-Za-z0-9_-]+)/)[1]);
+  assert.equal((await p.req("/api/auth?op=reset", { method: "POST", body: { token: first, password: "attacker pw 1" } })).data.code, "reset_expired");
+  assert.equal((await p.req("/api/auth?op=reset", { method: "POST", body: { token: second, password: "owner new pw" } })).status, 200);
+  assert.ok(!redis.keys().some((k) => k.startsWith("reset:")), "no live reset links left");
+});
+
+test("reset links use the configured address, never a forwarded host header", async () => {
+  process.env.APP_URL = "https://arguably.app";
+  await signup(phone());
+  await phone().req("/api/auth?op=reset-request", { method: "POST", body: { email: "maya@example.com" }, headers: { "X-Forwarded-Host": "evil.example" } });
+  delete process.env.APP_URL;
+  assert.match(mail[0].text, /https:\/\/arguably\.app\/#reset=/);
+  assert.doesNotMatch(mail[0].text, /evil/);
+});
+
+test("wrong passwords on delete count toward the same limit", async () => {
+  const p = phone();
+  await signup(p);
+  for (let i = 0; i < 10; i++) await p.req("/api/auth?op=delete", { method: "POST", body: { password: "guess guess" } });
+  assert.equal((await p.req("/api/auth?op=delete", { method: "POST", body: { password: "correct horse" } })).data.code, "too_many_attempts");
+});
+
+test("junk requests: unknown ops, mangled cookies and made-up deletes are harmless", async () => {
+  const p = phone();
+  assert.equal((await p.req("/api/auth?op=whatever")).status, 404);
+  const bad = await realFetch(base + "/api/auth?op=me", { headers: { Cookie: "arguably_session=%E0%A4%A", "Sec-Fetch-Site": "same-origin" } });
+  assert.equal(bad.status, 200);
+  await signup(p);
+  for (let i = 0; i < 5; i++) await p.req(`/api/sync?id=nope${i}`, { method: "DELETE" });
+  assert.deepEqual((await p.req("/api/sync")).data.deleted, [], "no tombstones for chats that never existed");
 });

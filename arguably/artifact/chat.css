@@ -861,3 +861,5 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .danger-zone h2 { margin: 0; font-size: 18px; color: var(--danger); }
 .danger-zone p { margin: 0; color: var(--ink-600); font-size: 14px; line-height: 1.5; }
 .auth-row { display: flex; gap: 10px; }
+.v-foot { margin: 4px 0 0; text-align: center; color: var(--ink-600); font-size: 13px; line-height: 1.5; }
+.v-foot a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; color: var(--ember-700); font-weight: 600; }

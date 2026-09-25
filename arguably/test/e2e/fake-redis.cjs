@@ -20,6 +20,7 @@ function fakeRedis() {
         return "OK";
       }
       case "DEL": return data.delete(key) ? 1 : 0;
+      case "GETDEL": { const v = e && typeof e.v === "string" ? e.v : null; data.delete(key); return v; }
       case "INCR": { const n = (Number(e?.v) || 0) + 1; data.set(key, { v: String(n), exp: e?.exp || 0 }); return n; }
       case "EXPIRE": if (e) e.exp = Date.now() + Number(args[0]) * 1000; return e ? 1 : 0;
       case "SADD": { const s = e?.v instanceof Set ? e.v : new Set(); args.forEach((a) => s.add(a)); data.set(key, { v: s, exp: 0 }); return 1; }
@@ -28,7 +29,7 @@ function fakeRedis() {
       case "SREM": if (e?.v instanceof Set) args.forEach((a) => e.v.delete(a)); return 1;
       case "HSET": { const h = e?.v instanceof Map ? e.v : new Map(); for (let i = 0; i < args.length; i += 2) h.set(args[i], String(args[i + 1])); data.set(key, { v: h, exp: 0 }); return 1; }
       case "HGETALL": return e?.v instanceof Map ? [...e.v].flat() : [];
-      case "HDEL": if (e?.v instanceof Map) args.forEach((a) => e.v.delete(a)); return 1;
+      case "HDEL": return e?.v instanceof Map ? args.filter((a) => e.v.delete(a)).length : 0;
       case "HEXISTS": return e?.v instanceof Map && e.v.has(args[0]) ? 1 : 0;
       case "HLEN": return e?.v instanceof Map ? e.v.size : 0;
       default: throw new Error("fake redis: unsupported " + cmd);

@@ -38,7 +38,13 @@ export const burnTime = (pw) => void checkPassword(String(pw || "x"), DUMMY);
 export function readCookie(req, name) {
   for (const part of String(req.headers.cookie || "").split(";")) {
     const i = part.indexOf("=");
-    if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+    if (i > 0 && part.slice(0, i).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(i + 1).trim());
+      } catch {
+        return ""; // a mangled cookie is just no cookie
+      }
+    }
   }
   return "";
 }

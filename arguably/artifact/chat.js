@@ -59,7 +59,8 @@ Below are the full transcript of the conversation (read from their screenshots, 
 Voice: clear, warm and grounded, like a thoughtful guide. Short paragraphs, concrete words, no exclamation marks. Judge the arguing, never the people, and never mock or shame anyone.
 When asked to write a message, give the message itself, ready to send, then at most one line on why it works.
 Format: plain text. You may use "- " bullet lines and **bold** sparingly. No headings, no tables.
-If there is no verdict yet, tell them to import screenshots or paste the conversation as text.`;
+If there is no verdict yet, tell them to import screenshots or paste the conversation as text.
+Safety comes first: if anyone mentions self-harm or suicide, threats, abuse or being controlled, or seems to be a minor in a harmful situation, don't score or coach the argument; respond with care, suggest reaching out to someone they trust, and point them to Settings › "If an argument doesn't feel safe" for helplines (in the US, call or text 988). Never help write messages that threaten, harass, manipulate or shame anyone.`;
 
 const TRANSCRIBE_RULES = `Transcribe these screenshots of a text-message conversation so it can be judged later. Do not judge or summarize anything.
 
@@ -548,7 +549,8 @@ function verdictHTML(m, c) {
           )
         : ""
     }
-    <section class="card takeaway-card"><h2>How to move forward</h2><p class="takeaway">${esc(v.takeaway)}</p></section>`;
+    <section class="card takeaway-card"><h2>How to move forward</h2><p class="takeaway">${esc(v.takeaway)}</p></section>
+    <p class="v-foot">An AI's opinion, not a fact. It can be wrong.${c?.shared ? "" : ` <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Report a verdict: ${v.title}`)}&amp;body=${encodeURIComponent("What's wrong or unfair about this verdict?")}">Report this verdict</a>`}</p>`;
 }
 
 // ---------- rendering: who's who ----------
@@ -560,7 +562,7 @@ function whoHTML(m) {
     )}${m.you ? ` · You're ${esc(m.you)}` : ""}</div></div></div>`;
   }
   const phones = m.groups.length;
-  return `<div class="msg who" id="${m.id}">
+  return `<div class="msg who" id="${esc(m.id)}">
     <h3>Check who's who</h3>
     <p class="who-sub">We read ${plural(m.messageCount, "message")} from ${plural(m.shotCount, "screenshot")}${
       phones > 1 ? ` taken on ${phones} phones` : ""
@@ -586,7 +588,7 @@ function whoHTML(m) {
       <span class="label">Are you in this argument?</span>
       <div class="you-chips" id="you-${m.id}"></div>
     </div>
-    <button class="cta" type="button" data-confirm="${m.id}">Looks right, get the verdict</button>
+    <button class="cta" type="button" data-confirm="${esc(m.id)}">Looks right, get the verdict</button>
   </div>`;
 }
 
@@ -618,10 +620,10 @@ function messageHTML(m) {
   if (m.kind === "resume") return resumeHTML(m);
   if (m.kind === "error") return `<div class="msg error"><p class="banner" role="alert">${esc(m.text)}</p></div>`;
   if (m.kind === "thinking")
-    return `<div class="msg reply" id="${m.id}"><div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="step">${esc(m.text)}</span></div>${
+    return `<div class="msg reply" id="${esc(m.id)}"><div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="step">${esc(m.text)}</span></div>${
       m.progress != null ? `<div class="progress" aria-hidden="true"><i style="width:${Math.round(m.progress * 100)}%"></i></div>` : ""
     }</div>`;
-  return `<div class="msg reply" id="${m.id || ""}">${formatReply(m.text)}${m.interrupted ? '<p class="interrupted">Reply stopped before it finished.</p>' : ""}</div>`;
+  return `<div class="msg reply" id="${esc(m.id || "")}">${formatReply(m.text)}${m.interrupted ? '<p class="interrupted">Reply stopped before it finished.</p>' : ""}</div>`;
 }
 
 // Closes the example: gets people thinking about their own last argument, then sends them to grab it.
@@ -772,7 +774,7 @@ function homeHTML() {
     <div class="home-sheet">
       <p class="sheet-prompt">Still thinking about your last argument? <span>Start there.</span></p>
       <button class="import-btn" type="button" data-action="import">${svg(ICON.upload, 22)}Import screenshots</button>
-      <p class="import-note">Both phones · any order · ${STORE_BUILD && !prefs.pro ? `try Pro free for ${PLANS.yearly.trialDays} days` : `up to ${MAX_IMAGES}`}</p>
+      <p class="import-note">Both phones · any order · ${STORE_BUILD && !prefs.pro ? (trialEligible ? `try Pro free for ${PLANS.yearly.trialDays} days` : "with Arguably Pro") : `up to ${MAX_IMAGES}`}</p>
       <div class="sheet-row">
         <button class="sheet-btn" type="button" data-action="paste">${svg(ICON.paste, 20)}Paste text</button>
         <button class="sheet-btn" type="button" data-action="example">${svg(ICON.play, 20)}Try an example</button>
@@ -864,7 +866,7 @@ function onboardingHTML() {
      </ul>
      ${dots}
      <div class="ob-actions">
-       <button class="cta" type="button" data-action="photos">Allow access to Photos</button>
+       <button class="cta" type="button" data-action="photos">${STORE_BUILD ? "Continue" : "Choose screenshots"}</button>
        <button class="ob-secondary" type="button" data-action="example">Show me an example first</button>
      </div>`,
   ];
@@ -1000,7 +1002,7 @@ function proSettingsHTML(link) {
           prefs.pro
             ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${prefs.pro.plan === "monthly" ? "Monthly" : "Yearly"}</span><span class="set-sub">${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
                <a class="set-row" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">${tile("doc", "sand")}<span class="set-text"><span class="set-title">Manage subscription</span></span>${chev}</a>`
-            : link('data-action="paywall"', "scale", "ember", "Go Pro", `Start your ${PLANS.yearly.trialDays}-day free trial`)
+            : link('data-action="paywall"', "scale", "ember", "Go Pro", trialEligible ? `Start your ${PLANS.yearly.trialDays}-day free trial` : `${PRO_FAIR_USE} verdicts a month`)
         }
         <button class="set-row" type="button" data-action="restore">${tile("replay", "sand")}<span class="set-text"><span class="set-title">Restore purchases</span></span></button>
       </div>
@@ -1024,6 +1026,7 @@ const DOCS = {
       ${HOSTED
         ? `<h2>How ${AI_NAME} is run</h2><p>On this website, requests pass through Arguably's server, which keeps no copy, to Groq, which runs the model. Groq doesn't use your conversations to train AI and doesn't keep them by default. It may keep logs for up to 30 days to investigate abuse or keep the service reliable.</p>`
         : `<h2>How ${AI_NAME} is run</h2><p>On claude.ai, verdicts run on your own ${AI_NAME} account, under Anthropic's terms and privacy policy for that account.</p>`}
+      ${STORE_BUILD ? `<h2>Subscriptions</h2><p>Arguably Pro is bought through Apple. Arguably never sees your payment details. Purchases are managed with RevenueCat, which receives an anonymous app ID and your purchase history (not your conversations) to confirm your subscription.</p>` : ""}
       <h2>Tracking and ads</h2><p>Arguably doesn't track you across apps or websites, doesn't show ads, and doesn't sell or share your data with data brokers or advertisers.</p>
       <h2>Your choices</h2><p>Turn off “Send chats to ${AI_NAME}” anytime. Export or delete everything from Settings › Privacy &amp; data.${HOSTED ? " Delete your account from Settings › Account: it erases the account and everything saved in it, on every phone." : ""} Deleting is immediate and permanent.</p>
       <h2>Children</h2><p>Arguably isn't for children under 13, and doesn't knowingly collect anything from them.</p>
@@ -1049,7 +1052,7 @@ const DOCS = {
       ${HOSTED ? "<h2>Your account</h2><p>Accounts are optional. Keep your password to yourself; you're responsible for what happens under your account. Arguably may close accounts used to harass or threaten people. You can delete your account anytime in Settings.</p>" : ""}
       <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
       ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, or ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
-      ${HOSTED ? "" : "<h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>"}`,
+      ${HOSTED && !STORE_BUILD ? "" : "<h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>"}`,
   },
   safety: {
     title: "Staying safe",
@@ -1095,7 +1098,7 @@ function inboxHTML() {
             .join("")}</ul>`
         : `<div class="inbox-empty">${pageSvg(PAGE_ICON.bell, 36)}<h2>Nothing yet</h2><p>When screenshots are read or a verdict is ready, it shows up here. You can leave a chat while it works.</p></div>`
     }
-    <p class="inbox-note">${HOSTED ? "Updates show here and as a badge on the bell. Add Arguably to your Home Screen to open it like an app." : "Phone notifications come with the App Store version. For now, updates show here and as a badge on the bell."}</p>
+    <p class="inbox-note">${STORE_BUILD ? "Updates show here and as a badge on the bell." : HOSTED ? "Updates show here and as a badge on the bell. Add Arguably to your Home Screen to open it like an app." : "Phone notifications come with the App Store version. For now, updates show here and as a badge on the bell."}</p>
   </section>`;
 }
 
@@ -2093,12 +2096,12 @@ function resumeHTML(m) {
     stopped: ["Verdict stopped", "Pick up where you left off. Your screenshots are already read."],
     consent: ["Your verdict is waiting", `Allow sending chats to ${AI_NAME} to get it. Your screenshots are already read.`],
     failed: ["The verdict didn't come through", m.error || "Something went wrong on the way. Your screenshots are already read."],
-    locked: ["Your verdict is one tap away", `Start your ${PLANS.yearly.trialDays}-day free trial to see who's right.`],
+    locked: ["Your verdict is one tap away", trialEligible ? `Start your ${PLANS.yearly.trialDays}-day free trial to see who's right.` : "Go Pro to see who's right."],
     fair: ["You've hit this month's fair-use limit", `Pro includes ${PRO_FAIR_USE} verdicts a month. It resets on the 1st.`],
   }[reason] || ["Verdict didn't finish", ""];
   const button = reason === "fair" ? "" : reason === "locked"
-    ? `<button class="cta" type="button" data-action="paywall" data-resume="${m.id}">See Pro</button>`
-    : `<button class="cta" type="button" data-resume="${m.id}">${reason === "ready" ? "Get the verdict" : "Try again"}</button>`;
+    ? `<button class="cta" type="button" data-action="paywall" data-resume="${esc(m.id)}">See Pro</button>`
+    : `<button class="cta" type="button" data-resume="${esc(m.id)}">${reason === "ready" ? "Get the verdict" : "Try again"}</button>`;
   return `<div class="msg resume ${reason}" role="status"><div class="resume-text"><strong>${esc(copy[0])}</strong><span>${esc(copy[1])}</span></div>${button}</div>`;
 }
 
@@ -2325,7 +2328,7 @@ function paywallHTML() {
   const y = PLANS.yearly, mo = PLANS.monthly;
   const plan = PLANS[paywallPlan];
   const save = Math.round((1 - parseFloat(y.price.slice(1)) / (parseFloat(mo.price.slice(1)) * 12)) * 100);
-  const trial = paywallPlan === "yearly" && y.trialDays;
+  const trial = paywallPlan === "yearly" && trialEligible && y.trialDays;
   const radio = (key, title, price, sub, badge = "") => `<button type="button" role="radio" aria-checked="${paywallPlan === key}" class="plan${paywallPlan === key ? " on" : ""}" data-plan="${key}">
       <span class="plan-dot" aria-hidden="true"></span>
       <span class="plan-main"><span class="plan-title">${title}${badge ? `<b>${badge}</b>` : ""}</span><span class="plan-sub">${sub}</span></span>
@@ -2335,15 +2338,15 @@ function paywallHTML() {
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     <div class="pw-icon"><img src="${MARK_URI}" alt="" width="64" height="59"></div>
     <span class="pw-eyebrow">Arguably Pro</span>
-    <h1 id="pwTitle">Get the verdict.<br><em>Settle every one.</em></h1>
+    <h1 id="pwTitle">See who's right.<br><em>With receipts.</em></h1>
     ${paywallFor ? `<p class="pw-waiting">${svg(ICON.check, 16)}Your screenshots are read. The verdict runs the moment you unlock.</p>` : ""}
     <ul class="pw-benefits">
-      <li>${pageSvg(PAGE_ICON.scale, 22)}<span><strong>Every argument, judged</strong>Up to ${PRO_FAIR_USE} verdicts a month.</span></li>
+      <li>${pageSvg(PAGE_ICON.scale, 22)}<span><strong>${PRO_FAIR_USE} verdicts a month</strong>Winner, margin and why, with every quote checked.</span></li>
       <li>${pageSvg(SET_ICON.replay, 22)}<span><strong>Rematches</strong>Add new screenshots anytime and get a fresh verdict.</span></li>
-      <li>${pageSvg(PAGE_ICON.spark, 22)}<span><strong>New features first</strong>Everything we ship next is included.</span></li>
+      <li>${pageSvg(PAGE_ICON.spark, 22)}<span><strong>Share the verdict</strong>A card for your group chat, names hidden if you like.</span></li>
     </ul>
     <div class="plans" role="radiogroup" aria-label="Choose a plan">
-      ${radio("yearly", "Yearly", `${y.price}<small>/yr</small>`, `${y.trialDays}-day free trial`, `Save ${save}%`)}
+      ${radio("yearly", "Yearly", `${y.price}<small>/yr</small>`, trialEligible ? `${y.trialDays}-day free trial` : "Best value", `Save ${save}%`)}
       ${radio("monthly", "Monthly", `${mo.price}<small>/mo</small>`, "Cancel anytime")}
     </div>
     <button class="cta pw-cta" type="button" data-action="purchase">${trial ? `Start ${y.trialDays}-day free trial` : `Subscribe for ${plan.price}/${plan.per}`}</button>
@@ -2363,11 +2366,73 @@ function paywallHTML() {
 // StoreKit lives in the native wrapper; it answers through window.ArguablyStore.
 // Without it (a browser preview) purchases are simulated so the flow can be tried end to end.
 const storeBridge = () => window.webkit?.messageHandlers?.storekit || null;
-function storeCall(msg) {
+// In the iPhone app, subscriptions go through RevenueCat (Apple In-App Purchase underneath).
+// The "pro" entitlement is the source of truth: checked at launch, so an ended subscription
+// ends Pro here too.
+const Purchases = () => (NATIVE ? window.Capacitor?.Plugins?.Purchases : null);
+let purchasesReady = null;
+function purchasesInit() {
+  const P = Purchases();
+  if (!P || !REVENUECAT_IOS_KEY) return null;
+  purchasesReady ||= P.configure({ apiKey: REVENUECAT_IOS_KEY }).then(() => P, (err) => {
+    purchasesReady = null;
+    throw err;
+  });
+  return purchasesReady;
+}
+const activePro = (info) => info?.entitlements?.active?.pro || null;
+// Apple only lets people who haven't had the trial see a trial offer.
+let trialEligible = true;
+async function checkTrial() {
+  const ready = purchasesInit();
+  if (!ready) return;
+  try {
+    const P = await ready;
+    const res = await P.checkTrialOrIntroductoryPriceEligibility({ productIdentifiers: [PLANS.yearly.id] });
+    const status = (res?.[PLANS.yearly.id] ?? res?.eligibility?.[PLANS.yearly.id])?.status;
+    const was = trialEligible;
+    trialEligible = !(status === 1 || status === 3); // 1 = not eligible, 3 = no trial on this product
+    if (was !== trialEligible) render();
+  } catch {}
+}
+const planOf = (productId) => (Object.entries(PLANS).find(([, p]) => p.id === productId) || ["yearly"])[0];
+async function checkSubscription() {
+  const ready = purchasesInit();
+  if (!ready) return;
+  try {
+    const P = await ready;
+    const { customerInfo } = await P.getCustomerInfo();
+    const pro = activePro(customerInfo);
+    const was = !!prefs.pro;
+    prefs.pro = pro ? { plan: planOf(pro.productIdentifier), since: prefs.pro?.since || Date.now(), expires: pro.expirationDate || null } : null;
+    savePrefs(false);
+    if (was !== !!prefs.pro) render();
+  } catch {} // offline: keep what we knew
+}
+async function storeCall(msg) {
+  const ready = purchasesInit();
+  if (ready) {
+    try {
+      const P = await ready;
+      if (msg.type === "restore") {
+        const { customerInfo } = await P.restorePurchases();
+        const pro = activePro(customerInfo);
+        return pro ? { ok: true, plan: planOf(pro.productIdentifier) } : { ok: false };
+      }
+      const offerings = await P.getOfferings();
+      const pkgs = [...(offerings?.current?.availablePackages || []), ...Object.values(offerings?.all || {}).flatMap((o) => o.availablePackages || [])];
+      const aPackage = pkgs.find((k) => k.product?.identifier === msg.productId);
+      if (!aPackage) return { ok: false };
+      const { customerInfo } = await P.purchasePackage({ aPackage });
+      return activePro(customerInfo) ? { ok: true, plan: msg.plan } : { ok: false };
+    } catch (err) {
+      return { ok: false, cancelled: !!(err?.userCancelled || err?.code === "1" || /cancel/i.test(String(err?.message || ""))) };
+    }
+  }
   const bridge = storeBridge();
   // Purchases are only simulated in a browser preview. Inside the native app a missing
   // StoreKit bridge is an error, never free Pro.
-  if (!bridge) return Promise.resolve(msg.type === "purchase" && !window.webkit ? { ok: true, plan: msg.plan, preview: true } : { ok: false });
+  if (!bridge) return { ...(msg.type === "purchase" && !window.webkit && !NATIVE ? { ok: true, plan: msg.plan, preview: true } : { ok: false }) };
   return new Promise((resolve) => {
     const id = uid();
     (window.ArguablyStore ||= { pending: {}, reply: (rid, res) => { window.ArguablyStore.pending[rid]?.(res); delete window.ArguablyStore.pending[rid]; } });
@@ -2987,7 +3052,7 @@ function closeShare() {
 function openShare(verdict) {
   if (!verdict || verdict.safety_note?.trim()) return;
   if (shareFor?.url) URL.revokeObjectURL(shareFor.url);
-  shareFor = { verdict, hide: false, url: "", file: null, making: true };
+  shareFor = { verdict, hide: true, url: "", file: null, making: true }; // real names only if you choose
   openPage("share");
   makeShareCard();
 }
@@ -3015,6 +3080,14 @@ async function shareImage() {
   if (!s?.file) return;
   const win = winnerOf(shareVerdict());
   try {
+    const NativeShare = NATIVE ? window.Capacitor?.Plugins?.Share : null;
+    const Files = NATIVE ? window.Capacitor?.Plugins?.Filesystem : null;
+    if (NativeShare && Files) {
+      // The iPhone share sheet takes a file on disk: write the card to the cache, then share it.
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(s.file); });
+      const { uri } = await Files.writeFile({ path: s.file.name, data, directory: "CACHE" });
+      return await NativeShare.share({ title: shareVerdict().title, files: [uri] });
+    }
     if (navigator.canShare?.({ files: [s.file] })) return await navigator.share({ files: [s.file], title: shareVerdict().title });
     const a = Object.assign(document.createElement("a"), { href: s.url, download: s.file.name });
     document.body.append(a);
@@ -3022,7 +3095,7 @@ async function shareImage() {
     a.remove();
     toast("Image saved.");
   } catch (err) {
-    if (err?.name !== "AbortError") toast(`Couldn't share here. Screenshot the card instead: ${win.name} wins.`);
+    if (err?.name !== "AbortError" && !/cancel/i.test(String(err?.message || err))) toast(`Couldn't share here. Screenshot the card instead: ${win.name} wins.`);
   }
 }
 
@@ -3039,6 +3112,8 @@ async function shareLink() {
   }
   const text = `${win.name} wins${win.margin ? ` ${byPoints(win.margin)}` : ""}. See the full verdict on Arguably:`;
   try {
+    const NativeShare = NATIVE ? window.Capacitor?.Plugins?.Share : null;
+    if (NativeShare) return await NativeShare.share({ title: v.title, text, url });
     if (navigator.share && matchMedia("(pointer: coarse)").matches) return await navigator.share({ title: v.title, text, url });
     await navigator.clipboard.writeText(url);
     toast("Link copied.");
@@ -3108,6 +3183,23 @@ let authBusy = false;
 let resetToken = "";
 let deletingAccount = false;
 let lastSynced = 0;
+// Whose chats are on this phone. Signing in as someone else erases them first, so one person's
+// chats can never flow into another person's account on a shared phone.
+const OWNER_KEY = "arguably.owner";
+const localOwner = () => storage(() => localStorage.getItem(OWNER_KEY) || "", "");
+const setOwner = (email) => storage(() => (email ? localStorage.setItem(OWNER_KEY, email) : localStorage.removeItem(OWNER_KEY)));
+// Data from the server is rendered like local data, so give it the same shape local data has.
+const safeId = (x) => String(x || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+function cleanSyncedChat(c) {
+  if (!c || typeof c !== "object" || !safeId(c.id) || safeId(c.id) !== c.id || !Array.isArray(c.messages)) return null;
+  const out = newChatObject({ ...c });
+  out.id = c.id;
+  out.title = typeof c.title === "string" ? c.title.slice(0, 200) : "Argument";
+  out.messages = c.messages.filter((m) => m && typeof m === "object" && !Array.isArray(m)).map((m) => ({ ...m, id: safeId(m.id) || uid() }));
+  for (const k of ["readings", "groups", "transcript", "shotKeys"]) if (!Array.isArray(out[k])) out[k] = [];
+  if (typeof out.raw !== "string") out.raw = "";
+  return out;
+}
 const AUTH_ERRORS = {
   email_invalid: "That email doesn't look right.",
   password_short: "Use at least 8 characters for your password.",
@@ -3144,7 +3236,11 @@ async function refreshAccount() {
   accountsOn = !!r.data?.accounts;
   resetByEmail = !!r.data?.resetByEmail;
   account = r.data?.user || null;
-  if (account) await syncDown();
+  if (account) {
+    if (localOwner() && localOwner() !== account.email) eraseDevice(); // someone else's chats
+    setOwner(account.email);
+    await syncDown();
+  }
   if (page === "settings" || page === "account") render();
 }
 
@@ -3163,8 +3259,9 @@ async function syncDown() {
   }
   if (chat && deletedThere.has(chat.id)) chat = null;
   const byId = new Map(chats.filter((c) => !deletedThere.has(c.id)).map((c) => [c.id, c]));
-  for (const sc of Array.isArray(r.data.chats) ? r.data.chats : []) {
-    if (!sc || typeof sc.id !== "string" || !Array.isArray(sc.messages) || deletedIds.has(sc.id) || live.has(sc.id)) continue;
+  for (const raw of Array.isArray(r.data.chats) ? r.data.chats : []) {
+    const sc = cleanSyncedChat(raw);
+    if (!sc || deletedIds.has(sc.id) || live.has(sc.id)) continue;
     const local = byId.get(sc.id);
     if (!local || (Number(sc.updatedAt) || 0) > (Number(local.updatedAt) || 0)) byId.set(sc.id, sc);
   }
@@ -3175,7 +3272,7 @@ async function syncDown() {
   const p = r.data.prefs;
   if (p && typeof p === "object") {
     if (typeof p.name === "string") prefs.name = p.name.slice(0, 40);
-    if (typeof p.tone === "string" && TONES[p.tone]) prefs.tone = p.tone;
+    if (typeof p.tone === "string" && Object.hasOwn(TONES, p.tone)) prefs.tone = p.tone;
     if (p.notify && typeof p.notify === "object") prefs.notify = { ...prefs.notify, ...Object.fromEntries(Object.entries(p.notify).filter(([, v]) => typeof v === "boolean")) };
     if (typeof p.readOnPhone === "boolean") prefs.readOnPhone = p.readOnPhone;
     savePrefs(false);
@@ -3272,6 +3369,9 @@ async function submitAuth(form) {
   }
   account = r.data.user;
   resetToken = "";
+  // Chats made signed out join this account; chats that belong to another account never do.
+  if (localOwner() && localOwner() !== account.email) eraseDevice();
+  setOwner(account.email);
   if (location.hash.startsWith("#reset=")) history.replaceState(null, "", location.pathname + location.search);
   const welcome = authMode === "signup" ? "Account created. Your chats are saved to it." : authMode === "reset" ? "Password changed. You're signed in." : "Signed in. Your chats are syncing.";
   await syncDown();
@@ -3285,6 +3385,7 @@ async function signOut() {
   await api("/api/auth?op=logout", { method: "POST", body: {} });
   account = null;
   eraseDevice();
+  setOwner("");
   page = null;
   render();
   toast("Signed out. Your chats are saved to your account, not this phone.");
@@ -3309,6 +3410,7 @@ async function deleteAccount(form) {
   account = null;
   deletingAccount = false;
   eraseDevice();
+  setOwner("");
   page = null;
   render();
   toast("Your account and everything in it are deleted.");
@@ -3318,7 +3420,7 @@ function accountHTML() {
   const err = authError ? `<p class="auth-error" role="alert">${esc(authError)}</p>` : "";
   const note = authNote ? `<p class="auth-note" role="status">${esc(authNote)}</p>` : "";
   const busyAttr = authBusy ? ' aria-busy="true" disabled' : "";
-  if (account) {
+  if (account && !(authMode === "reset" && resetToken)) {
     return `<section class="account">
       <h1 class="page-title">Your account</h1>
       <div class="set-card account-card">
@@ -3462,7 +3564,7 @@ function finishOnboarding() {
   prefs.onboarded = true;
   savePrefs();
   page = STORE_BUILD && !prefs.pro ? "paywall" : null;
-  if (STORE_BUILD) notify("rate", "Hey, welcome to Arguably!", "Give us a rating on the App Store. It helps more people settle it.");
+  if (STORE_BUILD) notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. You can judge arguments you're not in, too.");
   else if (HOSTED) notify("tips", "Hey, welcome to Arguably!", "Put it on your Home Screen: tap Share, then Add to Home Screen. It opens like an app.");
   else notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. You can judge arguments you're not in, too.");
   render();
@@ -3563,6 +3665,9 @@ if (HOSTED && location.hash.startsWith("#reset=")) {
   page = "account";
 }
 refreshAccount();
+checkSubscription();
+checkTrial();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkSubscription(); });
 openSharedFromHash();
 // The header only shows a (soft) edge once something scrolls under it.
 window.addEventListener("scroll", () => document.body.classList.toggle("scrolled", window.scrollY > 4), { passive: true });

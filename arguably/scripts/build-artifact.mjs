@@ -50,7 +50,10 @@ const constants = [
   `const SAMPLE_VERDICT = ${JSON.stringify(sampleVerdict)};`,
   `const SYSTEM_PROMPT = ${JSON.stringify(SYSTEM_PROMPT)};`,
   `const MARK_URI = ${JSON.stringify(dataUri("public/brand/mark.svg"))};`,
-  `const STORE_BUILD = ${store};`,
+  // The website turns into the App Store app inside the native iPhone shell (ios-app/).
+  `const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());`,
+  `const STORE_BUILD = ${store ? "true" : web ? "NATIVE" : "false"};`,
+  `const REVENUECAT_IOS_KEY = ${JSON.stringify(process.env.REVENUECAT_IOS_KEY || "")};`,
   `const HOSTED = ${web};`,
   `const AI_NAME = ${JSON.stringify(AI.name)};`,
   `const AI_MAKER = ${JSON.stringify(AI.maker)};`,
