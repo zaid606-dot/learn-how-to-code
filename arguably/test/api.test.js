@@ -153,6 +153,7 @@ test("on Groq's free budget, requests are sized to fit and screenshots go as tex
   const asked = sent.max_completion_tokens + ai.estimateTokens(sent.messages);
   assert.ok(asked <= 8000, `asked for ${asked} tokens`);
   assert.equal(sent.reasoning_effort, "none", "no thinking eating the budget");
+  assert.deepEqual([sent.temperature, sent.seed], [0, 7], "same conversation, same verdict");
   const limits = ai.appLimits();
   assert.equal(limits.images, undefined, "no images: read on the phone");
   assert.ok(limits.maxPromptBytes < 20000);

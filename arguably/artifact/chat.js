@@ -348,6 +348,18 @@ const SOURCE_LABELS = {
 };
 const sourceLabel = (src) => (Object.hasOwn(SOURCE_LABELS, src) ? SOURCE_LABELS[src] : "Source unknown");
 
+// Who won and by how much. Older saved verdicts may be draws, so the scores settle those.
+function winnerOf(v) {
+  const w = v?.winner || {};
+  const scores = [...(w.scores || [])].sort((a, b) => b.score - a.score);
+  const name = (!w.is_draw && w.name) || scores[0]?.participant || "";
+  const mine = scores.find((sc) => sc.participant.toLowerCase() === name.toLowerCase());
+  const rest = scores.filter((sc) => sc !== mine);
+  const margin = mine && rest.length ? Math.max(0, mine.score - rest[0].score) : 0;
+  return { name, margin, score: mine?.score, next: rest[0]?.score };
+}
+const byPoints = (n) => (n === 1 ? "by 1 point" : `by ${n} points`);
+
 function verdictHTML(m, c) {
   const v = m.verdict;
   const unverified = new Set(m.unverified || []);
@@ -370,6 +382,7 @@ function verdictHTML(m, c) {
     return `<details class="v-sec" data-msg="${esc(m.id || "")}" data-sec="${key}"${isOpen ? " open" : ""}><summary>${title}${count != null ? ` <span class="count-badge">${count}</span>` : ""}</summary><div class="v-body">${body}</div></details>`;
   };
   const w = v.winner || {};
+  const win = winnerOf(v);
   const conf = Math.max(0, Math.min(100, Number(w.confidence) || 0));
   const scores = [...(w.scores || [])].sort((a, b) => b.score - a.score);
   const o = v.origin || {};
@@ -377,6 +390,7 @@ function verdictHTML(m, c) {
 
   return `
     ${c.example ? '<span class="tag example-tag">Example verdict</span>' : ""}
+    ${m.repeat ? '<p class="checked repeat" role="note">You’ve judged this conversation before. Same conversation, same verdict.</p>' : ""}
     <h2 class="v-title">${esc(v.title)}</h2>
     ${
       unverified.size
@@ -390,8 +404,9 @@ function verdictHTML(m, c) {
       <div class="winner-head">
         <div class="ring" style="--p:${conf}" role="img" aria-label="${conf}% sure"><span>${conf}%<small>sure</small></span></div>
         <div>
-          <div class="winner-label">${w.is_draw ? "Even match" : "Winner"}</div>
-          <div class="winner-name">${esc(w.is_draw ? "No clear winner" : w.name)}</div>
+          <div class="winner-label">Winner</div>
+          <div class="winner-name">${esc(win.name)}</div>
+          ${win.margin ? `<div class="winner-margin">Wins ${byPoints(win.margin)} <span>${win.score}–${win.next}</span></div>` : ""}
         </div>
       </div>
       <p>${esc(w.reasoning)}</p>
@@ -682,7 +697,7 @@ function homeHTML() {
             .map((c) => {
               const v = verdictsOf(c).at(-1);
               const names = v ? (v.participants || []).map((p) => p.name).slice(0, 2) : [];
-              const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.safety_note?.trim() ? "Note on safety" : v.winner?.is_draw ? "Even match" : `${esc(v.winner?.name)} won`) : "No verdict yet";
+              const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.safety_note?.trim() ? "Note on safety" : `${esc(winnerOf(v).name)} won${winnerOf(v).margin ? ` ${byPoints(winnerOf(v).margin)}` : ""}`) : "No verdict yet";
               return `<li><button type="button" data-chat="${esc(c.id)}">
                 <span class="pair" aria-hidden="true">${(names.length ? names : ["?"])
                   .map((n, i) => `<span style="background:${PALETTE[i].bg};color:${PALETTE[i].fg}">${esc(String(n).trim().charAt(0).toUpperCase())}</span>`)
@@ -1824,6 +1839,45 @@ function allowedToSend(retry) {
   return true;
 }
 
+// Same conversation, same verdict: a verdict is saved with a fingerprint of everything that
+// shaped it, and a later match reuses it instead of asking the AI again.
+function hash(text) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
+}
+const JUDGE_VERSION = hash(SYSTEM_PROMPT + JSON.stringify(VERDICT_SCHEMA));
+function fingerprint(c, note) {
+  const convo = conversationText(c).replace(/\s+/g, " ").trim();
+  return hash([JUDGE_VERSION, AI_NAME, prefs.tone || "straight", note.trim(), convo].join("\u0000"));
+}
+function judgedBefore(fp) {
+  for (const chat of chats) for (const m of chat.messages) if (m.kind === "verdict" && m.fp === fp && m.verdict) return m.verdict;
+  return null;
+}
+function reuseVerdict(c, note) {
+  const fp = fingerprint(c, note);
+  const earlier = judgedBefore(fp);
+  if (!earlier) return false;
+  const verdict = JSON.parse(JSON.stringify(earlier));
+  c.messages.push({
+    id: uid(), role: "assistant", kind: "verdict", verdict, fp, repeat: true,
+    unverified: unverifiedQuotes(verdict, c.transcript, c.raw),
+    transcript: c.transcript.length ? c.transcript.map((t) => ({ ...t })) : undefined,
+    source: c.transcript.length ? (c.raw ? "both" : "screens") : "paste",
+  });
+  c.title = verdict.title || c.title;
+  saveChats(c);
+  render();
+  return true;
+}
+
 function startVerdict(c, note = "") {
   if (busy && busy.chatId !== c.id) {
     c.messages = c.messages.filter((m) => m.kind !== "resume");
@@ -1839,6 +1893,8 @@ function startVerdict(c, note = "") {
     return;
   }
   c.messages = c.messages.filter((m) => m.kind !== "resume");
+  // A conversation judged before gets the same verdict back, free and instantly.
+  if (reuseVerdict(c, note)) return;
   const block = verdictBlock();
   if (block) {
     c.messages.push({ id: uid(), role: "assistant", kind: "resume", reason: block, note });
@@ -1931,20 +1987,21 @@ async function runVerdict(c, note) {
     step = Math.min(step + 1, VERDICT_STEPS.length - 1);
     updateThinking(thinking, VERDICT_STEPS[step]);
   }, 7000);
+  const fp = fingerprint(c, note);
   try {
     const verdict = normalizeVerdict(await sampler.json(verdictPrompt(c, note), { modelTier: "complex", signal }));
     if (!verdict) throw { code: "invalid_json" };
     c.messages = c.messages.filter((m) => m !== thinking);
     c.messages.push({
-      id: uid(), role: "assistant", kind: "verdict", verdict,
+      id: uid(), role: "assistant", kind: "verdict", verdict, fp,
       unverified: unverifiedQuotes(verdict, c.transcript, c.raw),
       transcript: c.transcript.length ? c.transcript.map((t) => ({ ...t })) : undefined,
       source: c.transcript.length ? (c.raw ? "both" : "screens") : "paste",
     });
     c.title = verdict.title || c.title;
     countVerdict();
-    const w = verdict.winner || {};
-    notify("verdict", `Verdict ready: ${c.title}`, verdict.safety_note?.trim() ? "There's a note on safety." : w.is_draw ? "It's an even match." : `${w.name} has the stronger case.`, c.id);
+    const win = winnerOf(verdict);
+    notify("verdict", `Verdict ready: ${c.title}`, verdict.safety_note?.trim() ? "There's a note on safety." : `${win.name} wins${win.margin ? ` ${byPoints(win.margin)}` : ""}.`, c.id);
   } catch (err) {
     c.messages = c.messages.filter((m) => m !== thinking);
     const stopped = err?.code === "cancelled";
@@ -1973,9 +2030,10 @@ function chatTurns(chat) {
       if (content) turns.push({ role: "user", content: content.slice(0, 4000) });
     } else if (m.kind === "verdict") {
       const w = m.verdict.winner || {};
+      const win = winnerOf(m.verdict);
       turns.push({ role: "assistant", content: m.verdict.safety_note?.trim()
         ? `I didn't score "${m.verdict.title}". I gave a note on safety instead, because the messages showed threats, control or abuse. Full details are in the verdict JSON above.`
-        : `I gave my verdict "${m.verdict.title}": ${w.is_draw ? "an even match" : `${w.name} made the stronger case`} (${w.confidence}% confidence). Full details are in the verdict JSON above.` });
+        : `I gave my verdict "${m.verdict.title}": ${win.name} made the stronger case${win.margin ? `, winning ${byPoints(win.margin)}` : ""} (${w.confidence}% confidence). Full details are in the verdict JSON above.` });
     } else if (m.text) {
       turns.push({ role: "assistant", content: m.text });
     }

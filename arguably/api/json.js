@@ -23,8 +23,10 @@ export default async function handler(req, res) {
       { type: "text", text: `${prompt}\n\nReply with a single JSON object and nothing else.` },
       ...images.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
     ];
+    // Temperature 0 and a fixed seed: the same conversation should get the same verdict.
+    const steady = { temperature: 0, ...(provider().id === "groq" ? { seed: 7 } : {}) };
     const r = await complete(
-      { model: modelFor(tier), messages: [{ role: "user", content }], response_format: { type: "json_object" }, temperature: 0.3, max_tokens: tier === "complex" ? 5000 : 3500 },
+      { model: modelFor(tier), messages: [{ role: "user", content }], response_format: { type: "json_object" }, ...steady, max_tokens: tier === "complex" ? 5000 : 3500 },
       ctl.signal
     );
     const data = await r.json().catch(() => null);

@@ -501,6 +501,38 @@ test("verdict sections stay as you left them after a follow-up", async () => {
   assert.doesNotMatch(await page.locator(".msg.reply").last().innerText(), /\[m\d+\]/, "no internal message IDs in replies");
 });
 
+test("every verdict names a winner and the margin; the same conversation gets the same verdict", async () => {
+  const { page, errors, calls } = await openApp({ images: true });
+  await pasteConversation(page);
+  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
+  assert.equal(await page.locator(".winner-name").innerText(), "Maya");
+  assert.match(await page.locator(".winner-margin").innerText(), /Wins by 31 points\s*72–41/);
+  await page.locator(".winner-card").scrollIntoViewIfNeeded();
+  await shot(page, "verdict-winner-margin");
+  // Same conversation again, in a new chat: same verdict, no second AI call.
+  await page.click("#newBtn");
+  await page.fill("#messageInput", PASTED);
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.verdict .repeat", { timeout: 10000 });
+  assert.equal(await page.locator(".winner-name").innerText(), "Maya");
+  assert.equal((await calls()).filter((c) => c.kind === "verdict").length, 1, "judged once");
+  // A draw from the AI is settled by the scores: there is always a winner.
+  await page.evaluate(() => {
+    const w = window.__STUB.sampleVerdict.winner;
+    window.__STUB.sampleVerdict = { ...window.__STUB.sampleVerdict, winner: { ...w, name: "Draw", is_draw: true, scores: [{ ...w.scores[0], score: 60 }, { ...w.scores[1], score: 64 }] } };
+  });
+  await page.click("#newBtn");
+  await page.fill("#messageInput", PASTED + "\nJordan: fine");
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.verdict:not(:has(.repeat))", { timeout: 10000 });
+  assert.equal(await page.locator(".winner-name").innerText(), "Jordan");
+  assert.match(await page.locator(".winner-margin").innerText(), /Wins by 4 points/);
+  assert.doesNotMatch(await page.locator("#thread").innerText(), /Even match|No clear winner/);
+  await page.click("#backBtn");
+  await waitUntil(page, () => document.querySelector(".recent")?.innerText.includes("Jordan won by 4 points"));
+  assert.deepEqual(errors, []);
+});
+
 test("a conversation with abuse gets a safety-first verdict, not a score", async () => {
   const { page } = await openApp({ images: true });
   await page.evaluate(() => { window.__STUB.sampleVerdict = { ...window.__STUB.sampleVerdict, winner: { ...window.__STUB.sampleVerdict.winner, is_draw: true, name: "", confidence: 0 }, safety_note: "Some of these messages read as threats. You deserve to feel safe." }; });

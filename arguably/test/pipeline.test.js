@@ -332,8 +332,24 @@ test("normalizeVerdict makes schema-violating verdicts safe or rejects them", ()
   assert.equal(v.winner.confidence, 100);
   assert.equal(v.fallacies.length, 1);
   assert.equal(P.normalizeVerdict({ origin: {}, winner: {} }), null, "no winner and not a draw");
-  assert.ok(P.normalizeVerdict({ origin: {}, winner: { is_draw: true } }), "a draw needs no name");
+  assert.equal(P.normalizeVerdict({ origin: {}, winner: { is_draw: true } }), null, "a draw with nobody to pick is rejected");
   assert.equal(P.normalizeVerdict("text"), null);
+});
+
+test("normalizeVerdict always names one winner with a clear margin", () => {
+  const sc = (participant, score) => ({ participant, score, strengths: [], weaknesses: [] });
+  const draw = P.normalizeVerdict({ origin: {}, winner: { name: "Draw", is_draw: true, scores: [sc("Maya", 62), sc("Jordan", 71)] } });
+  assert.equal(draw.winner.is_draw, false, "no draws");
+  assert.equal(draw.winner.name, "Jordan", "the higher score wins");
+  assert.equal(draw.winner.margin, 9);
+  const tie = P.normalizeVerdict({ origin: {}, winner: { name: "Maya", scores: [sc("Maya", 70), sc("Jordan", 70)] } });
+  assert.equal(tie.winner.name, "Maya");
+  assert.deepEqual([tie.winner.scores[0].score, tie.winner.margin], [71, 1], "a tie is broken toward the named winner");
+  const top = P.normalizeVerdict({ origin: {}, winner: { name: "maya", scores: [sc("Maya", 100), sc("Jordan", 100)] } });
+  assert.deepEqual(top.winner.scores.map((s) => s.score), [100, 99], "never past 100");
+  const unscored = P.normalizeVerdict({ origin: {}, participants: [{ name: "Maya" }], winner: { is_draw: true } });
+  assert.equal(unscored.winner.name, "Maya", "falls back to the first participant");
+  assert.equal(unscored.winner.margin, 0);
 });
 
 test("headers: WhatsApp back-arrow names and Instagram handles are read as the contact", () => {
@@ -397,6 +413,7 @@ test("normalizeVerdict: non-string text fields are made safe; safety notes are n
   const v = P.normalizeVerdict({ title: "T", safety_note: 1, takeaway: { x: 1 }, origin: { summary: ["a"] }, winner: { name: "", is_draw: false }, grudges: [{ grudge: 5, severity: "toString" }] });
   assert.equal(v.safety_note, "1");
   assert.equal(v.winner.is_draw, true, "a safety note makes it a no-score verdict");
+  assert.equal(v.winner.name, "");
   assert.equal(v.takeaway, "");
   assert.equal(v.origin.summary, "");
   assert.equal(v.grudges[0].grudge, "5");

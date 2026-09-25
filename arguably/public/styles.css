@@ -280,6 +280,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .ring small { display: block; font-size: 10px; font-weight: 600; color: var(--ember-300); margin-top: 2px; }
 .winner-label { font: 700 12px/1.3 var(--font-body); color: var(--ember-300); text-transform: uppercase; letter-spacing: .08em; }
 .winner-name { font: 700 32px/1.15 var(--font-display); color: var(--white); }
+.winner-margin { margin-top: 4px; font: 600 14px/1.3 var(--font-body); color: var(--ember-300); }
+.winner-margin span { margin-left: 6px; color: var(--sand-300); font-variant-numeric: tabular-nums; }
 .winner-card p { font-size: 16px; }
 
 .score { padding: 16px 0; border-top: 1px solid var(--sand-300); }

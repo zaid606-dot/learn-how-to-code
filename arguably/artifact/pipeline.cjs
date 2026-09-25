@@ -648,22 +648,41 @@ function normalizeVerdict(v) {
   v.personal_shots = objs(v.personal_shots).map((x) => clean(x, ["from", "to", "quote", "why_its_personal", "severity"]));
   v.fallacies = objs(v.fallacies).map((f) => clean(f, ["speaker", "fallacy", "quote", "explanation"]));
   const w = v.winner;
-  w.is_draw = w.is_draw === true;
   w.name = str(w.name).trim();
   w.reasoning = str(w.reasoning);
+  const n = Number(w.confidence);
+  w.confidence = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50;
+  w.scores = objs(w.scores).map((sc) => {
+    const score = Number(sc.score);
+    return { ...sc, participant: str(sc.participant).trim(), score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0, strengths: strs(sc.strengths), weaknesses: strs(sc.weaknesses) };
+  });
   // A safety note is never thrown away: that verdict is shown without a winner or scores.
   if (v.safety_note.trim()) {
     w.is_draw = true;
     w.name = "";
     w.confidence = 0;
+    w.margin = 0;
+    return v;
   }
-  if (!w.is_draw && !w.name) return null;
-  const n = Number(w.confidence);
-  w.confidence = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50;
-  w.scores = objs(w.scores).map((sc) => {
-    const score = Number(sc.score);
-    return { ...sc, participant: str(sc.participant), score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0, strengths: strs(sc.strengths), weaknesses: strs(sc.weaknesses) };
-  });
+  // Every other verdict names one winner with a clear margin. A draw, or a winner the
+  // scores don't back up, is settled by the scores (ties go to the named winner).
+  w.is_draw = false;
+  const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const byScore = [...w.scores].sort((a, b) => b.score - a.score);
+  const named = w.name && same(w.name, "draw") ? "" : w.name;
+  const top = named ? w.scores.find((sc) => same(sc.participant, named)) : byScore[0];
+  w.name = named || top?.participant || v.participants[0]?.name || "";
+  if (!w.name) return null;
+  if (top) {
+    const rest = w.scores.filter((sc) => sc !== top);
+    const best = Math.max(0, ...rest.map((sc) => sc.score));
+    if (rest.length && top.score <= best) {
+      // Keep the winner on top by at least a point, without going past 100.
+      if (best < 100) top.score = best + 1;
+      else { top.score = 100; for (const sc of rest) sc.score = Math.min(sc.score, 99); }
+    }
+    w.margin = rest.length ? top.score - Math.max(...rest.map((sc) => sc.score)) : 0;
+  } else w.margin = 0;
   return v;
 }
 

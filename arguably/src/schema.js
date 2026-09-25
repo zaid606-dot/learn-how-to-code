@@ -62,14 +62,14 @@ export const verdictSchema = obj({
     "The main subjects argued about, compared side by side."
   ),
   winner: obj({
-    name: str("Winning participant's name, or 'Draw'."),
-    is_draw: bool("True if neither side clearly won."),
+    name: str("Winning participant's name. Always one person, never a draw."),
+    is_draw: bool("Always false, unless there is a safety_note (then true, with no winner)."),
     confidence: int("0-100: how confident the verdict is."),
-    reasoning: str("2-4 sentences explaining the verdict, grounded in the messages."),
+    reasoning: str("2-4 sentences: why the winner won, what tipped it, and what the other side needed to do differently. Grounded in the messages."),
     scores: arr(
       obj({
         participant: str("Participant name."),
-        score: int("0-100 overall argument score."),
+        score: int("0-100 overall argument score. The winner's is the highest, at least 3 points clear."),
         strengths: arr(str("A strength, short phrase."), "What they did well."),
         weaknesses: arr(str("A weakness, short phrase."), "What hurt their case."),
       }),
