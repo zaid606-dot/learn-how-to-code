@@ -45,7 +45,7 @@ To open it on your phone, run it on your computer and visit `http://<your-comput
 - `server.js`: static file server + `POST /api/analyze` (uses only Node built-ins plus the Anthropic SDK)
 - `src/analyze.js`: builds the Claude request: images plus a referee system prompt, adaptive thinking, and a strict JSON-schema structured output
 - `src/schema.js`: the verdict schema the UI renders
-- `test/`: `npm test`
+- `test/`: `npm test` (unit tests). `npm run test:e2e` runs the Artifact build end to end in a phone-sized Chromium with a fake Claude (`test/e2e/stub.js`): home screen, both-phones import, who's who, verdict, follow-ups, on-device reading, paste, and error handling.
 
 Settings: `PORT` (default 3000), `ARGUABLY_MODEL` (default `claude-opus-5`), `ARGUABLY_MOCK=1`.
 

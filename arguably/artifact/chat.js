@@ -597,20 +597,25 @@ function loadImage(url) {
   });
 }
 
-// 64-bit average hash: near-identical screenshots get near-identical hashes.
+// Small grayscale thumbnail for spotting the same screenshot imported twice. Chat screenshots
+// all share one layout, so this must be detailed enough that different conversations differ.
 function imageHash(img) {
   const c = document.createElement("canvas");
-  c.width = 8;
-  c.height = 16;
+  c.width = 48;
+  c.height = 96;
   const ctx = c.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, 8, 16);
-  const d = ctx.getImageData(0, 0, 8, 16).data;
-  const lum = [];
-  for (let i = 0; i < d.length; i += 4) lum.push(d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11);
-  const avg = lum.reduce((a, b) => a + b, 0) / lum.length;
-  return lum.map((v) => (v > avg ? 1 : 0));
+  ctx.drawImage(img, 0, 0, 48, 96);
+  const d = ctx.getImageData(0, 0, 48, 96).data;
+  const lum = new Uint8Array(48 * 96);
+  for (let i = 0; i < lum.length; i++) lum[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
+  return lum;
 }
-const hashDistance = (a, b) => a.reduce((n, bit, i) => n + (bit !== b[i] ? 1 : 0), 0);
+// Mean brightness difference per pixel (0-255). A re-imported screenshot scores about 0-1.
+const hashDistance = (a, b) => {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+};
 
 async function fileToShot(file) {
   const src = URL.createObjectURL(file);
@@ -642,7 +647,7 @@ async function addFiles(fileList) {
   for (const f of files.slice(0, room)) {
     try {
       const shot = await fileToShot(f);
-      if (pending.some((p) => hashDistance(p.hash, shot.hash) <= 3)) dupes++;
+      if (pending.some((p) => hashDistance(p.hash, shot.hash) < 1.5)) dupes++;
       else pending.push(shot);
     } catch {
       failed++;

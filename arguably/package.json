@@ -5,11 +5,14 @@
   "description": "Drop in screenshots of an argument; an AI referee finds the origin, the winner, grudges, personal shots and logical fallacies.",
   "type": "module",
   "main": "server.js",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "mock": "ARGUABLY_MOCK=1 node server.js",
-    "test": "node --test"
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e/*.e2e.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest"
