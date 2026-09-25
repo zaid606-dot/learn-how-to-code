@@ -404,8 +404,8 @@ function whoHTML(m) {
       </fieldset>`
       )
       .join("")}
-    <div class="you-row" role="radiogroup" aria-label="Which one are you?">
-      <span class="label">Which one are you?</span>
+    <div class="you-row" role="radiogroup" aria-label="Are you in this argument?">
+      <span class="label">Are you in this argument?</span>
       <div class="you-chips" id="you-${m.id}"></div>
     </div>
     <button class="cta" type="button" data-confirm="${m.id}">Looks right, get the verdict</button>
@@ -421,7 +421,7 @@ function renderYouChips(m) {
     names
       .map((n) => `<button type="button" role="radio" aria-checked="${m.you === n}" class="you-chip${m.you === n ? " on" : ""}" data-you="${esc(n)}">${esc(n)}</button>`)
       .join("") +
-    `<button type="button" role="radio" aria-checked="${m.you === "__none"}" class="you-chip${m.you === "__none" ? " on" : ""}" data-you="__none">Neither</button>`;
+    `<button type="button" role="radio" aria-checked="${m.you === "__none"}" class="you-chip${m.you === "__none" ? " on" : ""}" data-you="__none">I'm not in it</button>`;
 }
 
 // ---------- rendering: messages and screens ----------
@@ -465,36 +465,40 @@ function homeHTML() {
   const notice = !sampler
     ? '<p class="notice">Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.</p>'
     : "";
+  // The demo plays once per page load; re-renders during startup continue it where it was.
   homeShownAt ||= performance.now();
   const since = Math.round(performance.now() - homeShownAt);
-  const settle = since < 1200 ? ` style="animation-delay:${200 - since}ms"` : ' data-settled=""';
+  const play = since < 3500 ? ` data-play="" style="--t0:-${since}ms"` : "";
+  const d = (ms) => ` style="--d:${ms}ms"`;
   return `<section class="home">
     ${notice}
     <div class="home-hero">
       <h1>Who's <em>actually</em> right?</h1>
       <p>Drop in the screenshots from both phones. Get a fair verdict, with receipts.</p>
     </div>
-    <div class="demo">
+    <div class="demo"${play}>
       <div class="demo-phones" aria-hidden="true">
-        <div class="demo-phone mine">
-          <span class="demo-label"><i></i>Your phone</span>
-          <span class="bub out">I said I'd do it after dinner</span>
-          <span class="bub in">That was Tuesday</span>
-          <span class="bub out ghost"></span>
+        <div class="demo-phone maya">
+          <span class="demo-label"><i></i>Maya's phone</span>
+          <span class="demo-chat">Jordan</span>
+          <span class="bub out"${d(150)}>You said you'd do the dishes last night?</span>
+          <span class="bub in"${d(500)}>Ok and you left your laundry in the dryer for 3 days so<b class="stamp fallacy"${d(1350)}>Whataboutism</b></span>
+          <span class="bub out"${d(850)}>This is literally the same thing that happened in March<b class="stamp grudge"${d(1500)}>Grudge</b></span>
         </div>
-        <div class="demo-phone theirs">
-          <span class="demo-label"><i></i>Their phone</span>
-          <span class="bub out">The pans are still in there</span>
-          <span class="bub in ghost"></span>
-          <span class="bub out ghost"></span>
+        <div class="demo-phone jordan">
+          <span class="demo-label"><i></i>Jordan's phone</span>
+          <span class="demo-chat">Maya</span>
+          <span class="bub in"${d(700)}>This is literally the same thing that happened in March</span>
+          <span class="bub out"${d(1050)}>Wow ok sorry I'm not perfect like you 🙄<b class="stamp shot"${d(1650)}>Personal shot</b></span>
+          <span class="bub in typing"${d(1250)}><i></i><i></i><i></i></span>
         </div>
       </div>
-      <button class="demo-verdict" type="button" data-action="example" aria-label="See an example verdict"${settle}>
+      <button class="demo-verdict" type="button" data-action="example" aria-label="See an example verdict: Maya has the stronger case"${d(1800)}>
         <span class="dv-top"><span class="dv-eyebrow">Verdict</span><span class="dv-tag">Example</span></span>
-        <span class="dv-title">You're mostly right.</span>
-        <span class="dv-bar"><i style="flex:64"></i><i style="flex:36"></i></span>
-        <span class="dv-scores"><span>You 64</span><span>Them 36</span></span>
-        <span class="dv-check">${svg(ICON.check, 16)}3 quotes checked against the originals</span>
+        <span class="dv-title">Maya has the stronger case.</span>
+        <span class="dv-bar"><i style="flex:64;--d:2000ms"></i><i style="flex:36;--d:2000ms"></i></span>
+        <span class="dv-scores"><span><i class="dot maya"></i>Maya 64</span><span>Jordan 36<i class="dot jordan"></i></span></span>
+        <span class="dv-chips"${d(2300)}><span>3 fallacies</span><span>2 personal shots</span><span>1 grudge</span><span class="ok">${svg(ICON.check, 13)}Quotes checked</span></span>
       </button>
     </div>
     <ul class="proof">
@@ -1029,7 +1033,9 @@ function verdictPrompt(note) {
     ? "\n\nThe screenshots have already been read for you. Below is the full transcript, with both phones merged and speakers confirmed by the person who uploaded them. Work only from this transcript and quote messages exactly as written in it."
     : "\n\nThe conversation was pasted as text instead of screenshots. Quote messages exactly as written in it.";
   p += `\n\n<conversation>\n${convo.slice(-45000)}\n</conversation>`;
-  if (chat.you) p += `\n\nThe person asking is ${chat.you}. Judge both sides by the same standard regardless.`;
+  p += chat.you
+    ? `\n\nThe person asking is ${chat.you}. Judge both sides by the same standard regardless.`
+    : "\n\nThe person asking isn't part of this conversation (or didn't say). Write about everyone in the third person, and address the takeaway to both sides.";
   if (earlier) p += `\n\nYou gave an earlier verdict in this chat ("${earlier.title}"). New screenshots were added since; judge the whole conversation as it stands now.`;
   if (note) p += `\n\nNote from the person who uploaded this (background, not evidence):\n${note.slice(0, 2000)}`;
   p += `\n\nReply with only one JSON object that matches this JSON Schema exactly (every key present, no extra keys):\n${JSON.stringify(VERDICT_SCHEMA)}`;
@@ -1076,7 +1082,7 @@ function chatTurns() {
   if (convo.length > 30000) convo = convo.slice(0, 4000) + "\n[...middle of the conversation omitted...]\n" + convo.slice(-26000);
   const context =
     CHAT_RULES +
-    (chat.you ? `\n\nThe person you're talking with is ${chat.you}.` : "") +
+    (chat.you ? `\n\nThe person you're talking with is ${chat.you}.` : "\n\nThe person you're talking with isn't part of this conversation (or didn't say which one they are). Refer to everyone by name.") +
     (convo ? `\n\n<conversation>\n${convo}\n</conversation>` : "") +
     (verdicts.length ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n") : "\n\nNo verdict has been given yet.");
   const turns = [];
