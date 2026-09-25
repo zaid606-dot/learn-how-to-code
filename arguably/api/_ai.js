@@ -26,15 +26,15 @@ export function tokensPerMinute(env = process.env) {
 export function appLimits(env = process.env) {
   const tpm = tokensPerMinute(env);
   if (!tpm) return { maxPromptBytes: 200000, images: { maxCount: provider(env).maxImages, maxInputBytes: 4e6, mediaTypes: ["image/jpeg", "image/png"] } };
-  const promptTokens = Math.max(1500, tpm - 3200); // leave room for the answer
-  return { maxPromptBytes: Math.floor(promptTokens * 3.2), ...(tpm >= 30000 ? { images: { maxCount: 1, maxInputBytes: 4e6, mediaTypes: ["image/jpeg", "image/png"] } } : {}) };
+  const promptTokens = Math.max(1500, tpm - 3400); // leave room for the answer
+  return { maxPromptBytes: Math.floor(promptTokens * 3), ...(tpm >= 30000 ? { images: { maxCount: 1, maxInputBytes: 4e6, mediaTypes: ["image/jpeg", "image/png"] } } : {}) };
 }
-// Rough token count of a request (about 3.5 characters a token; images a flat 2,048).
+// Rough token count of a request (about 3 characters a token, erring high; images a flat 2,048).
 export function estimateTokens(messages) {
   let n = 0;
   for (const m of messages) {
-    if (typeof m.content === "string") n += m.content.length / 3.5;
-    else for (const part of m.content) n += part.type === "text" ? part.text.length / 3.5 : 2048;
+    if (typeof m.content === "string") n += m.content.length / 3;
+    else for (const part of m.content) n += part.type === "text" ? part.text.length / 3 : 2048;
   }
   return Math.ceil(n + 20 * messages.length);
 }
@@ -95,7 +95,14 @@ const buckets = new Map(); // endpoint -> Map(ip -> {start, count})
 let lastSweep = 0;
 export function clientIp(req) {
   const raw = String(req.headers["x-real-ip"] || String(req.headers["x-forwarded-for"] || "").split(",")[0] || req.socket?.remoteAddress || "?").trim();
-  if (raw.includes(":") && !raw.startsWith("::ffff:")) return raw.split(":").slice(0, 4).join(":") + "::/64";
+  if (raw.includes(":") && !raw.startsWith("::ffff:")) {
+    // Expand "::" first, so 2001:db8::1 and 2001:db8::2 land in the same /64.
+    const [head, tail = ""] = raw.toLowerCase().split("%")[0].split("::");
+    const left = head ? head.split(":") : [];
+    const right = raw.includes("::") && tail ? tail.split(":") : [];
+    const full = raw.includes("::") ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
+    return full.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":") + "::/64";
+  }
   return raw.replace(/^::ffff:/, "");
 }
 export function rateLimited(req, endpoint, max = Number(process.env.RATE_LIMIT_PER_10_MIN || 40)) {
@@ -144,6 +151,8 @@ export function errorCode(status, bodyText = "") {
   const type = String(e.type || "");
   const msg = String(e.message || "");
   if (status === 401 || status === 403) return { status: 500, code: "sampling_disabled" };
+  // "Request too large" for the per-minute budget: waiting won't help, so it isn't a rate limit.
+  if (status === 413 || /request too large|reduce your message size/i.test(msg)) return { status: 413, code: "prompt_too_large" };
   if (status === 429 || status === 503 || status === 498 || /rate_limit|capacity|overloaded|tokens_per_minute/i.test(code + type) || /tokens per minute|\bTPM\b/i.test(msg)) return { status: 429, code: "rate_limited" };
   if (code === "json_validate_failed") return { status: 502, code: "invalid_json" };
   if (status === 413 || /context_length|request_too_large|context_window_exceeded/i.test(code + type)) return { status: 413, code: "prompt_too_large" };
@@ -182,7 +191,11 @@ export async function complete(body, signal, timeoutMs = 110_000) {
       const wait = err?.retryAfter;
       const left = timeoutMs - (Date.now() - started);
       if (err?.code !== "rate_limited" || !wait || attempt >= 3 || wait * 1000 > left - 20_000 || signal?.aborted) throw err;
-      await new Promise((r) => setTimeout(r, wait * 1000));
+      await new Promise((r) => {
+        const t = setTimeout(r, wait * 1000);
+        signal?.addEventListener("abort", () => { clearTimeout(t); r(); }, { once: true });
+      });
+      if (signal?.aborted) throw { status: 499, code: "cancelled" };
     }
   }
 }
@@ -236,7 +249,12 @@ export function toMessages(turns) {
 }
 
 // Reasoning models may think out loud in <think> tags before answering; people never see that.
-export const stripThinking = (text) => String(text || "").replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+export const stripThinking = (text) => {
+  const t = String(text || "").replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+  // Some templates skip the opening tag: then everything up to a stray </think> is thinking.
+  const stray = t.indexOf("</think>");
+  return (stray === -1 ? t : t.slice(stray + 8)).trim();
+};
 
 // Streaming version: feed chunks in, get back only text that's final and outside <think>.
 // Holds back a trailing piece that could be the start of a tag until the next chunk decides it.

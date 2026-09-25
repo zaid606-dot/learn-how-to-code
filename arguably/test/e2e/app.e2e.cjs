@@ -529,7 +529,7 @@ test("every verdict names a winner and the margin; the same conversation gets th
   assert.match(await page.locator(".winner-margin").innerText(), /Wins by 4 points/);
   assert.doesNotMatch(await page.locator("#thread").innerText(), /Even match|No clear winner/);
   await page.click("#backBtn");
-  await waitUntil(page, () => document.querySelector(".recent")?.innerText.includes("Jordan won by 4 points"));
+  await waitUntil(page, () => document.querySelector(".recent")?.innerText.includes("Jordan won by 4"));
   assert.deepEqual(errors, []);
 });
 
@@ -559,6 +559,34 @@ test("share a verdict: card image, hide names, back to the chat", async () => {
   await page.click("#backBtn");
   assert.ok(await page.locator(".msg.verdict .share-btn").isVisible(), "back in the chat");
   assert.deepEqual(errors, []);
+});
+
+test("hide names only swaps real names; crafted links are capped; failed imports leave no ghost chat", async () => {
+  const { page } = await openApp({ images: true });
+  const out = await page.evaluate(async () => {
+    const v = { title: "Will vs A", participants: [{ name: "Will" }, { name: "Them" }, { name: "Ana" }], winner: { name: "Ana", reasoning: "Ana said he will pay. Them and them never met. Anabel is someone else.", scores: [{ participant: "Ana", score: 70 }, { participant: "Will", score: 60 }] }, grudges: [{ holder: "Will", severity: "low" }] };
+    const a = anonymize(v);
+    // A decompression bomb: 3 MB of zeros squeezed into a short link.
+    const bomb = await encodeVerdict("0".repeat(3_000_000));
+    let bombResult;
+    try { bombResult = await decodeVerdict(bomb); } catch { bombResult = "rejected"; }
+    return { a, bomb: bombResult, long: await decodeVerdict("z" + "A".repeat(200_000)) };
+  });
+  assert.equal(out.a.winner.name, "Person C");
+  assert.equal(out.a.winner.reasoning, "Person C said he will pay. Them and them never met. Anabel is someone else.", "everyday words and longer names stay");
+  assert.deepEqual(out.a.winner.scores.map((x) => x.participant), ["Person C", "Person A"]);
+  assert.equal(out.a.grudges[0].severity, "low", "fixed values stay");
+  assert.equal(out.bomb, "rejected");
+  assert.equal(out.long, null);
+});
+
+test("a failed screenshot import doesn't leave an empty chat in Recent", async () => {
+  const { page } = await openApp({ images: true, failJson: true });
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone]);
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.error, .msg.resume", { timeout: 15000 });
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.chats.v2") || "[]"));
+  assert.ok(saved.every((c) => c.messages.some((m) => m.kind !== "error")), JSON.stringify(saved).slice(0, 200));
 });
 
 test("a conversation with abuse gets a safety-first verdict, not a score", async () => {

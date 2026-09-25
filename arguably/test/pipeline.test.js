@@ -350,6 +350,9 @@ test("normalizeVerdict always names one winner with a clear margin", () => {
   const unscored = P.normalizeVerdict({ origin: {}, participants: [{ name: "Maya" }], winner: { is_draw: true } });
   assert.equal(unscored.winner.name, "Maya", "falls back to the first participant");
   assert.equal(unscored.winner.margin, 0);
+  const off = P.normalizeVerdict({ origin: {}, winner: { name: "Alex K", scores: [sc("Alex", 40), sc("Bo", 70)] } });
+  assert.deepEqual([off.winner.name, off.winner.margin], ["Bo", 30], "an unknown name defers to the scores");
+  assert.equal(P.normalizeVerdict({ origin: {}, winner: { name: "Tie", scores: [sc("Alex", 50), sc("Bo", 55)] } }).winner.name, "Bo");
 });
 
 test("headers: WhatsApp back-arrow names and Instagram handles are read as the contact", () => {

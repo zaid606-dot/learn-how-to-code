@@ -818,3 +818,18 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .shared-cta { text-align: center; }
 .shared-cta .cta { width: 100%; margin-top: 8px; }
 .shared-banner .tag { margin: 0; }
+/* Very short phones (iPhone SE 1st gen, 320x568): the agreement step keeps its buttons on screen. */
+@media (max-height: 600px) {
+  .onboard { padding-top: 4px; }
+  .onboard:has(.ob-agree) .ob-art { display: none; }
+  .onboard:has(.ob-agree) { gap: 6px; }
+  .onboard:has(.ob-agree) h1 { font-size: 24px !important; }
+  .onboard:has(.ob-agree) .ob-list { gap: 4px; }
+  .onboard:has(.ob-agree) .ob-list li { font-size: 13px; }
+  .onboard:has(.ob-agree) .ob-agree { padding: 8px 10px; font-size: 13px; }
+  .onboard:has(.ob-agree) .ob-dots { padding-top: 4px; }
+  .onboard:has(.ob-agree) .ob-actions .cta { min-height: 48px; }
+}
+#messageInput::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-btn { min-height: 44px; }
+.plan-title b, .pw-links button, .pw-links a { white-space: nowrap; }

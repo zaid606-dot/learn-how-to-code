@@ -171,9 +171,28 @@ test("when Groq says wait, the server waits and tries again", async () => {
   assert.equal(n, 2);
 });
 
-test("a 413 'tokens per minute' from Groq is a wait, not 'too many screenshots'", () => {
+test("a 413 'request too large' from Groq is too large (waiting can't fix it), and isn't retried", async () => {
   const body = JSON.stringify({ error: { message: "Request too large for model qwen/qwen3.8-27b ... tokens per minute (TPM): Limit 8000, Requested 23000", type: "tokens", code: "rate_limit_exceeded" } });
-  assert.equal(ai.errorCode(413, body).code, "rate_limited");
+  assert.equal(ai.errorCode(413, body).code, "prompt_too_large");
+  upstream.reply = () => new Response(body, { status: 413 });
+  const n = upstream.calls.length;
+  assert.equal((await call("/api/json", { prompt: "You are Arguably, judge this" })).status, 413);
+  assert.equal(upstream.calls.length - n, 1, "no retries");
+  assert.equal(ai.errorCode(429, JSON.stringify({ error: { message: "Rate limit reached ... tokens per minute (TPM)", code: "rate_limit_exceeded" } })).code, "rate_limited");
+});
+
+test("IPv6 visitors are grouped by /64 even when the address is compressed", () => {
+  const ip = (a) => ai.clientIp({ headers: { "x-real-ip": a } });
+  assert.equal(ip("2001:db8::1"), ip("2001:db8::2"));
+  assert.equal(ip("2001:db8::1"), "2001:db8:0:0::/64");
+  assert.equal(ip("2001:db8:1:2:3:4:5:6"), "2001:db8:1:2::/64");
+  assert.notEqual(ip("2001:db8:0:1::1"), ip("2001:db8:0:2::1"));
+  assert.equal(ip("::ffff:1.2.3.4"), "1.2.3.4");
+});
+
+test("a stray closing think tag doesn't leak thinking", () => {
+  assert.equal(ai.stripThinking("reasoning here</think>Answer"), "Answer");
+  assert.equal(ai.stripThinking("<think>x</think>Answer"), "Answer");
 });
 
 test("if Groq rejects the no-thinking setting, the request is retried without it", async () => {

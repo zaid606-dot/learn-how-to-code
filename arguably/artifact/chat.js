@@ -254,8 +254,26 @@ function newChatObject(saved = {}) {
   return { id: uid(), title: "New argument", createdAt: Date.now(), updatedAt: Date.now(), messages: [], readings: [], groups: [], you: "", transcript: [], raw: "", shotTotal: 0, ...saved };
 }
 
+// Write the chat list. true = saved, false = storage is full, null = storage can't be used here.
+function writeChats() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(chats));
+    return true;
+  } catch (e) {
+    return e?.name === "QuotaExceededError" || e?.code === 22 || e?.code === 1014 ? false : null;
+  }
+}
+let warnedNoStorage = false;
 function saveChats(c = chat) {
-  if (!c || c.example || c.deleted || deletedIds.has(c.id) || !c.messages.length) return;
+  if (!c || c.example || c.deleted || deletedIds.has(c.id)) return;
+  // A chat with nothing left worth keeping (a stopped or failed import) isn't kept either.
+  if (!c.messages.some((m) => !m.transient && m.kind !== "error")) {
+    if (chats.some((x) => x.id === c.id)) {
+      chats = chats.filter((x) => x.id !== c.id);
+      writeChats();
+    }
+    return;
+  }
   c.updatedAt = Date.now();
   // Screenshots stay in memory only; saved chats keep text, transcript and verdicts.
   const clean = { ...c, messages: c.messages.filter((m) => !m.transient).map((m) => (m.shots ? { ...m, shots: undefined } : m)) };
@@ -265,12 +283,17 @@ function saveChats(c = chat) {
   const all = [clean, ...chats.filter((x) => x.id !== c.id)];
   chats = all.slice(0, MAX_CHATS);
   let dropped = all.slice(MAX_CHATS);
-  let saved = storage(() => (localStorage.setItem(STORE_KEY, JSON.stringify(chats)), true), false);
-  // Out of room: drop the oldest chats until it fits.
-  while (!saved && chats.length > 1) {
+  let saved = writeChats();
+  // Out of room: drop the oldest chats until it fits. (If storage can't be used at all, e.g. in
+  // a private window, nothing is dropped: chats just live until the page closes.)
+  while (saved === false && chats.length > 1) {
     dropped = [chats.at(-1), ...dropped];
     chats = chats.slice(0, -1);
-    saved = storage(() => (localStorage.setItem(STORE_KEY, JSON.stringify(chats)), true), false);
+    saved = writeChats();
+  }
+  if (saved === null && !warnedNoStorage) {
+    warnedNoStorage = true;
+    toast("This browser isn't letting Arguably save. Your chats will be gone when you close it.");
   }
   if (dropped.length) {
     const ids = new Set(dropped.map((x) => x.id));
@@ -278,7 +301,7 @@ function saveChats(c = chat) {
     saveInbox();
     toast(dropped.length === 1 ? `To make room, your oldest chat (“${dropped[0].title}”) was removed.` : `To make room, your ${dropped.length} oldest chats were removed.`);
   }
-  if (!saved) toast("This chat is too big to save on this device. It stays open until you leave.");
+  if (saved === false) toast("This chat is too big to save on this device. It stays open until you leave.");
 }
 
 // Leaving a chat doesn't stop its work: the result is saved and shows up in Notifications.
@@ -700,7 +723,7 @@ function homeHTML() {
             .map((c) => {
               const v = verdictsOf(c).at(-1);
               const names = v ? (v.participants || []).map((p) => p.name).slice(0, 2) : [];
-              const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.safety_note?.trim() ? "Note on safety" : `${esc(winnerOf(v).name)} won${winnerOf(v).margin ? ` ${byPoints(winnerOf(v).margin)}` : ""}`) : "No verdict yet";
+              const meta = live.has(c.id) ? "Working on it…" : pendingWho(c) ? "Check who's who" : v ? (v.safety_note?.trim() ? "Note on safety" : `${esc(winnerOf(v).name)} won${winnerOf(v).margin ? ` by ${winnerOf(v).margin}` : ""}`) : "No verdict yet";
               return `<li><button type="button" data-chat="${esc(c.id)}">
                 <span class="pair" aria-hidden="true">${(names.length ? names : ["?"])
                   .map((n, i) => `<span style="background:${PALETTE[i].bg};color:${PALETTE[i].fg}">${esc(String(n).trim().charAt(0).toUpperCase())}</span>`)
@@ -1008,7 +1031,7 @@ function emptyChatHTML() {
   </section>`;
 }
 
-const PAGE_TITLES = { share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Licenses" };
+const PAGE_TITLES = { share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Open-source licenses" };
 
 function renderHeader() {
   const onHome = !chat && !page;
@@ -1925,7 +1948,7 @@ function countVerdict() {
 
 function resumeHTML(m) {
   // A card saved as "locked" or "fair" becomes runnable once Pro is bought or the month resets.
-  const reason = (m.reason === "locked" || m.reason === "fair") && !verdictBlock() ? "ready" : m.reason;
+  const reason = m.reason === "locked" || m.reason === "fair" ? verdictBlock() || "ready" : m.reason;
   const copy = {
     ready: ["Your verdict is ready to run", "Your screenshots are already read."],
     stopped: ["Verdict stopped", "Pick up where you left off. Your screenshots are already read."],
@@ -2020,14 +2043,16 @@ async function runVerdict(c, note) {
 }
 
 function chatTurns(chat) {
-  const verdicts = verdictsOf(chat).slice(-2);
-  const convo = fitBytes(conversationText(chat), Math.min(30000, maxPromptBytes / 2));
-  const context =
+  // On a small budget only the latest verdict goes along; the conversation gets what's left.
+  const verdicts = verdictsOf(chat).slice(maxPromptBytes < 40000 ? -1 : -2);
+  const head =
     CHAT_RULES +
     `\n\n${TONES[prefs.tone] || TONES.straight}` +
-    (chat.you ? `\n\nThe person you're talking with is ${chat.you}.` : "\n\nThe person you're talking with isn't part of this conversation (or didn't say which one they are). Refer to everyone by name.") +
-    (convo ? `\n\n<conversation>\n${convo}\n</conversation>` : "") +
-    (verdicts.length ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n") : "\n\nNo verdict has been given yet.");
+    (chat.you ? `\n\nThe person you're talking with is ${chat.you}.` : "\n\nThe person you're talking with isn't part of this conversation (or didn't say which one they are). Refer to everyone by name.");
+  const tail = verdicts.length ? "\n\n" + verdicts.map((v, i) => `Verdict ${i + 1} (JSON):\n${JSON.stringify(v)}`).join("\n\n") : "\n\nNo verdict has been given yet.";
+  const room = Math.floor(maxPromptBytes * 0.8) - byteLen(head + tail) - 40;
+  const convo = fitBytes(conversationText(chat), Math.max(1000, Math.min(30000, room)));
+  const context = head + (convo ? `\n\n<conversation>\n${convo}\n</conversation>` : "") + tail;
   const turns = [];
   for (const m of chat.messages) {
     if (m.transient || m.kind === "error" || m.kind === "thinking" || m.kind === "who" || m.kind === "nudge" || m.kind === "resume") continue;
@@ -2048,7 +2073,7 @@ function chatTurns(chat) {
   // Stay under the 64 KiB limit: drop the oldest turns, never the context.
   let recent = turns.slice(-24);
   const size = () => new TextEncoder().encode(context + JSON.stringify(recent)).length;
-  while (recent.length > 1 && size() > 60000) recent = recent.slice(1);
+  while (recent.length > 1 && size() > Math.min(60000, maxPromptBytes)) recent = recent.slice(1);
   while (recent.length && recent[0].role !== "user") recent = recent.slice(1);
   // Turns must alternate: fold back-to-back turns from the same side into one.
   const out = [];
@@ -2122,7 +2147,7 @@ async function send(textOverride) {
   chat.messages = chat.messages.filter((m) => m.kind !== "error");
   chat.messages.push({ id: uid(), role: "user", text, shots: shots.map((s) => s.url), shotCount: shots.length });
   pending = [];
-  input.value = "";
+  if (textOverride == null) input.value = ""; // a tapped suggestion leaves what you were typing
   autosize();
   $("toast").hidden = true;
   const c = chat;
@@ -2167,7 +2192,7 @@ function paywallHTML() {
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     <div class="pw-icon"><img src="${MARK_URI}" alt="" width="64" height="59"></div>
     <span class="pw-eyebrow">Arguably Pro</span>
-    <h1 id="pwTitle">Unlimited verdicts.<br><em>Settle every one.</em></h1>
+    <h1 id="pwTitle">Get the verdict.<br><em>Settle every one.</em></h1>
     ${paywallFor ? `<p class="pw-waiting">${svg(ICON.check, 16)}Your screenshots are read. The verdict runs the moment you unlock.</p>` : ""}
     <ul class="pw-benefits">
       <li>${pageSvg(PAGE_ICON.scale, 22)}<span><strong>Every argument, judged</strong>Up to ${PRO_FAIR_USE} verdicts a month.</span></li>
@@ -2275,7 +2300,7 @@ $("fileInput").addEventListener("change", async (e) => {
 });
 document.addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.files || [])];
-  if (files.length && !busyHere() && !pendingWho() && page !== "settings") {
+  if (files.length && !busyHere() && !pendingWho() && !page) {
     e.preventDefault();
     addFiles(files);
   }
@@ -2283,7 +2308,7 @@ document.addEventListener("paste", (e) => {
 document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => {
   e.preventDefault();
-  if (e.dataTransfer?.files?.length && !busyHere() && !pendingWho()) addFiles(e.dataTransfer.files);
+  if (e.dataTransfer?.files?.length && !busyHere() && !pendingWho() && !page) addFiles(e.dataTransfer.files);
 });
 $("attachStrip").addEventListener("click", (e) => {
   const b = e.target.closest("[data-remove]");
@@ -2330,7 +2355,10 @@ $("thread").addEventListener("click", (e) => {
   if (action === "share-hide" && shareFor) {
     shareFor.hide = !shareFor.hide;
     shareFor.file = null;
+    if (shareFor.url) URL.revokeObjectURL(shareFor.url);
+    shareFor.url = ""; // never show the card with names after they were hidden
     render();
+    document.querySelector('[data-action="share-hide"]')?.focus(); // keyboard users stay on the switch
     return makeShareCard();
   }
   if (action === "shared-start") return leaveShared();
@@ -2554,6 +2582,12 @@ let shareFor = null; // { verdict, hide, url, file, making }
 let sharedView = null; // a verdict opened from a link
 
 // Swap every participant's name for "Person A", "Person B"… everywhere in the verdict.
+// Fields that hold a name are swapped whole; in running text a name is swapped only as a whole
+// word with its own capitalization, in one pass (so "Person A" is never re-swapped), and names
+// that are also everyday words ("Me", "Will") are left alone in running text.
+const NAME_KEYS = new Set(["name", "participant", "holder", "target", "from", "to", "speaker", "spark_speaker", "edge", "sender"]);
+const ENUM_KEYS = new Set(["severity", "strength", "name_source", "kind"]);
+const COMMON_WORDS = new Set(["me", "them", "you", "him", "her", "us", "we", "i", "a", "will", "may", "mark", "bill", "grace", "hope", "joy", "sunny", "art", "rose", "lily", "june", "april", "august", "faith", "summer", "chase", "hunter", "blue", "green", "left", "right", "someone", "even", "draw"]);
 function anonymize(v) {
   const names = [];
   const add = (n) => {
@@ -2563,12 +2597,22 @@ function anonymize(v) {
   (v.participants || []).forEach((p) => add(p.name));
   (v.winner?.scores || []).forEach((sc) => add(sc.participant));
   add(v.winner?.name);
-  // Longest first, so "Maya Lee" is replaced before "Maya".
-  const pairs = names.map((n, i) => [n, `Person ${String.fromCharCode(65 + (i % 26))}`]).sort((a, b) => b[0].length - a[0].length);
-  const swap = (text) =>
-    pairs.reduce((t, [from, to]) => t.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "giu"), `$1${to}`), text);
-  const walk = (x) => (typeof x === "string" ? swap(x) : Array.isArray(x) ? x.map(walk) : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, val]) => [k, walk(val)])) : x);
-  return walk(v);
+  const alias = new Map(names.map((n, i) => [n.toLowerCase(), `Person ${String.fromCharCode(65 + (i % 26))}`]));
+  const escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const inText = names.filter((n) => n.length > 1 && !COMMON_WORDS.has(n.toLowerCase())).sort((a, b) => b.length - a.length);
+  const re = inText.length ? new RegExp(`(^|[^\\p{L}\\p{N}])(${inText.map(escRe).join("|")})(?=$|[^\\p{L}\\p{N}])`, "gu") : null;
+  const swapText = (t) => (re ? t.replace(re, (m, pre, n) => pre + alias.get(n.toLowerCase())) : t);
+  const walk = (x, key) => {
+    if (typeof x === "string") {
+      if (ENUM_KEYS.has(key)) return x;
+      if (NAME_KEYS.has(key)) return alias.get(x.trim().toLowerCase()) || swapText(x);
+      return swapText(x);
+    }
+    if (Array.isArray(x)) return x.map((i) => walk(i, key));
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).map(([k, val]) => [k, walk(val, k)]));
+    return x;
+  };
+  return walk(v, "");
 }
 
 const b64url = (bytes) => {
@@ -2582,12 +2626,37 @@ async function pipeBytes(bytes, stream) {
 }
 async function encodeVerdict(v) {
   const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, verdict: v }));
-  if (typeof CompressionStream === "function") return "z" + b64url(await pipeBytes(bytes, new CompressionStream("deflate-raw")));
+  try {
+    if (typeof CompressionStream === "function") return "z" + b64url(await pipeBytes(bytes, new CompressionStream("deflate-raw")));
+  } catch {} // older browsers: send it uncompressed
   return "j" + b64url(bytes);
 }
+const MAX_LINK = 100_000; // characters after "#v="
+const MAX_VERDICT_BYTES = 1_000_000; // a verdict is a few KB; anything bigger is a crafted link
+async function inflateCapped(bytes) {
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader();
+  const parts = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > MAX_VERDICT_BYTES) {
+      reader.cancel().catch(() => {});
+      throw new Error("too big");
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) out.set(p, (at += p.length) - p.length);
+  return out;
+}
 async function decodeVerdict(code) {
+  if (code.length > MAX_LINK || !/^[zj][A-Za-z0-9_-]+$/.test(code)) return null;
   const bytes = unb64url(code.slice(1));
-  const raw = code[0] === "z" ? await pipeBytes(bytes, new DecompressionStream("deflate-raw")) : bytes;
+  if (code[0] === "j" && bytes.length > MAX_VERDICT_BYTES) return null;
+  const raw = code[0] === "z" ? await inflateCapped(bytes) : bytes;
   const data = JSON.parse(new TextDecoder().decode(raw));
   return data?.v === 1 ? normalizeVerdict(data.verdict) : null;
 }
@@ -2635,6 +2704,8 @@ async function drawCard(v) {
   glow.addColorStop(1, "rgba(183,67,36,0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
+  // Rounded score bars (plain bars where the browser has no roundRect, e.g. Safari 15).
+  const bar = (x, y0, w) => (ctx.roundRect ? ctx.roundRect(x, y0, w, 16, 8) : ctx.rect(x, y0, w, 16));
   const sans = (weight, size, family = "Inter") => `${weight} ${size}px ${family}, ui-sans-serif, system-ui, -apple-system, sans-serif`;
   ctx.textBaseline = "alphabetic";
 
@@ -2693,11 +2764,11 @@ async function drawCard(v) {
       ctx.textAlign = "left";
       ctx.fillStyle = "rgba(255,255,255,.12)";
       ctx.beginPath();
-      ctx.roundRect(P, ly + dy + 22, W - 2 * P, 16, 8);
+      bar(P, ly + dy + 22, W - 2 * P);
       ctx.fill();
       ctx.fillStyle = top ? "#B74324" : "#D8CBC3";
       ctx.beginPath();
-      ctx.roundRect(P, ly + dy + 22, Math.max(16, ((W - 2 * P) * Math.max(0, Math.min(100, sc.score))) / 100), 16, 8);
+      bar(P, ly + dy + 22, Math.max(16, ((W - 2 * P) * Math.max(0, Math.min(100, sc.score))) / 100));
       ctx.fill();
     });
     y += 92;
@@ -2750,9 +2821,17 @@ async function makeShareCard() {
   } finally {
     if (shareFor === want && want.hide === hide) want.making = false;
   }
-  if (page === "share" && shareFor === want) render();
+  if (page === "share" && shareFor === want) {
+    const focused = document.activeElement?.dataset?.action;
+    render();
+    if (focused) document.querySelector(`[data-action="${focused}"]`)?.focus();
+  }
 }
 
+function closeShare() {
+  if (shareFor?.url) URL.revokeObjectURL(shareFor.url);
+  shareFor = null;
+}
 function openShare(verdict) {
   if (!verdict || verdict.safety_note?.trim()) return;
   if (shareFor?.url) URL.revokeObjectURL(shareFor.url);
@@ -2764,10 +2843,11 @@ function openShare(verdict) {
 function shareHTML() {
   const s = shareFor;
   if (!s) return "";
-  return `<section class="share-page">
+  return `<h1 class="page-title">Share verdict</h1>
+  <section class="share-page">
     <div class="share-preview${s.url ? "" : " loading"}">${s.url ? `<img src="${s.url}" alt="Your verdict card: ${esc(winnerOf(shareVerdict()).name)} wins" width="1080" height="1350">` : '<span class="dots"><i></i><i></i><i></i></span>'}</div>
     <button class="share-toggle" type="button" role="switch" aria-checked="${s.hide}" data-action="share-hide">
-      <span><b>Hide names</b><small>Show “Person A” and “Person B” instead</small></span>
+      <span><b>Hide names</b><small>Show “Person A”, “Person B” and so on instead</small></span>
       <span class="switch${s.hide ? " on" : ""}" aria-hidden="true"><i></i></span>
     </button>
     <div class="share-actions">
@@ -2820,7 +2900,7 @@ function sharedHTML() {
   if (!sharedView) return "";
   const m = { id: "shared", verdict: sharedView, source: "paste" };
   return `<p class="shared-banner"><span class="tag">Shared with you</span>A verdict from Arguably. Everything below comes from the person who shared it.</p>
-    <article class="msg verdict">${verdictHTML(m, { transcript: [], raw: "", shared: true })}</article>
+    <article class="msg verdict${sharedView.safety_note?.trim() ? " has-safety" : ""}">${verdictHTML(m, { transcript: [], raw: "", shared: true })}</article>
     <section class="card shared-cta">
       <h2>Got an argument of your own?</h2>
       <p>Import screenshots from both phones and get a fair verdict, with a clear winner and why.</p>
@@ -2830,7 +2910,10 @@ function sharedHTML() {
 
 async function openSharedFromHash() {
   const code = HOSTED && location.hash.startsWith("#v=") ? location.hash.slice(3) : "";
-  if (!code) return;
+  if (!code) {
+    if (page === "shared") leaveShared(); // the browser's Back button
+    return;
+  }
   try {
     sharedView = await decodeVerdict(code);
   } catch {
@@ -2840,6 +2923,7 @@ async function openSharedFromHash() {
     history.replaceState(null, "", location.pathname + location.search);
     return toast("That link didn't open. Ask for a new one.");
   }
+  closeShare();
   chat = null;
   page = "shared";
   render();
@@ -2954,6 +3038,7 @@ $("newBtn").addEventListener("click", () => {
 });
 $("backBtn").addEventListener("click", () => {
   if (page === "share") {
+    closeShare();
     page = null; // back to the chat the verdict is in
     return render();
   }
@@ -3032,7 +3117,7 @@ render();
     sampler = window.claude ? await window.claude.use("sample") : null;
     const limits = sampler ? await sampler.limits().catch(() => null) : null;
     maxImages = limits?.images?.maxCount || 0;
-    if (limits?.maxPromptBytes > 20000) maxPromptBytes = limits.maxPromptBytes;
+    if (limits?.maxPromptBytes > 0) maxPromptBytes = Math.max(4000, limits.maxPromptBytes);
   } catch {
     sampler = null;
   }

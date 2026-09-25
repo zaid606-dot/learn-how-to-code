@@ -669,9 +669,10 @@ function normalizeVerdict(v) {
   w.is_draw = false;
   const same = (a, b) => a.toLowerCase() === b.toLowerCase();
   const byScore = [...w.scores].sort((a, b) => b.score - a.score);
-  const named = w.name && same(w.name, "draw") ? "" : w.name;
-  const top = named ? w.scores.find((sc) => same(sc.participant, named)) : byScore[0];
-  w.name = named || top?.participant || v.participants[0]?.name || "";
+  const named = /^(draw|even|tie|tied|neither|none|nobody|no one|n\/a)$/i.test(w.name) ? "" : w.name;
+  // A named winner the scorecard doesn't know (e.g. "Alex K" vs "Alex") defers to the scores.
+  const top = (named && w.scores.find((sc) => same(sc.participant, named))) || byScore[0];
+  w.name = top?.participant || named || v.participants[0]?.name || "";
   if (!w.name) return null;
   if (top) {
     const rest = w.scores.filter((sc) => sc !== top);

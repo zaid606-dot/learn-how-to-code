@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     } catch {
       return send(res, 502, { code: choice?.finish_reason === "length" ? "prompt_too_large" : "invalid_json" });
     }
-    if (!out || typeof out !== "object") return send(res, 502, { code: "invalid_json" });
+    if (!out || typeof out !== "object" || Array.isArray(out)) return send(res, 502, { code: "invalid_json" });
     return send(res, 200, out);
   } catch (err) {
     if (ctl.signal.aborted) return res.end();
