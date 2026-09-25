@@ -34,7 +34,7 @@ async function openApp(stubConfig, { width } = {}) {
 }
 
 // Selectors that hold across home-screen redesigns.
-const HOME_IMPORT = '#thread label[for="fileInput"]';
+const HOME_IMPORT = '#thread [data-action="import"], #thread label[for="fileInput"]';
 const HOME_EXAMPLE = '#thread [data-action="example"], #thread #exampleTile';
 const HOME_PASTE = '#thread [data-action="paste"], #thread #pasteTile';
 
