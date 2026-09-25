@@ -387,7 +387,11 @@ body.on-page .thread { padding-bottom: calc(32px + env(safe-area-inset-bottom, 0
   text-align: center; gap: 16px; padding: 6vh 8px calc(12px + env(safe-area-inset-bottom, 0px));
   max-width: 440px; margin: 0 auto; width: 100%;
 }
-.onboard > * { animation: ob-in 420ms var(--ease-out) both; }
+.onboard > * { animation: ob-next 380ms var(--ease-out) both; }
+.onboard.back > * { animation-name: ob-back; }
+@keyframes ob-next { from { opacity: 0; transform: translateX(28px); } }
+@keyframes ob-back { from { opacity: 0; transform: translateX(-28px); } }
+.onboard { touch-action: pan-y; }
 .onboard > :nth-child(2) { animation-delay: 60ms; }
 .onboard > :nth-child(3) { animation-delay: 120ms; }
 .onboard > :nth-child(4) { animation-delay: 180ms; }
@@ -398,7 +402,7 @@ body.on-page .thread { padding-bottom: calc(32px + env(safe-area-inset-bottom, 0
   position: relative; width: 112px; height: 112px; margin-bottom: 12px; border-radius: 28px;
   display: grid; place-items: center; background: #fff; color: var(--ember-600);
   box-shadow: 0 0 0 1px rgba(36, 16, 14, 0.05), 0 2px 4px rgba(36, 16, 14, 0.05),
-    0 20px 44px rgba(36, 16, 14, 0.13), 0 0 90px 10px color-mix(in srgb, var(--ember-300) 38%, transparent);
+    0 20px 44px rgba(36, 16, 14, 0.13), 0 0 48px color-mix(in srgb, var(--ember-300) 32%, transparent);
 }
 .ob-art.ob-logo { width: 128px; height: 128px; border-radius: 32px; }
 .ob-art.ob-logo img { width: 84px; height: auto; display: block; }
@@ -726,3 +730,23 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .note-icon.who { background: color-mix(in srgb, var(--logo-navy) 10%, #fff); color: var(--logo-navy); }
 .note:active, .help-list a:active { background: var(--ember-50); }
 .page-title { color: var(--logo-navy); }
+
+/* Intro dots: small marks, full-size tap targets. */
+.ob-dots { gap: 0; }
+.ob-dots { margin-inline: -8px; }
+.ob-dots button { width: 44px; height: 44px; margin: 0 -8px; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; }
+
+/* Steps 2 and 3 carry more text: a smaller icon and headline so everything fits one screen. */
+.ob-art:not(.ob-logo) { width: 84px; height: 84px; border-radius: 22px; margin-bottom: 4px; }
+.ob-art:not(.ob-logo) svg { width: 34px; height: 34px; }
+.onboard:has(.ob-list) h1, .onboard:has(.field) h1 { font-size: clamp(28px, 8vw, 36px); }
+.ob-list { gap: 12px; margin-top: 2px; }
+.ob-list li { font-size: 15px; }
+.onboard { gap: 12px; padding-top: 4vh; }
+@media (max-height: 700px) {
+  .onboard { gap: 10px; padding-top: 12px; }
+  .ob-art:not(.ob-logo) { display: none; }
+  .ob-art.ob-logo { width: 104px; height: 104px; border-radius: 26px; }
+  .ob-fine { font-size: 12px !important; }
+  .ob-dots { padding-top: 8px; }
+}

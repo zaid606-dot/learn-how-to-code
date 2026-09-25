@@ -191,6 +191,7 @@ const savedPrefs = storage(() => JSON.parse(localStorage.getItem(PREFS_KEY)) || 
 let prefs = { ...DEFAULT_PREFS, ...savedPrefs, notify: { ...DEFAULT_PREFS.notify, ...(savedPrefs.notify || {}) } };
 let inbox = storage(() => JSON.parse(localStorage.getItem(INBOX_KEY)) || [], []);
 let onboardStep = 0;
+let onboardDir = 1; // 1 = moving forward, -1 = back; sets which way the next step slides in
 let confirmingDelete = false;
 if (!prefs.onboarded && !chats.length) page = "onboarding";
 
@@ -245,7 +246,10 @@ let consentReturn = null;
 function openPage(name) {
   page = name;
   confirmingDelete = false;
-  if (name === "onboarding") onboardStep = 0;
+  if (name === "onboarding") {
+    onboardStep = 0;
+    onboardDir = 1;
+  }
   render();
 }
 
@@ -656,7 +660,9 @@ const pageSvg = (d, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 
 function onboardingHTML() {
-  const dots = `<div class="ob-dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i === onboardStep ? "on" : ""}"></i>`).join("")}</div>`;
+  const dots = `<div class="ob-dots" role="tablist" aria-label="Intro steps">${[0, 1, 2]
+    .map((i) => `<button type="button" role="tab" aria-selected="${i === onboardStep}" aria-label="Step ${i + 1} of 3" data-step="${i}"><i class="${i === onboardStep ? "on" : ""}"></i></button>`)
+    .join("")}</div>`;
   const steps = [
     `<div class="ob-art ob-logo"><img src="${MARK_URI}" alt="" width="84" height="77"></div>
      <h1>Settle it.<br><em>With receipts.</em></h1>
@@ -686,7 +692,7 @@ function onboardingHTML() {
        <button class="ob-secondary" type="button" data-action="example">Show me an example first</button>
      </div>`,
   ];
-  return `<section class="onboard" aria-live="polite">${steps[onboardStep]}</section>`;
+  return `<section class="onboard${onboardDir < 0 ? " back" : ""}" aria-live="polite">${steps[onboardStep]}</section>`;
 }
 
 const SET_ICON = {
@@ -1821,16 +1827,14 @@ $("thread").addEventListener("click", (e) => {
     }
     return $("fileInput").click();
   }
-  if (action === "next") {
-    onboardStep = Math.min(onboardStep + 1, 2);
-    return render();
-  }
+  if (action === "next") return goStep(onboardStep + 1);
+  const step = t.closest("[data-step]");
+  if (step) return goStep(Number(step.dataset.step));
   if (action === "replay") return openPage("onboarding");
   if (action === "consent-next") {
     prefs.aiConsent = true;
     savePrefs();
-    onboardStep = Math.min(onboardStep + 1, 2);
-    return render();
+    return goStep(onboardStep + 1);
   }
   if (action === "consent") {
     prefs.aiConsent = true;
@@ -1999,6 +2003,49 @@ async function exportData() {
     }
   }
 }
+
+function goStep(n) {
+  n = Math.max(0, Math.min(2, n));
+  if (n === onboardStep) return;
+  onboardDir = n > onboardStep ? 1 : -1;
+  onboardStep = n;
+  render();
+}
+
+// Swipe through the intro: the screen follows your finger, and a clear sideways flick
+// (not a vertical scroll) moves to the next or previous step. Swiping forward past the
+// Claude step is the same as "Not now"; nothing is ever allowed by a swipe.
+let swipe = null;
+$("thread").addEventListener("touchstart", (e) => {
+  if (page !== "onboarding" || e.touches.length !== 1 || e.target.closest("input")) return;
+  swipe = { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, locked: null };
+}, { passive: true });
+$("thread").addEventListener("touchmove", (e) => {
+  if (!swipe) return;
+  swipe.dx = e.touches[0].clientX - swipe.x;
+  const dy = e.touches[0].clientY - swipe.y;
+  if (swipe.locked == null && Math.abs(swipe.dx) + Math.abs(dy) > 10) swipe.locked = Math.abs(swipe.dx) > Math.abs(dy);
+  if (!swipe.locked) return;
+  const edge = (swipe.dx > 0 && onboardStep === 0) || (swipe.dx < 0 && onboardStep === 2);
+  const el = document.querySelector(".onboard");
+  if (el) el.style.transform = `translateX(${swipe.dx * (edge ? 0.15 : 0.5)}px)`;
+}, { passive: true });
+$("thread").addEventListener("touchend", () => {
+  if (!swipe) return;
+  const { dx, locked } = swipe;
+  swipe = null;
+  const el = document.querySelector(".onboard");
+  if (el) {
+    el.style.transition = "transform 220ms var(--ease-out)";
+    el.style.transform = "";
+  }
+  if (locked && Math.abs(dx) > 50) goStep(onboardStep + (dx < 0 ? 1 : -1));
+});
+document.addEventListener("keydown", (e) => {
+  if (page !== "onboarding" || e.target.closest?.("input, textarea")) return;
+  if (e.key === "ArrowRight") goStep(onboardStep + 1);
+  if (e.key === "ArrowLeft") goStep(onboardStep - 1);
+});
 
 function finishOnboarding() {
   if (prefs.onboarded) {

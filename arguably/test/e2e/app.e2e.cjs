@@ -518,3 +518,35 @@ test("one chat can be deleted with a confirming second tap", async () => {
   assert.equal(await page.isVisible("#deleteBtn"), false, "the example can't be deleted");
   assert.deepEqual(errors, []);
 });
+
+test("onboarding: swipe between steps; swiping never allows sending to Claude", async () => {
+  const { page, errors } = await openApp({ firstRun: true });
+  const swipe = async (from, to) => {
+    await page.evaluate(([a, b]) => {
+      const el = document.querySelector("#thread");
+      const t = (x) => new Touch({ identifier: 1, target: el, clientX: x, clientY: 400 });
+      el.dispatchEvent(new TouchEvent("touchstart", { touches: [t(a)], bubbles: true }));
+      el.dispatchEvent(new TouchEvent("touchmove", { touches: [t((a + b) / 2)], bubbles: true }));
+      el.dispatchEvent(new TouchEvent("touchmove", { touches: [t(b)], bubbles: true }));
+      el.dispatchEvent(new TouchEvent("touchend", { touches: [], bubbles: true }));
+    }, [from, to]);
+    await page.waitForTimeout(100);
+  };
+  const step = () => page.$eval('.ob-dots [aria-selected="true"]', (b) => Number(b.dataset.step));
+  await swipe(320, 80);
+  assert.equal(await step(), 1, "swipe left goes forward");
+  await swipe(80, 320);
+  assert.equal(await step(), 0, "swipe right goes back");
+  await swipe(80, 320);
+  assert.equal(await step(), 0, "no step before the first");
+  await swipe(320, 80);
+  await swipe(320, 80);
+  assert.equal(await step(), 2, "swiped past the Claude step");
+  assert.notEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1") || "{}").aiConsent), true, "a swipe is never consent");
+  await page.click('.ob-dots [data-step="0"]');
+  assert.equal(await step(), 0, "dots are tappable");
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await step(), 1, "arrow keys work");
+  assert.deepEqual(await layoutProblems(page), []);
+  assert.deepEqual(errors, []);
+});
