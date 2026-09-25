@@ -232,9 +232,240 @@ function ocrBlock(n, lines) {
   return `Screenshot ${n}:\n` + lines.map((x) => `y=${x.y} L=${x.l} R=${x.r}${x.conf < 50 ? " low" : ""} | ${x.text}`).join("\n");
 }
 
+// ---------- sorting OCR lines into messages, on the device ----------
+
+// Fix the usual OCR slips in one line without changing the wording.
+function cleanOcr(text) {
+  return String(text || "")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/(^|\s)\|(?=['\s]|$)/g, "$1I") // a lone "|" is "I" ("| have", "|'m")
+    .replace(/(^|\s)0[kK](?=\W|$)/g, "$1Ok")
+    .replace(/^(?:[©®@°•·«»~*_=+\\/–—-]+\s+)+/, "") // stray symbols before the first word
+    .replace(/\s+[©®°•«»~_=]+$/, "") // and after the last one
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const OCR_TIME = /\b\d{1,2}[:.]\d{2}(?:\s?[ap]\.?m\.?)?(?=\W|$)/i;
+const OCR_DAY = /^(?:today|yesterday|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\b/i;
+// Labels under or beside bubbles that are not messages.
+const OCR_LABEL = /^(?:delivered|read|seen|sent|edited|not delivered|kept|replies|reply|\d+ repl(?:y|ies)|(?:read|seen|delivered|edited) (?:by |at |on |\d|today|yesterday).{0,30}|tap to (?:load|retry|download).*|\+?\d{1,3})$/i;
+// Presence lines under a WhatsApp/Instagram/Messenger header.
+const OCR_PRESENCE = /^(?:online|typing\.*|last seen .*|active (?:now|\d.*|today|yesterday)|tap here for .*|click here for .*)$/i;
+// The typing bar at the bottom of the screen.
+const OCR_INPUT = /^(?:i?message|text message|type a message|message\.*|send a message)$/i;
+const OCR_NOT_NAMES = new Set("ok okay k kk yes yeah yep ya yea no nope nah lol lmao omg what why how who when where sure thanks thank thx hi hey hello bye fine true same wait bro dude hm hmm and but so".split(" "));
+
+// "Today 9:58 AM", "Sat, Sep 20 at 9:58 PM", "9:58 PM", "Yesterday", "12/09/2026"
+function isTimestamp(t) {
+  const s = t.replace(/[,·•]/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 32 || s.split(" ").length > 6) return false;
+  if (/^\d{1,2}[:.]\d{2}(?:\s?[ap]\.?m\.?)?$/i.test(s)) return true;
+  if (/^(?:today|yesterday|(?:mon|tues|wednes|thurs|fri|satur|sun)day)$/i.test(s)) return true;
+  return OCR_DAY.test(s) && /\d/.test(s);
+}
+
+// Letters make up most of a well-read line; OCR noise is mostly symbols.
+function ocrGarbled(t) {
+  const chars = t.replace(/\s/g, "");
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  const odd = (t.match(/[^\p{L}\p{N}\s'",.?!:;()&%$\-]/gu) || []).length;
+  return !letters || letters / chars.length < 0.55 || odd / chars.length > 0.2;
+}
+
+const ocrCentered = (x) => x.l >= 18 && x.r <= 82 && Math.abs((x.l + x.r) / 2 - 50) <= 9;
+// The phone's status bar: the clock (and carrier, battery) along the very top.
+const ocrStatusBar = (x) => x.y <= 6 && OCR_TIME.test(x.text) && x.text.length <= 30;
+// Closer to the left edge than to the right: a received bubble (or a short wrapped line).
+const ocrLeftish = (x) => x.l < 100 - x.r;
+
+// The top of a screenshot: status bar, header, presence line. Returns the header and the y
+// below which the messages start. Lines are already cleaned.
+function ocrTop(lines) {
+  const plain = (t) => t.replace(/\s*[>›»]+\s*$/, "").replace(/^[<‹«]+\s*\d*\s*/, "").trim();
+  for (const x of lines) {
+    if (x.y > 22 || ocrStatusBar(x)) continue;
+    const t = plain(x.text);
+    if (!/\p{L}/u.test(t) || t.length > 40 || isTimestamp(t) || OCR_LABEL.test(t)) continue;
+    // iMessage, Instagram, Messenger: the name is centered, often with a ">" after it.
+    if (ocrCentered(x) && (x.y <= 18 || /[>›]$/.test(x.text))) return { header: t, below: x.y };
+    // WhatsApp and others: left-aligned after a back arrow, or with "online" under it.
+    const next = lines.find((z) => z.y > x.y && z.y - x.y <= 5);
+    const presence = next && OCR_PRESENCE.test(next.text);
+    if (x.y <= 14 && (/^[<‹«]/.test(x.text) || presence)) return { header: t, below: presence ? next.y : x.y };
+  }
+  const bar = lines.filter(ocrStatusBar);
+  return { header: "", below: bar.length ? Math.max(...bar.map((x) => x.y)) : -1 };
+}
+
+// The chat's name from the header at the top of a screenshot, "" when none is visible.
+function headerOf(lines) {
+  return ocrTop(lines.map((x) => ({ ...x, text: cleanOcr(x.text) }))).header;
+}
+
+// A short line that could be a contact name above a received bubble ("Jason", "Mom", "Sarah K.").
+function looksLikeName(t) {
+  if (t.length > 24 || /[?!,:;]$/.test(t) || /\d/.test(t)) return false;
+  if (!/^\p{Lu}[\p{L}'.-]*(?: \p{L}[\p{L}'.-]*){0,2}$/u.test(t)) return false;
+  return !OCR_NOT_NAMES.has(t.split(" ")[0].toLowerCase().replace(/[^a-z]/g, ""));
+}
+
+function quantile(xs, q) {
+  const s = xs.slice().sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(q * s.length))];
+}
+
+// One screenshot's lines (from parseTsv) -> its messages, top to bottom, in the reading format.
+// Received bubbles hug the left edge, sent ones the right. The lines of one bubble share a left
+// edge and sit one line-spacing apart; that spacing is measured from the screenshot itself.
+function linesToMessages(lines) {
+  const all = (lines || [])
+    .map((x) => ({ ...x, raw: String(x.text || ""), text: cleanOcr(x.text) }))
+    .filter((x) => x.text)
+    .sort((a, b) => a.y - b.y || a.l - b.l);
+  const { below } = ocrTop(all);
+  const body = all.filter((x) => x.y > below && !ocrStatusBar(x) && !(x.y >= 80 && OCR_INPUT.test(x.text)));
+  if (!body.length) return [];
+
+  // Usual spacing between two lines of one bubble: the smallest gaps between lines sharing a left edge.
+  const gaps = [];
+  for (let i = 1; i < body.length; i++) {
+    const g = body[i].y - body[i - 1].y;
+    if (g > 0 && Math.abs(body[i].l - body[i - 1].l) <= 3) gaps.push(g);
+  }
+  const q = quantile(gaps, 0.25);
+  const small = gaps.filter((g) => g <= q * 1.5);
+  const pitch = gaps.length >= 3 ? small.reduce((a, b) => a + b, 0) / small.length : 3;
+  const near = Math.max(pitch * 1.5, pitch + 1); // one line further down, allowing for rounding
+
+  // Group chats put the sender's avatar beside a bubble's last line; OCR reads it as a stray
+  // character or two well left of the text column. Find that column pair, if there is one:
+  // most lines at the avatar's edge must sit just under a line in the text column.
+  const lefts = [...new Set(body.filter((x) => ocrLeftish(x) && !ocrCentered(x)).map((x) => x.l))].sort((a, b) => a - b);
+  let column = null;
+  for (let i = 1; i < lefts.length && column == null; i++) {
+    if (lefts[i - 1] > 8 || lefts[i] > 25 || lefts[i] - lefts[i - 1] < 6) continue;
+    const col = lefts[i];
+    const cands = body.filter((x) => ocrLeftish(x) && x.l <= lefts[i - 1]);
+    const under = cands.filter((x) => {
+      const j = body.indexOf(x);
+      return j > 0 && x.y - body[j - 1].y <= near && Math.abs(body[j - 1].l - col) <= 3;
+    });
+    if (under.length * 2 >= cands.length) column = quantile(body.filter((x) => Math.abs(x.l - col) <= 3).map((x) => x.l), 0.5);
+  }
+  if (column != null) {
+    for (const x of body) {
+      if (x.l >= column - 5 || !ocrLeftish(x)) continue;
+      // Drop the avatar's stray characters, then place the line in the text column.
+      const words = x.raw.trim().split(/\s+/);
+      x.text = cleanOcr(words.length > 1 && words[0].length <= 3 ? words.slice(1).join(" ") : x.raw).replace(/^[^\p{L}\p{N}"'(]+/u, "");
+      x.l = column;
+      x.avatar = true;
+    }
+  }
+  const rows = body.filter((x) => x.text);
+
+  const nameAt = (i) => {
+    const x = rows[i];
+    const next = rows[i + 1];
+    return !x.avatar && ocrLeftish(x) && !ocrCentered(x) && looksLikeName(x.text) && !!next && ocrLeftish(next) &&
+      next.y - x.y <= near && Math.abs(next.l - x.l) <= 3;
+  };
+
+  const msgs = [];
+  let cur = null; // the bubble being read: { msg, l, lastY, closed }
+  let name = ""; // a sender name waiting for its bubble
+  let time = ""; // a timestamp row waiting for the next message
+  let run = null; // the last received bubble, while its sender's run may continue
+  for (let i = 0; i < rows.length; i++) {
+    const x = rows[i];
+    if (OCR_LABEL.test(x.text)) {
+      cur = null;
+      continue;
+    }
+    if (cur && !cur.closed && x.y - cur.lastY <= near && Math.abs(x.l - cur.l) <= 3 && !nameAt(i)) {
+      // A time on its own line inside a bubble (WhatsApp) belongs to the message, not its text.
+      if (isTimestamp(x.text) && OCR_TIME.test(x.text)) cur.msg.time = cur.msg.time || x.text;
+      else cur.msg.text += " " + x.text;
+      cur.lastY = x.y;
+      if (x.avatar) cur.closed = true; // the avatar marks the last bubble of a run
+      continue;
+    }
+    cur = null;
+    if (ocrCentered(x) && !x.avatar) {
+      if (isTimestamp(x.text)) time = x.text;
+      else msgs.push({ side: "center", sender_label: "", text: x.text, time: "", kind: "system", partial: false, y: x.y, part: 1 });
+      run = null;
+      continue;
+    }
+    if (nameAt(i)) {
+      name = x.text;
+      continue;
+    }
+    const side = x.avatar || ocrLeftish(x) ? "left" : "right";
+    // Group chats name only the first bubble of a run from one sender.
+    const label = side === "left" ? name || (run && !run.closed ? run.msg.sender_label : "") : "";
+    const msg = { side, sender_label: label, text: x.text, time, kind: "text", partial: false, y: x.y, part: 1 };
+    msgs.push(msg);
+    cur = { msg, l: x.l, lastY: x.y, closed: !!x.avatar };
+    run = side === "left" ? cur : null;
+    name = "";
+    time = "";
+  }
+  return msgs.filter((m) => normText(m.text));
+}
+
+// How well one screenshot read. `poor` means Claude should take a second look at its lines.
+function readingQuality(lines, msgs) {
+  const texts = (lines || []).filter((x) => String(x.text || "").trim());
+  const count = (msgs || []).filter((m) => m.side !== "center").length;
+  if (!texts.length) return { conf: 0, garbled: 0, lines: 0, messages: count, poor: false, reason: "empty" };
+  let weight = 0;
+  let sum = 0;
+  for (const x of texts) {
+    weight += x.text.length;
+    sum += x.text.length * (Number(x.conf) || 0);
+  }
+  const conf = Math.round(sum / weight);
+  const garbled = texts.filter((x) => ocrGarbled(cleanOcr(x.text) || x.text)).length / texts.length;
+  let reason = "";
+  if (conf < 60) reason = "low confidence";
+  else if (garbled > 0.3) reason = "garbled";
+  else if (texts.length >= 8 && count <= 1) reason = "few messages";
+  return { conf, garbled: Math.round(garbled * 100) / 100, lines: texts.length, messages: count, poor: !!reason, reason };
+}
+
+// Claude's compact second look at poorly read screenshots ("n|H|header", "n|R|label|time|text")
+// -> Map of screenshot number -> { header, msgs }. Screenshots it didn't answer for are absent.
+function parseOcrReply(text) {
+  const out = new Map();
+  for (const row of String(text || "").split("\n")) {
+    const c = row.trim().split("|");
+    const n = Number(c[0]);
+    if (c.length < 3 || !c[0].trim() || !Number.isInteger(n)) continue;
+    const tag = c[1].trim().toUpperCase();
+    if (!out.has(n)) out.set(n, { header: "", msgs: [] });
+    const r = out.get(n);
+    if (tag === "H") {
+      r.header = c.slice(2).join("|").trim();
+      continue;
+    }
+    const side = { R: "right", L: "left", C: "center" }[tag];
+    const body = c.slice(4).join("|").trim();
+    if (!side || c.length < 5 || !body) continue;
+    r.msgs.push({
+      side, sender_label: side === "left" ? c[2].trim() : "", text: body, time: c[3].trim(),
+      kind: side === "center" ? "system" : "text", partial: false, y: r.msgs.length, part: 1,
+    });
+  }
+  return out;
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normText, similarity, sameMessage, joinSlices, phoneGroups, defaultMapping,
     resolveSender, mergeSequences, buildTranscript, transcriptText, verdictQuotes, unverifiedQuotes, parseTsv, ocrBlock,
+    cleanOcr, headerOf, linesToMessages, readingQuality, parseOcrReply,
   };
 }
