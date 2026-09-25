@@ -33,6 +33,7 @@ const constants = [
   `const VERDICT_SCHEMA = ${JSON.stringify(verdictSchema)};`,
   `const SAMPLE_VERDICT = ${JSON.stringify(sampleVerdict)};`,
   `const SYSTEM_PROMPT = ${JSON.stringify(SYSTEM_PROMPT)};`,
+  `const MARK_URI = ${JSON.stringify(dataUri("public/brand/mark.svg"))};`,
 ].join("\n");
 const js = read("artifact/pipeline.cjs") + "\n" + replaceOnce(read("artifact/chat.js"), "/*__CONSTANTS__*/", constants, "constants");
 
