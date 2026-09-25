@@ -111,6 +111,8 @@ test("website API: the key never reaches the browser and other sites can't call 
   assert.doesNotMatch(html, /test-key|GROQ_API_KEY|XAI_API_KEY/);
   const r = await realFetch(url + "api/json", { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://evil.example" }, body: JSON.stringify({ prompt: "hi" }) });
   assert.equal(r.status, 403);
+  const noOrigin = await realFetch(url + "api/json", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: "hi" }) });
+  assert.equal(noOrigin.status, 403, "scripts without a browser origin are turned away");
   const bad = await realFetch(url + "api/json", { method: "GET" });
   assert.equal(bad.status, 405);
 });

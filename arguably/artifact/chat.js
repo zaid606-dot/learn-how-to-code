@@ -115,7 +115,7 @@ const SAMPLE_ERRORS = {
   rate_limited: HOSTED ? "Arguably is busy right now. Try again in a minute." : `You've hit your ${AI_NAME} usage limit for now. Try again later.`,
   image_rejected: "One of the screenshots couldn't be used. Remove it or try a different image.",
   images_unavailable: `This view can't send screenshots to ${AI_NAME}. Paste the conversation as text instead.`,
-  ocr_unavailable: "This phone couldn't read the screenshots. Try Arguably on claude.ai in a browser, or paste the conversation as text.",
+  ocr_unavailable: HOSTED ? "This phone couldn't read the screenshots. Turn off “Read screenshots on this phone” in Settings, or paste the conversation as text." : "This phone couldn't read the screenshots. Try Arguably on claude.ai in a browser, or paste the conversation as text.",
   refused: `${AI_NAME} couldn't review this. Try a different set of screenshots.`,
   prompt_too_large: "That's too much to review at once. Try fewer screenshots or a shorter paste.",
   invalid_json: "The reply came back incomplete. Try again.",
@@ -516,7 +516,7 @@ function messageHTML(m) {
       : m.shotCount
         ? `<div class="shot-count">${plural(m.shotCount, "screenshot")}</div>`
         : "";
-    return `<div class="msg user">${shots}${m.text ? `<div class="u-text">${esc(m.text.length > 600 ? m.text.slice(0, 600) + "…" : m.text)}</div>` : ""}</div>`;
+    return `<div class="msg user${!m.text && m.shots?.length ? " only-shots" : ""}">${shots}${m.text ? `<div class="u-text">${esc(m.text.length > 600 ? m.text.slice(0, 600) + "…" : m.text)}</div>` : ""}</div>`;
   }
   if (m.kind === "verdict") return `<article class="msg verdict${m.verdict?.safety_note?.trim() ? " has-safety" : ""}">${verdictHTML(m, chat)}</article>`;
   if (m.kind === "who") return whoHTML(m);
@@ -852,7 +852,7 @@ const DOCS = {
       <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
       <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
       ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, or ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
-      <h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>`,
+      ${HOSTED ? "" : "<h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>"}`,
   },
   safety: {
     title: "Staying safe",
@@ -898,7 +898,7 @@ function inboxHTML() {
             .join("")}</ul>`
         : `<div class="inbox-empty">${pageSvg(PAGE_ICON.bell, 36)}<h2>Nothing yet</h2><p>When screenshots are read or a verdict is ready, it shows up here. You can leave a chat while it works.</p></div>`
     }
-    <p class="inbox-note">Phone notifications come with the App Store version. For now, updates show here and as a badge on the bell.</p>
+    <p class="inbox-note">${HOSTED ? "Updates show here and as a badge on the bell. Add Arguably to your Home Screen to open it like an app." : "Phone notifications come with the App Store version. For now, updates show here and as a badge on the bell."}</p>
   </section>`;
 }
 
@@ -1641,6 +1641,7 @@ async function send(textOverride) {
   pending = [];
   input.value = "";
   autosize();
+  $("toast").hidden = true;
   const c = chat;
   if (shots.length) return runImport(c, shots, text);
   // A long paste before any verdict is treated as the conversation itself.
@@ -2055,7 +2056,8 @@ function finishOnboarding() {
   prefs.onboarded = true;
   savePrefs();
   page = STORE_BUILD && !prefs.pro ? "paywall" : null;
-  notify("rate", "Hey, welcome to Arguably!", "Give us a rating on the App Store. It helps more people settle it.");
+  if (HOSTED) notify("tips", "Hey, welcome to Arguably!", "Put it on your Home Screen: tap Share, then Add to Home Screen. It opens like an app.");
+  else notify("rate", "Hey, welcome to Arguably!", "Give us a rating on the App Store. It helps more people settle it.");
   render();
 }
 $("newBtn").addEventListener("click", () => {

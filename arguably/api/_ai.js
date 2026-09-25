@@ -49,10 +49,15 @@ export function rateLimited(req, max = Number(process.env.RATE_LIMIT_PER_10_MIN 
   return recent.length > max;
 }
 
-// Only this site's own pages may call the API from a browser.
+// Only this site's own pages may call the API. Browsers label every request with where it
+// came from (Sec-Fetch-Site, Origin); a request with neither didn't come from a browser page,
+// so it's turned away. Scripts can fake headers, so this is a brake, not a lock; the spending
+// limit on the provider account is the real ceiling.
 export function foreignOrigin(req) {
+  const site = req.headers["sec-fetch-site"];
   const origin = req.headers.origin;
-  if (!origin) return false;
+  if (site) return site !== "same-origin";
+  if (!origin) return true;
   try {
     return new URL(origin).host !== req.headers.host;
   } catch {
@@ -60,7 +65,7 @@ export function foreignOrigin(req) {
   }
 }
 
-// Map an xAI error response to the app's error codes.
+// Map a provider error response to the app's error codes.
 export function errorCode(status, text = "") {
   if (status === 401 || status === 403) return { status: 500, code: "sampling_disabled" };
   if (status === 429) return { status: 429, code: "rate_limited" };

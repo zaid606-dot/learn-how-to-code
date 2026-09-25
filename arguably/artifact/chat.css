@@ -750,3 +750,16 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
   .ob-fine { font-size: 12px !important; }
   .ob-dots { padding-top: 8px; }
 }
+
+/* Message box: no divider line; it floats on a soft fade instead, like the header. */
+.composer { border-top: 0; box-shadow: none; background: linear-gradient(180deg, color-mix(in srgb, var(--ember-50) 0%, transparent), var(--ember-50) 22px); }
+
+/* Screenshots you sent: shown as themselves, not inside a dark bubble. */
+.msg.user.only-shots { background: transparent; padding: 0; box-shadow: none; }
+.msg.user.only-shots .shots { justify-content: flex-end; margin: 0; }
+.msg.user.only-shots .shots img { width: 76px; height: 136px; border-radius: 12px; box-shadow: 0 0 0 1px rgba(36, 16, 14, .08), 0 6px 16px rgba(36, 16, 14, .12); }
+
+/* Small phones: the two sheet buttons stack so the labels never spill out. */
+@media (max-width: 359px) {
+  .sheet-row { grid-template-columns: 1fr !important; }
+}
