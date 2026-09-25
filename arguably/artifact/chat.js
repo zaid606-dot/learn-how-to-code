@@ -442,48 +442,69 @@ function messageHTML(m) {
 const ICON = {
   upload: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
   paste: '<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/>',
-  example: '<path d="M12 3v18M5 7h14M7 7l-3 7a3 3 0 0 0 6 0L7 7zM17 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>',
-  read: '<path d="M4 6h16M4 12h10M4 18h7"/>',
+  play: '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/>',
+  phones: '<rect x="3" y="4" width="8" height="15" rx="2"/><rect x="14" y="7" width="7" height="13" rx="2"/>',
   people: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 20a5 5 0 0 1 5.5-5"/>',
+  quote: '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
 };
 const svg = (d, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 
+// The example card settles in once per page load; a re-render picks the animation up where it was.
+let homeShownAt = 0;
+
 function homeHTML() {
   const recent = chats.slice(0, 8);
   const notice = !sampler
     ? '<p class="notice">Open Arguably on claude.ai while signed in to get verdicts. You can still see the example.</p>'
     : "";
+  homeShownAt ||= performance.now();
+  const since = Math.round(performance.now() - homeShownAt);
+  const settle = since < 1200 ? ` style="animation-delay:${200 - since}ms"` : ' data-settled=""';
   return `<section class="home">
     ${notice}
     <div class="home-hero">
       <h1>Who's <em>actually</em> right?</h1>
-      <p>Import the screenshots. Get a fair verdict you can question.</p>
+      <p>Drop in the screenshots from both phones. Get a fair verdict, with receipts.</p>
     </div>
-    <div class="tiles">
-      <label class="tile tile-primary" for="fileInput">
-        <span class="tile-icon">${svg(ICON.upload, 26)}</span>
-        <span class="tile-text"><span class="tile-title">Import screenshots</span><span class="tile-sub">Both phones, any order, up to ${MAX_IMAGES}</span></span>
-        <span class="tile-go">${svg(ICON.chevron, 20)}</span>
-      </label>
-      <button class="tile" type="button" id="pasteTile">
-        <span class="tile-icon">${svg(ICON.paste)}</span>
-        <span class="tile-title">Paste text</span>
-        <span class="tile-sub">Copied from the chat</span>
-      </button>
-      <button class="tile" type="button" id="exampleTile">
-        <span class="tile-icon">${svg(ICON.example)}</span>
-        <span class="tile-title">See an example</span>
-        <span class="tile-sub">The dishwasher standoff</span>
+    <div class="demo">
+      <div class="demo-phones" aria-hidden="true">
+        <div class="demo-phone mine">
+          <span class="demo-label"><i></i>Your phone</span>
+          <span class="bub out">I said I'd do it after dinner</span>
+          <span class="bub in">That was Tuesday</span>
+          <span class="bub out ghost"></span>
+        </div>
+        <div class="demo-phone theirs">
+          <span class="demo-label"><i></i>Their phone</span>
+          <span class="bub out">The pans are still in there</span>
+          <span class="bub in ghost"></span>
+          <span class="bub out ghost"></span>
+        </div>
+      </div>
+      <button class="demo-verdict" type="button" data-action="example" aria-label="See an example verdict"${settle}>
+        <span class="dv-top"><span class="dv-eyebrow">Verdict</span><span class="dv-tag">Example</span></span>
+        <span class="dv-title">You're mostly right.</span>
+        <span class="dv-bar"><i style="flex:64"></i><i style="flex:36"></i></span>
+        <span class="dv-scores"><span>You 64</span><span>Them 36</span></span>
+        <span class="dv-check">${svg(ICON.check, 16)}3 quotes checked against the originals</span>
       </button>
     </div>
-    <ul class="how">
-      <li><span class="how-icon">${svg(ICON.read, 18)}</span><span><strong>Reads every message</strong> and merges screenshots from both phones.</span></li>
-      <li><span class="how-icon">${svg(ICON.people, 18)}</span><span><strong>Checks who's who</strong> with you before judging.</span></li>
-      <li><span class="how-icon">${svg(ICON.check, 18)}</span><span><strong>Checks every quote</strong> against what was actually said.</span></li>
+    <ul class="proof">
+      <li>${svg(ICON.phones, 20)}<span><strong>Both phones</strong> merged in order</span></li>
+      <li>${svg(ICON.people, 20)}<span><strong>You confirm</strong> who's who first</span></li>
+      <li>${svg(ICON.quote, 20)}<span><strong>Every quote</strong> checked</span></li>
     </ul>
+    <div class="home-sheet">
+      <button class="import-btn" type="button" data-action="import">${svg(ICON.upload, 22)}Import screenshots</button>
+      <p class="import-note">Both phones · any order · up to ${MAX_IMAGES}</p>
+      <div class="sheet-row">
+        <button class="sheet-btn" type="button" data-action="paste">${svg(ICON.paste, 20)}Paste text</button>
+        <button class="sheet-btn" type="button" data-action="example">${svg(ICON.play, 20)}Try an example</button>
+      </div>
+    </div>
     ${
       recent.length
         ? `<section class="recent"><h2>Recent</h2><ul>${recent
@@ -1173,8 +1194,10 @@ $("thread").addEventListener("input", (e) => {
 });
 $("thread").addEventListener("click", (e) => {
   const t = e.target;
-  if (t.closest("#exampleTile")) return openExample();
-  if (t.closest("#pasteTile")) {
+  const action = t.closest("[data-action]")?.dataset.action;
+  if (action === "example") return openExample();
+  if (action === "import") return $("fileInput").click();
+  if (action === "paste") {
     ensureChat();
     render();
     $("messageInput").focus();
