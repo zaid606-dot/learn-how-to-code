@@ -1,10 +1,19 @@
 // Shared by the Vercel functions in api/ (files starting with "_" aren't routes).
-// Talks to xAI's OpenAI-compatible Chat Completions API with the site's own key, which
-// lives only in the XAI_API_KEY environment variable and never reaches the browser.
+// Talks to an OpenAI-compatible Chat Completions API with the site's own key, which lives
+// only in an environment variable and never reaches the browser:
+//   GROQ_API_KEY -> Groq (default model qwen/qwen3.8-27b, which reads images)
+//   XAI_API_KEY  -> xAI Grok (default model grok-4.7)
+// AI_MODEL / AI_FAST_MODEL override the model for either.
 
-const XAI_URL = process.env.XAI_BASE_URL || "https://api.x.ai/v1/chat/completions";
-export const modelFor = (tier) =>
-  tier === "quick" ? process.env.XAI_FAST_MODEL || process.env.XAI_MODEL || "grok-4.7" : process.env.XAI_MODEL || "grok-4.7";
+export const PROVIDERS = {
+  groq: { url: "https://api.groq.com/openai/v1/chat/completions", key: "GROQ_API_KEY", model: "qwen/qwen3.8-27b", maxImages: 3, tokens: "max_completion_tokens" },
+  xai: { url: "https://api.x.ai/v1/chat/completions", key: "XAI_API_KEY", model: "grok-4.7", maxImages: 4, tokens: "max_tokens" },
+};
+export const provider = () => PROVIDERS[process.env.AI_PROVIDER] || (process.env.GROQ_API_KEY || !process.env.XAI_API_KEY ? PROVIDERS.groq : PROVIDERS.xai);
+export const modelFor = (tier) => {
+  const main = process.env.AI_MODEL || process.env.XAI_MODEL || provider().model;
+  return tier === "quick" ? process.env.AI_FAST_MODEL || main : main;
+};
 
 // Plain Node request/response helpers, so the handlers run the same on Vercel and in tests.
 export function send(res, status, body) {
@@ -61,10 +70,16 @@ export function errorCode(status, text = "") {
   return { status: 502, code: "upstream_error" };
 }
 
-export async function xai(body, signal) {
-  const key = process.env.XAI_API_KEY;
-  if (!key) throw { status: 500, code: "sampling_disabled", detail: "XAI_API_KEY is not set" };
-  const res = await fetch(XAI_URL, {
+export async function complete(body, signal) {
+  const p = provider();
+  const key = process.env[p.key];
+  if (!key) throw { status: 500, code: "sampling_disabled", detail: `${p.key} is not set` };
+  // Each API names the output cap differently.
+  if (body.max_tokens && p.tokens !== "max_tokens") {
+    body = { ...body, [p.tokens]: body.max_tokens };
+    delete body.max_tokens;
+  }
+  const res = await fetch(p.url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify(body),
@@ -72,7 +87,7 @@ export async function xai(body, signal) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.error("xAI error", res.status, text.slice(0, 500));
+    console.error("AI API error", res.status, text.slice(0, 500));
     throw errorCode(res.status, text);
   }
   return res;
@@ -85,9 +100,12 @@ export function toMessages(turns) {
     .map((t) => ({ role: t.role, content: String(t.content ?? "").slice(0, 60000) }));
 }
 
-// Pull the JSON object out of a model reply (tolerates ```json fences or a lead-in line).
+// Reasoning models may think out loud in <think> tags before answering; people never see that.
+export const stripThinking = (text) => String(text || "").replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+
+// Pull the JSON object out of a model reply (tolerates thinking, ```json fences or a lead-in line).
 export function parseJsonReply(text) {
-  const s = String(text || "").replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, "");
+  const s = stripThinking(text).replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, "");
   try {
     return JSON.parse(s);
   } catch {

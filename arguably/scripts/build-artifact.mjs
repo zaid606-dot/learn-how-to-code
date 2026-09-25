@@ -19,7 +19,9 @@ const store = process.argv.includes("--store");
 // site's /api functions (see api/) instead of the claude.ai capability.
 const web = process.argv.includes("--web");
 const AI = web
-  ? { name: process.env.AI_NAME || "Grok", maker: process.env.AI_MAKER || "xAI" }
+  ? process.env.XAI_API_KEY && !process.env.GROQ_API_KEY
+    ? { name: process.env.AI_NAME || "Grok", maker: process.env.AI_MAKER || "xAI" }
+    : { name: process.env.AI_NAME || "Qwen", maker: process.env.AI_MAKER || "Alibaba, running on Groq" }
   : { name: "Claude", maker: "Anthropic" };
 const out =
   process.argv.slice(2).find((a) => !a.startsWith("--")) ||

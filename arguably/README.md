@@ -57,21 +57,21 @@ The request opts into server-side refusal fallbacks (`fallbacks: "default"`), so
 - The brand's `success` and `warning` colors fall below 4.5:1 on their soft backgrounds (4.47:1 and 4.26:1), so status tags use ink text with a colored symbol instead.
 - The brand's secondary-button spec calls for an `ember-200` border, which the palette doesn't define; `ember-300` (Clay) is used instead.
 
-## Your own website (Vercel + Grok)
+## Your own website (Vercel + Groq)
 
-The same app, on its own URL, with no Claude account needed. Verdicts run on Grok through
+The same app, on its own URL, with no Claude account needed. Verdicts run on Groq (default) or Grok through
 two small server functions (`api/json.js`, `api/chat.js`) that hold the xAI key. The key
 never reaches the browser.
 
 1. In Vercel: **Add New… → Project → Import** this GitHub repo.
 2. **Root Directory:** `arguably`. Leave the framework as **Other**; `vercel.json` sets the
    build (`scripts/fetch-ocr.sh` + `node scripts/build-artifact.mjs --web`) and output (`web-dist`).
-3. **Environment Variables:** add `XAI_API_KEY` (from console.x.ai). Optional:
-   `XAI_MODEL` (default `grok-4.7`), `XAI_FAST_MODEL`, `RATE_LIMIT_PER_10_MIN` (default 40).
+3. **Environment Variables:** add `GROQ_API_KEY` (console.groq.com) or `XAI_API_KEY` (console.x.ai). Optional:
+   `AI_MODEL` (default `qwen/qwen3.8-27b` on Groq, `grok-4.7` on xAI), `AI_FAST_MODEL`, `RATE_LIMIT_PER_10_MIN` (default 40).
 4. **Deploy.** Share the `*.vercel.app` URL. On a phone, Share → Add to Home Screen makes it
    open like an app.
 
-Every verdict is billed to that xAI key. Set a monthly spending limit in the xAI console:
+Every verdict is billed to that key. Set a spending limit in the provider console:
 the built-in per-visitor rate limit is a brake, not a budget.
 
 Build it locally: `node scripts/build-artifact.mjs --web` → `web-dist/`.
