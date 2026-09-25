@@ -60,24 +60,29 @@ Then list every message bubble in reading order, top to bottom, image by image. 
 Reply with only one JSON object, for example:
 {"images":[{"image":1,"app":"iMessage","header_name":"Jordan"}],"messages":[{"image":1,"side":"right","sender_label":"","text":"You said you'd do the dishes?","time":"Today 9:14 PM","kind":"text","partial":false,"y":22}]}`;
 
-// Used when this view can't send images to Claude: the phone reads the text, Claude rebuilds the messages.
-const OCR_RULES = `These are text lines read on the user's phone (by OCR) from screenshots of a text-message conversation. Rebuild the conversation's messages. Do not judge or summarize anything.
+// Used when this view can't send images to Claude: the phone reads and sorts the text itself
+// (linesToMessages), and only screenshots that read poorly go to Claude as text lines.
+const OCR_RULES = `These are text lines read on the user's phone (by OCR) from screenshots of a text-message conversation. The reading was poor, so some text is garbled. Rebuild each screenshot's messages. Do not judge or summarize anything.
 
 Each line is: y (top of the line, % of screenshot height), L and R (left and right edge, % of screenshot width), an optional "low" confidence flag, then the text.
 How to read them:
 - The first line or two (time, carrier, battery) is the phone's status bar. Ignore it.
-- The chat header is the centered name near the top (often ending in ">" or "›"). Report it as header_name; "" if none.
-- Sent bubbles (the phone owner's) are right-aligned: R is high (about 85 or more) and L is well away from the left edge. side = "right".
-- Received bubbles are left-aligned: L is low (under about 25). side = "left". In group chats a short name line sits just above a received bubble; use it as sender_label for that bubble, not as a message.
-- Centered short lines between bubbles are timestamps ("Today 9:58 AM") or notices. Put a timestamp on the next message's time field; other notices get side "center", kind "system".
-- Lines close together vertically (y differs by about 3 or less) with the same alignment belong to one bubble: join them with a space.
-- Fix obvious OCR slips (a lone "|" is usually "I"; "0k" is "Ok") but never change the wording. Drop fragments that are clearly icon or photo noise. If garbled text sits where a photo, link card or voice note would be, use a short bracketed description like "[photo]" or "[voice message]".
-- "Replies", "Delivered", "Read", reaction counts and similar labels are not messages. Skip them.
-- y for each message is the y of its first line.
+- The chat header is the name near the top (often centered, often ending in ">" or "›").
+- Sent bubbles (the phone owner's) are right-aligned: R is high and L is well away from the left edge. Received bubbles are left-aligned: L is low. A wrapped line keeps its bubble's L even when it is short.
+- In group chats a short name line sits just above a received bubble: it is that bubble's sender label, not a message.
+- Centered short lines between bubbles are timestamps ("Today 9:58 AM"): put them on the next message. Other centered notices are C messages.
+- Lines close together vertically with the same L belong to one bubble: join them with a space.
+- Fix obvious OCR slips (a lone "|" is "I"; "0k" is "Ok") but never change the wording. Drop icon, avatar and photo noise. If garbled text sits where a photo, link card or voice note would be, write "[photo]", "[link]" or "[voice message]".
+- "Delivered", "Read", "Edited", "Replies", reaction counts and similar labels are not messages.
 
-Reply with only one JSON object, for example:
-{"images":[{"image":1,"app":"iMessage","header_name":"Jordan"}],"messages":[{"image":1,"side":"right","sender_label":"","text":"You said you'd do the dishes?","time":"Today 9:14 PM","kind":"text","partial":false,"y":22}]}
-Use the screenshot number as "image".`;
+Reply in plain text, no JSON, no commentary. For every screenshot, first one header line, then one line per message, top to bottom:
+<screenshot>|H|<header name, or nothing if none is visible>
+<screenshot>|<R, L or C>|<sender label or nothing>|<time or nothing>|<message text>
+Example:
+3|H|Jordan
+3|R||Today 9:14 PM|You said you'd do the dishes?
+3|L|||I was going to do them today
+If a screenshot has no readable messages, give only its H line.`;
 
 const SAMPLE_TRANSCRIPT = [
   ["Maya", "Today 9:14 PM", "You said you'd do the dishes last night?"],
@@ -833,49 +838,72 @@ async function readWithOcr(shots, thinking, signal) {
   } catch {
     throw { code: "ocr_unavailable" };
   }
-  const blocks = [];
+  // Each screenshot is read and sorted into messages right here (linesToMessages). Only the ones
+  // that read poorly go to Claude, as text lines, for a quick second look.
+  const readings = [];
+  const waiting = []; // poorly read screenshots not yet sent: { n, text }
+  const looks = []; // second looks in flight
+  let poorCount = 0;
+  let lineCount = 0;
+  const count = () => readings.reduce((a, r) => a + r.msgs.filter((m) => m.side !== "center").length, 0);
+  updateThinking(thinking, shots.length > 1 ? `Reading ${shots.length} screenshots on this phone` : "Reading the screenshot on this phone", 0.05);
   for (let i = 0; i < shots.length; i++) {
     if (signal.aborted) throw { code: "cancelled" };
-    updateThinking(thinking, `Reading screenshot ${i + 1} of ${shots.length} on this phone`, (i / shots.length) * 0.6);
+    const n = shots[i].n;
     const lines = await ocrRecognize(shots[i].url).catch(() => []);
-    blocks.push({ n: shots[i].n, text: ocrBlock(shots[i].n, lines), count: lines.length });
-  }
-  if (!blocks.some((b) => b.count)) throw { code: "no_messages" };
-  // Send the lines to Claude in text-only batches that stay well under the request limit.
-  const batches = [];
-  let cur = [];
-  let size = 0;
-  for (const b of blocks) {
-    if (cur.length && size + b.text.length > 36000) {
-      batches.push(cur);
-      cur = [];
-      size = 0;
+    if (signal.aborted) throw { code: "cancelled" };
+    lineCount += lines.length;
+    const msgs = linesToMessages(lines);
+    readings.push({ n, header: headerOf(lines), app: "", isGroup: msgs.some((m) => m.side === "left" && m.sender_label), msgs });
+    if (readingQuality(lines, msgs).poor) {
+      poorCount++;
+      waiting.push({ n, text: ocrBlock(n, lines) });
+      // The first poor screenshot goes to Claude straight away while the rest are read;
+      // any found after that go together once reading is done.
+      if (!looks.length) looks.push(closerLook(waiting.splice(0), signal));
     }
-    cur.push(b);
-    size += b.text.length;
+    updateThinking(thinking, `Read ${plural(count(), "message")} from ${shots.length > 1 ? `${i + 1} of ${shots.length} screenshots` : "the screenshot"}`, 0.05 + ((i + 1) / shots.length) * 0.85);
   }
-  if (cur.length) batches.push(cur);
-  const readings = [];
-  for (let k = 0; k < batches.length; k++) {
-    updateThinking(thinking, batches.length > 1 ? `Sorting out the messages · part ${k + 1} of ${batches.length}` : "Sorting out the messages", 0.6 + (k / batches.length) * 0.35);
-    const out = await sampler.json(`${OCR_RULES}\n\n${batches[k].map((b) => b.text).join("\n\n")}`, { modelTier: "default", signal });
-    if (!out || !Array.isArray(out.messages)) throw { code: "invalid_json" };
-    for (const b of batches[k]) {
-      const info = (out.images || []).find((x) => Number(x.image) === b.n) || {};
-      const msgs = out.messages
-        .filter((m) => Number(m.image) === b.n)
-        .map((m) => ({ ...m, part: 1, text: String(m.text ?? "") }))
-        .sort((a, c) => (Number(a.y) || 0) - (Number(c.y) || 0));
-      readings.push({
-        n: b.n,
-        header: String(info.header_name || "").trim(),
-        app: info.app || "",
-        isGroup: msgs.some((m) => m.side === "left" && String(m.sender_label || "").trim()),
-        msgs,
-      });
+  if (!lineCount) throw { code: "no_messages" };
+  if (waiting.length) looks.push(closerLook(waiting, signal));
+  if (looks.length) {
+    updateThinking(thinking, `Taking a closer look at ${plural(poorCount, "screenshot")}`, 0.92);
+    for (const found of await Promise.all(looks)) {
+      // Claude's reading replaces the phone's for the screenshots it answered; the rest keep theirs.
+      for (const [n, r] of found) {
+        const reading = readings.find((x) => x.n === n);
+        if (!reading) continue;
+        if (r.header) reading.header = r.header;
+        reading.msgs = r.msgs;
+        reading.isGroup = r.msgs.some((m) => m.side === "left" && m.sender_label);
+      }
     }
+    if (signal.aborted) throw { code: "cancelled" };
   }
   return readings;
+}
+
+// One quick, text-only request for the screenshots that read poorly. Resolves to a Map of
+// screenshot number -> { header, msgs }, or an empty Map when it fails (the phone's reading is kept).
+function closerLook(blocks, signal) {
+  const sent = [];
+  let size = 0;
+  for (const b of blocks) {
+    if (size + b.text.length > 40000) break; // stay well under the request limit
+    sent.push(b);
+    size += b.text.length;
+  }
+  if (!sent.length) return Promise.resolve(new Map());
+  const ns = new Set(sent.map((b) => b.n));
+  const prompt = `${OCR_RULES}\n\n${sent.map((b) => b.text).join("\n\n")}`;
+  const look = sampler([{ role: "user", content: prompt }], { modelTier: "quick", signal })
+    .then(({ text }) => new Map([...parseOcrReply(text)].filter(([n]) => ns.has(n))))
+    .catch((err) => {
+      if (err?.code === "cancelled" || signal.aborted) throw { code: "cancelled" };
+      return new Map();
+    });
+  look.catch(() => {}); // awaited later; don't report a cancel as unhandled while reading continues
+  return look;
 }
 
 // Claude reads the screenshots itself when this view can send images; otherwise the phone does.
