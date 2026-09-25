@@ -18,11 +18,13 @@ const APP_STORE_ID = "";
 const APP_VERSION = "1.0";
 // App Store build only (node scripts/build-artifact.mjs --store). On claude.ai, verdicts run on
 // the viewer's own Claude plan, so there is nothing to gate.
-const FREE_VERDICTS = 3;
+// Hard paywall, Cal AI style: Pro (with a free trial) right after onboarding, no free verdicts.
+const FREE_VERDICTS = 0;
 const PRO_FAIR_USE = 50; // verdicts per calendar month
 const PLANS = {
-  yearly: { id: "arguably.pro.yearly", price: "$39.99", per: "year", perWeek: "$0.77", trialDays: 3 },
-  monthly: { id: "arguably.pro.monthly", price: "$6.99", per: "month" },
+  yearly: { id: "arguably.pro.yearly", price: "$29.99", per: "year", trialDays: 3 },
+  monthly: { id: "arguably.pro.monthly", price: "$9.99", per: "month" },
+  family: { id: "arguably.pro.family", price: "$59.99", per: "year" },
 };
 const MAX_EDGE = 1400; // max width; tall scrolling captures keep full height
 const STORE_KEY = "arguably.chats.v2";
@@ -614,7 +616,7 @@ function homeHTML() {
     <div class="home-sheet">
       <p class="sheet-prompt">Still thinking about your last argument? <span>Start there.</span></p>
       <button class="import-btn" type="button" data-action="import">${svg(ICON.upload, 22)}Import screenshots</button>
-      <p class="import-note">Both phones · any order · ${STORE_BUILD && !prefs.pro ? `${freeLeft()} free ${freeLeft() === 1 ? "verdict" : "verdicts"} left` : `up to ${MAX_IMAGES}`}</p>
+      <p class="import-note">Both phones · any order · ${STORE_BUILD && !prefs.pro ? `try Pro free for ${PLANS.yearly.trialDays} days` : `up to ${MAX_IMAGES}`}</p>
       <div class="sheet-row">
         <button class="sheet-btn" type="button" data-action="paste">${svg(ICON.paste, 20)}Paste text</button>
         <button class="sheet-btn" type="button" data-action="example">${svg(ICON.play, 20)}Try an example</button>
@@ -807,9 +809,9 @@ function proSettingsHTML(link) {
       <div class="set-card">
         ${
           prefs.pro
-            ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${prefs.pro.plan === "yearly" ? "Yearly" : "Monthly"}</span><span class="set-sub">${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
+            ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${{ yearly: "Yearly", monthly: "Monthly", family: "Family" }[prefs.pro.plan] || "Active"}</span><span class="set-sub">${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
                <a class="set-row" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">${tile("doc", "sand")}<span class="set-text"><span class="set-title">Manage subscription</span></span>${chev}</a>`
-            : link('data-action="paywall"', "scale", "ember", "Go Pro", `${freeLeft()} of ${FREE_VERDICTS} free verdicts left`)
+            : link('data-action="paywall"', "scale", "ember", "Go Pro", `Start your ${PLANS.yearly.trialDays}-day free trial`)
         }
         <button class="set-row" type="button" data-action="restore">${tile("replay", "sand")}<span class="set-text"><span class="set-title">Restore purchases</span></span></button>
       </div>
@@ -844,7 +846,7 @@ const DOCS = {
       <h2>Your content</h2><p>Only import conversations you have the right to share. Don't use Arguably to harass, shame or threaten anyone.</p>
       <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
       <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
-      ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription (${PLANS.monthly.price}/month or ${PLANS.yearly.price}/year, with a ${PLANS.yearly.trialDays}-day free trial on yearly). Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
+      ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial, or ${PLANS.family.price}/year for up to 6 people with Family Sharing. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
       <h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>`,
   },
   safety: {
@@ -1481,7 +1483,7 @@ function resumeHTML(m) {
   const copy = {
     stopped: ["Verdict stopped", "Pick up where you left off. Your screenshots are already read."],
     failed: ["The verdict didn't come through", m.error || "Something went wrong on the way. Your screenshots are already read."],
-    locked: ["Your verdict is one tap away", `You've used your ${FREE_VERDICTS} free verdicts. Go Pro to see who's right.`],
+    locked: ["Your verdict is one tap away", `Start your ${PLANS.yearly.trialDays}-day free trial to see who's right.`],
     fair: ["You've hit this month's fair-use limit", `Pro includes ${PRO_FAIR_USE} verdicts a month. It resets on the 1st.`],
   }[m.reason] || ["Verdict didn't finish", ""];
   const button = m.reason === "fair" ? "" : m.reason === "locked"
@@ -1665,7 +1667,7 @@ function openExample() {
 let paywallPlan = "yearly";
 const nextYearDate = (days) => new Date(Date.now() + days * 864e5).toLocaleDateString(undefined, { month: "long", day: "numeric" });
 function paywallHTML() {
-  const y = PLANS.yearly, mo = PLANS.monthly;
+  const y = PLANS.yearly, mo = PLANS.monthly, fam = PLANS.family;
   const plan = PLANS[paywallPlan];
   const save = Math.round((1 - parseFloat(y.price.slice(1)) / (parseFloat(mo.price.slice(1)) * 12)) * 100);
   const trial = paywallPlan === "yearly" && y.trialDays;
@@ -1681,13 +1683,14 @@ function paywallHTML() {
     <h1 id="pwTitle">Unlimited verdicts.<br><em>Settle every one.</em></h1>
     ${paywallFor ? `<p class="pw-waiting">${svg(ICON.check, 16)}Your screenshots are read. The verdict runs the moment you unlock.</p>` : ""}
     <ul class="pw-benefits">
-      <li>${pageSvg(PAGE_ICON.scale, 22)}<span><strong>Every argument, judged</strong>Up to ${PRO_FAIR_USE} verdicts a month, not ${FREE_VERDICTS} total.</span></li>
+      <li>${pageSvg(PAGE_ICON.scale, 22)}<span><strong>Every argument, judged</strong>Up to ${PRO_FAIR_USE} verdicts a month.</span></li>
       <li>${pageSvg(SET_ICON.replay, 22)}<span><strong>Rematches</strong>Add new screenshots anytime and get a fresh verdict.</span></li>
       <li>${pageSvg(PAGE_ICON.spark, 22)}<span><strong>New features first</strong>Everything we ship next is included.</span></li>
     </ul>
     <div class="plans" role="radiogroup" aria-label="Choose a plan">
-      ${radio("yearly", "Yearly", `${y.price}<small>/yr</small>`, `${y.perWeek}/week · ${y.trialDays}-day free trial`, `Save ${save}%`)}
+      ${radio("yearly", "Yearly", `${y.price}<small>/yr</small>`, `${y.trialDays}-day free trial`, `Save ${save}%`)}
       ${radio("monthly", "Monthly", `${mo.price}<small>/mo</small>`, "Cancel anytime")}
+      ${radio("family", "Family", `${fam.price}<small>/yr</small>`, "Up to 6 people")}
     </div>
     <button class="cta pw-cta" type="button" data-action="purchase">${trial ? `Start ${y.trialDays}-day free trial` : `Subscribe for ${plan.price}/${plan.per}`}</button>
     <p class="pw-terms">${
@@ -1738,7 +1741,7 @@ function unlockPro(plan, message) {
     chat = live.get(waiting.c.id) || waiting.c;
     return startVerdict(chat, waiting.note);
   }
-  if (page === "paywall") page = "settings";
+  if (page === "paywall") page = null;
   render();
 }
 function closePaywall() {
@@ -1808,11 +1811,16 @@ $("thread").addEventListener("click", (e) => {
   const t = e.target;
   const action = t.closest("[data-action]")?.dataset.action;
   if (action === "example") {
+    const fromIntro = page === "onboarding";
     finishOnboarding();
+    if (fromIntro && page === "paywall") return;
     return openExample();
   }
   if (action === "import") {
-    if (page === "onboarding") finishOnboarding();
+    if (page === "onboarding") {
+      finishOnboarding();
+      if (page === "paywall") return; // App Store build: the trial comes first
+    }
     return $("fileInput").click();
   }
   if (action === "next") {
@@ -2001,7 +2009,7 @@ function finishOnboarding() {
   }
   prefs.onboarded = true;
   savePrefs();
-  page = null;
+  page = STORE_BUILD && !prefs.pro ? "paywall" : null;
   notify("rate", "Hey, welcome to Arguably!", "Give us a rating on the App Store. It helps more people settle it.");
   render();
 }

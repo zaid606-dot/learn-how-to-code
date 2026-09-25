@@ -371,30 +371,34 @@ test("asking about the example keeps the example's conversation", async () => {
   assert.deepEqual(errors, []);
 });
 
-test("App Store build: free verdicts count down, then the paywall gates the next one", async () => {
-  const { page, errors, calls } = await openApp({ images: true, store: true, prefs: { freeUsed: 2 } });
-  assert.match(await page.locator(".import-note").innerText(), /1 free verdict left/);
-  await pasteConversation(page);
-  await page.waitForSelector(".msg.verdict", { timeout: 10000 });
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")).freeUsed), 3);
-  // The next verdict is gated: the paywall shows and nothing is sent to Claude.
-  await page.click("#newBtn");
-  await page.fill("#messageInput", PASTED);
-  await page.click("#sendBtn");
+test("App Store build: hard paywall after onboarding, then every verdict needs Pro", async () => {
+  const { page, errors, calls } = await openApp({ images: true, store: true, firstRun: true });
+  await page.click('[data-action="next"]');
+  await page.click('[data-action="consent-next"]');
+  await page.click('.onboard [data-action="import"]');
   await page.waitForSelector(".paywall");
   await shot(page, "paywall");
   assert.deepEqual(await layoutProblems(page), []);
-  assert.equal((await calls()).filter((c) => c.kind === "verdict").length, 1);
-  const terms = await page.locator(".pw-terms").innerText();
-  assert.match(terms, /\$39\.99 per year/);
-  assert.match(terms, /Renews automatically/);
+  const text = await page.locator(".paywall").innerText();
+  assert.match(text, /\$29\.99/);
+  assert.match(text, /\$9\.99/);
+  assert.match(text, /\$59\.99/);
+  assert.doesNotMatch(text, /\/week|per week/i, "no weekly price (App Review 3.1.2)");
+  assert.match(await page.locator(".pw-terms").innerText(), /then \$29\.99 per year[\s\S]*Renews automatically/);
+  assert.equal(await page.locator(".pw-cta").innerText(), "Start 3-day free trial");
   assert.ok(await page.locator('[data-action="restore"]').isVisible(), "Restore purchases on the paywall");
-  // Closing leaves a card that brings the paywall back.
+  // Closing it: the app is browsable, but a verdict brings the paywall back and nothing goes to Claude.
+  await page.click('[data-action="paywall-close"]');
+  assert.match(await page.locator(".import-note").innerText(), /try Pro free for 3 days/);
+  await pasteConversation(page);
+  await page.waitForSelector(".paywall");
+  assert.ok(await page.locator(".pw-waiting").isVisible());
+  assert.equal((await calls()).filter((c) => c.kind === "verdict").length, 0);
   await page.click('[data-action="paywall-close"]');
   assert.ok(await page.locator(".msg.resume.locked").isVisible());
   await page.click('.msg.resume [data-action="paywall"]');
   await page.click('[data-plan="monthly"]');
-  assert.equal(await page.locator(".pw-cta").innerText(), "Subscribe for $6.99/month");
+  assert.equal(await page.locator(".pw-cta").innerText(), "Subscribe for $9.99/month");
   await page.click('[data-action="purchase"]');
   await page.waitForSelector(".msg.verdict", { timeout: 10000 });
   const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem("arguably.prefs.v1")));

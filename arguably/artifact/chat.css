@@ -628,21 +628,21 @@ body.on-paywall .topbar, body.on-paywall .composer { display: none !important; }
   display: grid; place-items: center; background: rgba(255, 255, 255, .1); color: #fff;
 }
 .pw-icon {
-  width: 68px !important; height: 68px; border-radius: 17px; display: grid; place-items: center; background: #fff;
+  width: 60px !important; height: 60px; border-radius: 15px; display: grid; place-items: center; background: #fff;
   box-shadow: 0 20px 50px rgba(0, 0, 0, .45), 0 0 80px 8px color-mix(in srgb, var(--ember-500) 45%, transparent);
 }
 .pw-eyebrow { width: auto !important; margin-top: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, .1); font: 700 11px/1 var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--ember-300); }
 .paywall h1 { margin: 0; font: 700 clamp(27px, 7.4vw, 34px)/1.08 var(--font-display); letter-spacing: -0.035em; color: #fff; text-wrap: balance; }
 .paywall h1 em { font-style: normal; color: var(--ember-300); }
 .pw-waiting { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 8px 12px; border-radius: 12px; background: rgba(52, 199, 89, .14); color: #8ce0a4; font-size: 13px; line-height: 1.35; text-align: left; }
-.pw-benefits { list-style: none; margin: 4px 0 2px; padding: 0; display: grid; gap: 10px; text-align: left; }
+.pw-benefits { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 8px; text-align: left; }
 .pw-benefits li { display: flex; gap: 14px; align-items: flex-start; }
 .pw-benefits svg { flex: none; margin-top: 2px; color: var(--ember-300); }
 .pw-benefits span { display: grid; gap: 1px; font-size: 13px; line-height: 1.35; color: #cdbfb9; }
 .pw-benefits strong { font-size: 15px; color: #fff; font-weight: 600; }
-.plans { display: grid; gap: 8px; margin-top: auto; }
+.plans { display: grid; gap: 7px; margin-top: auto; }
 .plan {
-  display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 10px 16px; border-radius: 16px; text-align: left;
+  display: flex; align-items: center; gap: 14px; min-height: 54px; padding: 7px 16px; border-radius: 16px; text-align: left;
   border: 1.5px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .04); color: #fff; font: inherit;
   transition: border-color var(--dur-sm) var(--ease-out), background-color var(--dur-sm) var(--ease-out), transform 140ms var(--ease-out);
 }
@@ -685,3 +685,5 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .del-btn.confirm .del-confirm { display: inline; font: 600 14px/1 var(--font-body); }
 .ring span { align-content: center; gap: 2px; }
 .ring span small { margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+
+.pw-icon img { width: 44px; height: auto; }
