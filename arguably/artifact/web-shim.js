@@ -100,7 +100,15 @@
     }
   };
 
-  sampler.limits = async () => ({ maxPromptBytes: 200000, images: { maxCount: 3, maxInputBytes: 4e6, mediaTypes: ["image/jpeg", "image/png"] } });
+  // The server says how much to send: on a small AI plan, screenshots are read on the phone
+  // and only their text is sent.
+  sampler.limits = async () => {
+    try {
+      const res = await fetch("/api/limits");
+      if (res.ok) return await res.json();
+    } catch {}
+    return { maxPromptBytes: 20000 };
+  };
 
   window.claude = { use: async (name) => (name === "sample" ? sampler : null) };
 })();

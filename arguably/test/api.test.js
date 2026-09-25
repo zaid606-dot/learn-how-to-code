@@ -144,3 +144,43 @@ test("provider error bodies are never logged (they can quote the conversation)",
   assert.ok(logs.length);
   assert.ok(!logs.join("\n").includes("SECRET"));
 });
+
+// ---------- Groq free plan: 8,000 tokens a minute, counting what a request asks for ----------
+test("on Groq's free budget, requests are sized to fit and screenshots go as text", async () => {
+  upstream.reply = () => new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":1}' } }] }));
+  assert.equal((await call("/api/json", { prompt: "You are Arguably, judge this conversation" })).status, 200);
+  const sent = upstream.calls[0].body;
+  const asked = sent.max_completion_tokens + ai.estimateTokens(sent.messages);
+  assert.ok(asked <= 8000, `asked for ${asked} tokens`);
+  assert.equal(sent.reasoning_effort, "none", "no thinking eating the budget");
+  const limits = ai.appLimits();
+  assert.equal(limits.images, undefined, "no images: read on the phone");
+  assert.ok(limits.maxPromptBytes < 20000);
+  assert.ok(ai.appLimits({ GROQ_API_KEY: "x", AI_TPM: "0" }).images.maxCount >= 1, "a paid plan (AI_TPM=0) sends images");
+});
+
+test("when Groq says wait, the server waits and tries again", async () => {
+  let n = 0;
+  upstream.reply = () =>
+    ++n === 1
+      ? new Response(JSON.stringify({ error: { code: "rate_limit_exceeded", message: "Rate limit reached ... tokens per minute (TPM)" } }), { status: 429, headers: { "retry-after": "1" } })
+      : new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":1}' } }] }));
+  const r = await call("/api/json", { prompt: "You are Arguably, judge this" });
+  assert.equal(r.status, 200);
+  assert.equal(n, 2);
+});
+
+test("a 413 'tokens per minute' from Groq is a wait, not 'too many screenshots'", () => {
+  const body = JSON.stringify({ error: { message: "Request too large for model qwen/qwen3.8-27b ... tokens per minute (TPM): Limit 8000, Requested 23000", type: "tokens", code: "rate_limit_exceeded" } });
+  assert.equal(ai.errorCode(413, body).code, "rate_limited");
+});
+
+test("if Groq rejects the no-thinking setting, the request is retried without it", async () => {
+  let n = 0;
+  upstream.reply = (b) =>
+    ++n === 1 && b.reasoning_effort
+      ? new Response(JSON.stringify({ error: { message: "reasoning_effort is not supported with this model" } }), { status: 400 })
+      : new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":1}' } }] }));
+  assert.equal((await call("/api/json", { prompt: "You are Arguably, judge this" })).status, 200);
+  assert.equal(upstream.calls.at(-1).body.reasoning_effort, undefined);
+});

@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const messages = toMessages(turns);
     if (!messages) return send(res, 413, { code: "prompt_too_large" });
     if (!fromApp(messages[0].content)) return send(res, 403, { code: "forbidden" });
-    upstream = await complete({ model: modelFor(tier), messages, stream: true, temperature: 0.5, max_tokens: 4000 }, ctl.signal);
+    upstream = await complete({ model: modelFor(tier), messages, stream: true, temperature: 0.5, max_tokens: tier === "quick" ? 2500 : 1500 }, ctl.signal);
   } catch (err) {
     if (ctl.signal.aborted) return res.end();
     return send(res, err?.status || 500, { code: typeof err?.code === "string" ? err.code : "upstream_error" });

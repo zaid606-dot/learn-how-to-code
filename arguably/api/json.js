@@ -24,7 +24,7 @@ export default async function handler(req, res) {
       ...images.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
     ];
     const r = await complete(
-      { model: modelFor(tier), messages: [{ role: "user", content }], response_format: { type: "json_object" }, temperature: 0.3, max_tokens: 16000 },
+      { model: modelFor(tier), messages: [{ role: "user", content }], response_format: { type: "json_object" }, temperature: 0.3, max_tokens: tier === "complex" ? 5000 : 3500 },
       ctl.signal
     );
     const data = await r.json().catch(() => null);

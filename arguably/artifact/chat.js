@@ -115,7 +115,8 @@ const SAMPLE_ERRORS = {
   not_granted: `Arguably needs permission to use ${AI_NAME}. Reload the page and choose Allow when asked.`,
   sampling_disabled: `${AI_NAME} isn't available right now, so Arguably can't reply here.`,
   session_expired: `Your ${AI_NAME} session expired. Sign in again, then try again.`,
-  rate_limited: HOSTED ? "Arguably is busy right now. Try again in a minute." : `You've hit your ${AI_NAME} usage limit for now. Try again later.`,
+  rate_limited: HOSTED ? "The AI is at its limit for this minute. Wait a minute, then try again; your screenshots are kept." : `You've hit your ${AI_NAME} usage limit for now. Try again later.`,
+  timeout: "That took too long to finish. Try again; your screenshots are kept.",
   image_rejected: "One of the screenshots couldn't be used. Remove it or try a different image.",
   images_unavailable: `This view can't send screenshots to ${AI_NAME}. Paste the conversation as text instead.`,
   ocr_unavailable: HOSTED ? "This phone couldn't read the screenshots. Turn off “Read screenshots on this phone” in Settings, or paste the conversation as text." : "This phone couldn't read the screenshots. Try Arguably on claude.ai in a browser, or paste the conversation as text.",
@@ -1905,19 +1906,19 @@ function conversationText(chat) {
 function verdictPrompt(chat, note) {
   const earlier = verdictsOf(chat).at(-1);
   const convo = conversationText(chat);
-  let p = SYSTEM_PROMPT;
-  p += chat.transcript.length
+  let before = SYSTEM_PROMPT;
+  before += chat.transcript.length
     ? "\n\nThe screenshots have already been read for you. Below is the full transcript, with both phones merged and speakers confirmed by the person who uploaded them. Work only from this transcript and quote messages exactly as written in it."
     : "\n\nThe conversation was pasted as text instead of screenshots. Quote messages exactly as written in it.";
-  const rest = byteLen(p) + 6000; // everything else in the prompt, with room to spare
-  p += `\n\n<conversation>\n${fitBytes(convo, maxPromptBytes - rest)}\n</conversation>`;
   // Who uploaded it stays out of the verdict prompt so it can't tilt the result.
-  p += "\n\nWrite about everyone in the third person, and address the takeaway to both sides.";
-  if (earlier) p += `\n\nYou gave an earlier verdict in this chat ("${earlier.title}"). New screenshots were added since; judge the whole conversation as it stands now.`;
-  if (note) p += `\n\nNote from the person who uploaded this (background, not evidence):\n${note.slice(0, 2000)}`;
-  p += `\n\n${TONES[prefs.tone] || TONES.straight}`;
-  p += `\n\nReply with only one JSON object that matches this JSON Schema exactly (every key present, no extra keys):\n${JSON.stringify(VERDICT_SCHEMA)}`;
-  return p;
+  let after = "\n\nWrite about everyone in the third person, and address the takeaway to both sides.";
+  if (earlier) after += `\n\nYou gave an earlier verdict in this chat ("${earlier.title}"). New screenshots were added since; judge the whole conversation as it stands now.`;
+  if (note) after += `\n\nNote from the person who uploaded this (background, not evidence):\n${note.slice(0, 2000)}`;
+  after += `\n\n${TONES[prefs.tone] || TONES.straight}`;
+  after += `\n\nReply with only one JSON object that matches this JSON Schema exactly (every key present, no extra keys):\n${JSON.stringify(VERDICT_SCHEMA)}`;
+  // The conversation gets whatever room the rest of the prompt leaves, measured exactly.
+  const room = maxPromptBytes - byteLen(before + after) - 300;
+  return `${before}\n\n<conversation>\n${fitBytes(convo, Math.max(2000, room))}\n</conversation>${after}`;
 }
 
 async function runVerdict(c, note) {

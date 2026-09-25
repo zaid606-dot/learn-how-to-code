@@ -46,6 +46,7 @@ before(async () => {
   handlers = {
     "/api/json": (await import(path.join(ROOT, "api/json.js"))).default,
     "/api/chat": (await import(path.join(ROOT, "api/chat.js"))).default,
+    "/api/limits": (await import(path.join(ROOT, "api/limits.js"))).default,
   };
   server = http.createServer((req, res) => {
     const p = new URL(req.url, "http://x").pathname;
@@ -95,7 +96,7 @@ test("website build: no Claude account, Groq via the site's own API, full flow w
   await page.screenshot({ path: path.join(OUT, "web-verdict.png") });
   assert.doesNotMatch(await page.locator(".msg.reply").last().innerText(), /think|private reasoning/);
   assert.deepEqual(await layoutProblems(page), []);
-  assert.ok(xaiCalls.some((c) => c.images > 0), "screenshots were sent as images");
+  assert.ok(xaiCalls.every((c) => c.images === 0), "on Groq's free budget, screenshots are read on the phone and only text is sent");
   assert.ok(xaiCalls.some((c) => c.stream), "follow-up streamed");
   assert.ok(xaiCalls.every((c) => c.auth === "Bearer test-key" && c.model === "qwen/qwen3.8-27b"));
   // No Claude wording anywhere a person reads.

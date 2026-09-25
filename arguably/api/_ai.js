@@ -14,6 +14,30 @@ export function provider(env = process.env) {
   if (PROVIDERS[env.AI_PROVIDER]) return PROVIDERS[env.AI_PROVIDER];
   return env.GROQ_API_KEY || !env.XAI_API_KEY ? PROVIDERS.groq : PROVIDERS.xai;
 }
+// Tokens per minute the provider account allows. Groq's free plan allows 8,000, counting the
+// tokens a request *asks for* (prompt + max output), so every request is sized to fit.
+// Set AI_TPM=0 once the account is on a paid plan with high limits.
+export function tokensPerMinute(env = process.env) {
+  if (env.AI_TPM !== undefined && env.AI_TPM !== "") return Math.max(0, Number(env.AI_TPM) || 0);
+  return provider(env).id === "groq" ? 8000 : 0;
+}
+// What the app should send: on a tight budget, screenshots are read on the phone and only
+// text goes to the AI (an image alone costs about 2,000 tokens there).
+export function appLimits(env = process.env) {
+  const tpm = tokensPerMinute(env);
+  if (!tpm) return { maxPromptBytes: 200000, images: { maxCount: provider(env).maxImages, maxInputBytes: 4e6, mediaTypes: ["image/jpeg", "image/png"] } };
+  const promptTokens = Math.max(1500, tpm - 3200); // leave room for the answer
+  return { maxPromptBytes: Math.floor(promptTokens * 3.2), ...(tpm >= 30000 ? { images: { maxCount: 1, maxInputBytes: 4e6, mediaTypes: ["image/jpeg", "image/png"] } } : {}) };
+}
+// Rough token count of a request (about 3.5 characters a token; images a flat 2,048).
+export function estimateTokens(messages) {
+  let n = 0;
+  for (const m of messages) {
+    if (typeof m.content === "string") n += m.content.length / 3.5;
+    else for (const part of m.content) n += part.type === "text" ? part.text.length / 3.5 : 2048;
+  }
+  return Math.ceil(n + 20 * messages.length);
+}
 export const modelFor = (tier, env = process.env) => {
   const p = provider(env);
   const main = env.AI_MODEL || (p.id === "xai" && env.XAI_MODEL) || p.model;
@@ -120,7 +144,7 @@ export function errorCode(status, bodyText = "") {
   const type = String(e.type || "");
   const msg = String(e.message || "");
   if (status === 401 || status === 403) return { status: 500, code: "sampling_disabled" };
-  if (status === 429 || status === 503 || status === 498 || /rate_limit|capacity|overloaded/i.test(code + type)) return { status: 429, code: "rate_limited" };
+  if (status === 429 || status === 503 || status === 498 || /rate_limit|capacity|overloaded|tokens_per_minute/i.test(code + type) || /tokens per minute|\bTPM\b/i.test(msg)) return { status: 429, code: "rate_limited" };
   if (code === "json_validate_failed") return { status: 502, code: "invalid_json" };
   if (status === 413 || /context_length|request_too_large|context_window_exceeded/i.test(code + type)) return { status: 413, code: "prompt_too_large" };
   if (status === 400 && /image/i.test(code + type)) return { status: 400, code: "image_rejected" };
@@ -130,10 +154,39 @@ export function errorCode(status, bodyText = "") {
 
 // One call to the provider. Stops when the viewer stops, and gives up before the function's
 // own time limit so the provider isn't left generating (and billing) after Vercel kills it.
+// On a per-minute budget the output cap is sized to fit, and when the provider says "wait"
+// (429, with Retry-After) the call waits and tries again while there's time left.
 export async function complete(body, signal, timeoutMs = 110_000) {
   const p = provider();
   const key = process.env[p.key];
   if (!key) throw { status: 500, code: "sampling_disabled" };
+  const tpm = tokensPerMinute();
+  if (tpm && body.max_tokens) {
+    const room = Math.floor(tpm * 0.95) - estimateTokens(body.messages);
+    if (room < 400) throw { status: 413, code: "prompt_too_large" };
+    body = { ...body, max_tokens: Math.min(body.max_tokens, room) };
+  }
+  // Qwen on Groq thinks out loud before answering unless told not to; on a small token budget
+  // that thinking would crowd out the answer. (Set AI_REASONING=default to let it think.)
+  if (p.id === "groq" && process.env.AI_REASONING !== "default") body = { ...body, reasoning_effort: "none" };
+  const started = Date.now();
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await completeOnce(p, key, body, signal, timeoutMs - (Date.now() - started));
+    } catch (err) {
+      if (err?.code === "reasoning_unsupported" && body.reasoning_effort) {
+        const { reasoning_effort, ...rest } = body;
+        body = rest;
+        continue;
+      }
+      const wait = err?.retryAfter;
+      const left = timeoutMs - (Date.now() - started);
+      if (err?.code !== "rate_limited" || !wait || attempt >= 3 || wait * 1000 > left - 20_000 || signal?.aborted) throw err;
+      await new Promise((r) => setTimeout(r, wait * 1000));
+    }
+  }
+}
+async function completeOnce(p, key, body, signal, timeoutMs) {
   // Each API names the output cap differently.
   if (body.max_tokens && p.tokens !== "max_tokens") {
     body = { ...body, [p.tokens]: body.max_tokens };
@@ -150,10 +203,11 @@ export async function complete(body, signal, timeoutMs = 110_000) {
     });
   } catch (err) {
     if (signal?.aborted) throw { status: 499, code: "cancelled" };
-    throw { status: 504, code: timeout.aborted ? "rate_limited" : "upstream_error" };
+    throw { status: 504, code: timeout.aborted ? "timeout" : "upstream_error" };
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    if (res.status === 400 && body.reasoning_effort && /reasoning/i.test(text)) throw { code: "reasoning_unsupported" };
     const mapped = errorCode(res.status, text);
     // Log only the status and the provider's error code, never the body (it can quote the chat).
     let pcode = "";
@@ -161,6 +215,10 @@ export async function complete(body, signal, timeoutMs = 110_000) {
       pcode = JSON.parse(text)?.error?.code || "";
     } catch {}
     console.error("AI API error", res.status, pcode, "->", mapped.code);
+    if (mapped.code === "rate_limited") {
+      const ra = Number(res.headers.get("retry-after"));
+      mapped.retryAfter = Number.isFinite(ra) && ra > 0 ? Math.min(ra, 60) : 8;
+    }
     throw mapped;
   }
   return res;
