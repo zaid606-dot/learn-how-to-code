@@ -845,3 +845,81 @@ test("the 21st chat says which old chat made room", async () => {
   await pasteConversation(page);
   await page.waitForFunction(() => /oldest chat/.test(document.getElementById("toast")?.textContent || ""), null, { timeout: 5000 });
 });
+
+// ---------- Batch 4 regressions: import accuracy ----------
+async function recordScroll(page, { seconds = 6, bubbles = 60 } = {}) {
+  const b64 = await page.evaluate(async ({ seconds, bubbles }) => {
+    const c = Object.assign(document.createElement("canvas"), { width: 390, height: 844 });
+    const ctx = c.getContext("2d");
+    const rec = new MediaRecorder(c.captureStream(20), { mimeType: "video/webm" });
+    const parts = [];
+    rec.ondataavailable = (e) => parts.push(e.data);
+    rec.start(100);
+    // Bubbles of varied height, like a real chat.
+    const tops = [];
+    let yy = 120;
+    for (let i = 0; i < bubbles; i++) {
+      const h = 40 + ((i * 53) % 5) * 22;
+      tops.push([yy, h]);
+      yy += h + 16;
+    }
+    const total = yy - 700;
+    const frames = seconds * 20;
+    for (let f = 0; f <= frames; f++) {
+      const off = (total * f) / frames;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, 390, 844);
+      for (let i = 0; i < bubbles; i++) {
+        const [top, h] = tops[i];
+        const y = top - off;
+        if (y + h < 90 || y > 844) continue;
+        ctx.fillStyle = i % 2 ? "#1f78e6" : "#e5e5ea";
+        ctx.fillRect(i % 2 ? 150 : 20, y, 200 + ((i * 37) % 30), h);
+      }
+      ctx.fillStyle = "#f7f7f7";
+      ctx.fillRect(0, 0, 390, 90); // the header doesn't scroll
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await new Promise((r) => { rec.onstop = r; rec.stop(); });
+    const buf = await new Blob(parts, { type: "video/webm" }).arrayBuffer();
+    let s = "";
+    new Uint8Array(buf).forEach((x) => (s += String.fromCharCode(x)));
+    return btoa(s);
+  }, { seconds, bubbles });
+  const file = path.join(OUT, `scroll-${Date.now()}.webm`);
+  require("node:fs").writeFileSync(file, Buffer.from(b64, "base64"));
+  return file;
+}
+
+test("a steady scroll recording is covered start to end without hitting the limit", async () => {
+  const { page, errors } = await openApp({ images: true });
+  const file = await recordScroll(page);
+  await importFrom(page, HOME_IMPORT, [file]);
+  const n = await page.locator(".attach-item").count();
+  assert.ok(n >= 4 && n < 30, `kept ${n} frames (half-screen steps), not the 30-frame cap`);
+  assert.doesNotMatch(await page.locator("#toast").innerText(), /too long/);
+  assert.deepEqual(errors, []);
+});
+
+test("a recording picked with photos never crowds the photos out", async () => {
+  const { page } = await openApp({ images: true });
+  const file = await recordScroll(page, { seconds: 4, bubbles: 40 });
+  await importFrom(page, HOME_IMPORT, [file, fixtures.mayaPhone, fixtures.jordanPhone]);
+  const srcs = await page.$$eval(".attach-item img", (imgs) => imgs.length);
+  assert.ok(srcs >= 3);
+  // The two photos come first.
+  const firstTwo = await page.evaluate(() => pending.slice(0, 2).every((p) => !p.fromVideo));
+  assert.ok(firstTwo);
+});
+
+test("Stop frees the app even if the phone's reader stops answering", async () => {
+  const { page } = await openApp({ images: false });
+  await page.evaluate(async () => { await ocrStart(); ocr.worker.terminate(); });
+  await importFrom(page, HOME_IMPORT, [fixtures.mayaPhone]);
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg .thinking");
+  await page.waitForTimeout(800);
+  await page.click("#sendBtn"); // Stop
+  await waitUntil(page, () => busy === null && !document.querySelector(".msg .thinking"), 5000);
+  assert.equal(await page.locator(".attach-item").count(), 1, "the screenshot is back to try again");
+});

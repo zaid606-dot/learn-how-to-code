@@ -60,7 +60,8 @@ function joinSlices(msgs) {
   const out = [];
   for (const m of msgs) {
     const prev = out[out.length - 1];
-    if (prev && prev.part !== m.part && prev.side === m.side) {
+    // Only slices that were cut with an overlap can show the same bubble twice.
+    if (prev && prev.part !== m.part && prev.side === m.side && m.overlapTop !== false) {
       const a = normText(prev.text);
       const b = normText(m.text);
       if (a && b && (a.includes(b) || b.includes(a) || sameMessage(prev.text, m.text))) {
@@ -76,16 +77,39 @@ function joinSlices(msgs) {
 // Group screenshots by the name in the chat header: one group per phone.
 function phoneGroups(readings) {
   const groups = [];
+  // Two headers are the same contact when they differ by at most one misread letter.
+  const sameName = (a, b) => a === b || (a.length >= 3 && b.length >= 3 && Math.round((1 - similarity(a, b)) * Math.max(a.length, b.length)) <= 1);
+  const unheaded = [];
   for (const r of readings) {
-    const key = normText(r.header) || "unknown";
-    let g = groups.find((x) => x.key === key);
+    const key = normText(r.header);
+    if (!key) {
+      unheaded.push(r);
+      continue;
+    }
+    let g = groups.find((x) => x.key !== "unknown" && sameName(x.key, key));
     if (!g) {
-      g = { key, header: r.header || "", shots: [], them: "", me: "", isGroup: false };
+      g = { key, header: r.header || "", shots: [], them: "", me: "", isGroup: false, msgs: [] };
       groups.push(g);
     }
     g.shots.push(r.n);
+    g.msgs.push(...(r.msgs || []));
     if (r.isGroup) g.isGroup = true;
   }
+  // A screenshot with no header (cropped, or scrolled past it) belongs to the phone whose
+  // messages it shares; only if it shares none does it get a group of its own.
+  for (const r of unheaded) {
+    const shared = (g) => (r.msgs || []).filter((m) => g.msgs.some((x) => x.side === m.side && sameMessage(x.text, m.text))).length;
+    let best = null;
+    for (const g of groups) if (shared(g) > (best ? shared(best) : 0)) best = g;
+    if (!best) {
+      best = groups.find((g) => g.key === "unknown");
+      if (!best) groups.push((best = { key: "unknown", header: "", shots: [], them: "", me: "", isGroup: false, msgs: [] }));
+    }
+    best.shots.push(r.n);
+    best.msgs.push(...(r.msgs || []));
+    if (r.isGroup) best.isGroup = true;
+  }
+  for (const g of groups) delete g.msgs;
   return groups;
 }
 
@@ -97,6 +121,14 @@ function defaultMapping(groups, known = []) {
     if (prior) {
       g.them = prior.them;
       g.me = prior.me;
+      continue;
+    }
+    // A new phone whose header is the person who owned an earlier phone: the earlier phone's
+    // contact is this phone's owner ("Maya" on Jordan's phone, after Jordan on Maya's).
+    const mirror = known.find((k) => k.me && normText(k.me) === g.key && k.them);
+    if (mirror) {
+      g.me = mirror.them;
+      g.them = mirror.me;
     }
   }
   if (named.length === 2) {
@@ -119,13 +151,36 @@ function resolveSender(msg, group) {
 
 // Merge `next` into `base`, using overlapping messages to line them up.
 // Returns { merged, how } where how is "overlap" | "prepend" | "contained" | "gap".
+// A bubble cut off at a screenshot's edge shows only part of its text. Across the overlap of
+// two screenshots, the first message of the lower one may be the end of a longer message, and
+// the last message of the upper one may be the start of one.
+function isCutPart(part, whole, where) {
+  const p = normText(part);
+  const w = normText(whole);
+  if (!p || !w || p === w || p.length < 6 || p.length >= w.length) return false;
+  return where === "end" ? w.endsWith(p) : w.startsWith(p);
+}
 function mergeSequences(base, next) {
   if (!base.length) return { merged: next.slice(), how: "overlap" };
   if (!next.length) return { merged: base.slice(), how: "contained" };
-  const eq = (a, b) => sameMessage(a.text, b.text);
+  const eq = (a, b) => a.kind !== "gap" && b.kind !== "gap" && sameMessage(a.text, b.text);
   const addShots = (keep, other) => {
     keep.shots = [...new Set([...(keep.shots || []), ...(other.shots || [])])];
+    // Keep the complete text when one screenshot showed the bubble cut off.
+    if (normText(other.text).length > normText(keep.text).length && (isCutPart(keep.text, other.text, "end") || isCutPart(keep.text, other.text, "start"))) keep.text = other.text;
   };
+  // Overlap of upper = [..., u] and lower = [l, ...] where upper's tail lines up with lower's head.
+  // The block's first pair may have the lower one cut at its top; its last pair may have the
+  // upper one cut at its bottom.
+  const lines = (upperTail, lowerHead) =>
+    upperTail.every((u, j) => {
+      const l = lowerHead[j];
+      if (eq(u, l)) return true;
+      if (j === 0 && isCutPart(l.text, u.text, "end")) return true;
+      if (j === upperTail.length - 1 && isCutPart(u.text, l.text, "start")) return true;
+      return false;
+    });
+  const strong = (run) => strongRun(run.filter((m) => normText(m.text).length >= 6)) || run.length >= 2;
 
   // next sits entirely inside base (a duplicate or a screenshot of the same stretch)
   for (let i = 0; i + next.length <= base.length; i++) {
@@ -138,7 +193,7 @@ function mergeSequences(base, next) {
   // end of base overlaps the start of next
   for (let k = max; k >= 1; k--) {
     const tail = base.slice(-k);
-    if (tail.every((m, j) => eq(m, next[j])) && strongRun(tail)) {
+    if (lines(tail, next.slice(0, k)) && strong(tail)) {
       tail.forEach((m, j) => addShots(m, next[j]));
       return { merged: base.concat(next.slice(k)), how: "overlap" };
     }
@@ -147,7 +202,7 @@ function mergeSequences(base, next) {
   for (let k = max; k >= 1; k--) {
     const head = base.slice(0, k);
     const tail = next.slice(-k);
-    if (tail.every((m, j) => eq(m, head[j])) && strongRun(head)) {
+    if (lines(tail, head) && strong(head)) {
       head.forEach((m, j) => addShots(m, tail[j]));
       return { merged: next.slice(0, -k).concat(base), how: "prepend" };
     }
@@ -155,9 +210,39 @@ function mergeSequences(base, next) {
   return { merged: base.concat([{ kind: "gap", text: "", shots: [] }], next), how: "gap" };
 }
 
+// Stitch the pieces between gap markers together wherever they overlap, whatever order the
+// screenshots came in. Pieces that match nothing stay separated by a gap.
+function stitchSegments(merged) {
+  const segs = [];
+  let cur = [];
+  for (const m of merged) {
+    if (m.kind === "gap") {
+      if (cur.length) segs.push(cur);
+      cur = [];
+    } else cur.push(m);
+  }
+  if (cur.length) segs.push(cur);
+  for (let changed = true; changed && segs.length > 1; ) {
+    changed = false;
+    outer: for (let i = 0; i < segs.length; i++) {
+      for (let j = 0; j < segs.length; j++) {
+        if (i === j) continue;
+        const r = mergeSequences(segs[i], segs[j]);
+        if (r.how !== "gap") {
+          segs[i] = r.merged;
+          segs.splice(j, 1);
+          changed = true;
+          break outer;
+        }
+      }
+    }
+  }
+  return segs.flatMap((sg, i) => (i ? [{ kind: "gap", text: "", shots: [] }, ...sg] : sg));
+}
+
 // Resolve senders for each screenshot and merge them into one transcript.
 function buildTranscript(readings, groups, existing = []) {
-  let merged = existing.slice();
+  let merged = existing.map((m) => ({ ...m }));
   for (const r of readings) {
     const g = groups.find((x) => x.shots.includes(r.n)) || { me: "Me", them: "Them" };
     const seq = r.msgs
@@ -165,6 +250,7 @@ function buildTranscript(readings, groups, existing = []) {
       .map((m) => ({ sender: resolveSender(m, g), text: String(m.text).trim(), time: m.time || "", kind: m.kind || "text", shots: [r.n], y: m.y }));
     merged = mergeSequences(merged, seq).merged;
   }
+  merged = stitchSegments(merged);
   // No gap marker at the very start or end, and never two in a row.
   merged = merged.filter((m, i, a) => !(m.kind === "gap" && (i === 0 || i === a.length - 1 || a[i - 1].kind === "gap")));
   let n = 0;
@@ -279,7 +365,7 @@ function parseTsv(tsv, width, height) {
       lines.get(key).confs.push(conf);
     }
   }
-  const pct = (v, of) => Math.round((v / of) * 100);
+  const pct = (v, of) => Math.round((v / of) * 1000) / 10; // one decimal: tall screenshots need it
   return [...lines.values()]
     .filter((x) => x.words.length)
     .map((x) => ({
@@ -362,7 +448,7 @@ function ocrTop(lines) {
     // Instagram: "alex.k ›" beside the back arrow; the chevron marks the tappable header.
     if (x.y <= 14 && /[>›]$/.test(x.text) && t.length <= 30) return { header: t, below: x.y };
     // The back arrow itself is often not read at all, leaving a lone name high on the left.
-    if (x.y <= 12 && x.r <= 60 && looksLikeName(t)) return { header: t, below: x.y };
+    if (x.y <= 12 && x.r <= 60 && looksLikeName(t) && lines.some((z) => ocrStatusBar(z) && z.y < x.y)) return { header: t, below: x.y };
   }
   const bar = lines.filter(ocrStatusBar);
   return { header: "", below: bar.length ? Math.max(...bar.map((x) => x.y)) : -1 };
@@ -449,7 +535,11 @@ function linesToMessages(lines) {
   let run = null; // the last received bubble, while its sender's run may continue
   for (let i = 0; i < rows.length; i++) {
     const x = rows[i];
-    if (OCR_LABEL.test(x.text)) {
+    // "Read", "Seen" or a number under a bubble is a label, unless it's the wrapped last line of
+    // that bubble ("the worst movie I've ever / seen"), or a number sent on its own ("5").
+    const continues = cur && !cur.closed && x.y - cur.lastY <= near && Math.abs(x.l - cur.l) <= 3;
+    const loneNumber = /^\+?\d{1,3}$/.test(x.text) && (!rows[i - 1] || x.y - rows[i - 1].y > near * 1.5);
+    if (OCR_LABEL.test(x.text) && !continues && !loneNumber) {
       cur = null;
       continue;
     }

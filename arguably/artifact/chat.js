@@ -67,7 +67,7 @@ For each image, report the chat app (iMessage, WhatsApp, Instagram, Messenger, D
 Then list every message bubble in reading order, top to bottom, image by image. For each message give:
 - image: the image number
 - side: "right" for bubbles sent by the phone's owner (usually right-aligned and colored), "left" for received bubbles, "center" for system notices
-- sender_label: the name shown above or beside a left bubble in a group chat, else ""
+- sender_label: in a group chat, who sent a left bubble. Apps show the name only on the first bubble of a run, so repeat it on every bubble in that run. Else ""
 - text: exactly as written, including emoji and typos. Describe photos, stickers, GIFs and voice notes in square brackets, e.g. "[photo: a sink full of dishes]", "[voice message 0:12]". Deleted messages: "[deleted message]"
 - time: the time or date shown for it, if any (put a timestamp row like "Today 9:14 PM" on the next message instead of listing it separately)
 - kind: "text", "photo", "voice", "sticker", "link", "deleted", "reaction" or "system"
@@ -1128,19 +1128,33 @@ function pixelKey(c) {
   return `${c.width}x${c.height}:${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
 }
 
+// iOS Safari won't draw canvases over about 16.7 million pixels; stay under that everywhere.
+const MAX_CANVAS_PX = 16_000_000;
 async function fileToShot(file) {
   const src = URL.createObjectURL(file);
   try {
     const img = await loadImage(src);
-    const scale = Math.min(1, MAX_EDGE / img.width, 16000 / img.height);
-    const c = document.createElement("canvas");
-    c.width = Math.round(img.width * scale);
-    c.height = Math.round(img.height * scale);
-    const ctx = c.getContext("2d");
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.drawImage(img, 0, 0, c.width, c.height);
-    return { id: uid(), url: c.toDataURL("image/jpeg", 0.88), key: pixelKey(c) };
+    const scale = Math.min(1, MAX_EDGE / img.width);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    // A very tall scrolling capture is split into several shots at full width, rather than
+    // shrunk until the text is unreadable.
+    const pieceH = Math.min(h, Math.floor(MAX_CANVAS_PX / w), 11000);
+    const shots = [];
+    for (let y = 0; y < h; y += pieceH - (y + pieceH < h ? 200 : 0)) {
+      const ph = Math.min(pieceH, h - y);
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = ph;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, w, ph);
+      ctx.drawImage(img, 0, y / scale, img.width, ph / scale, 0, 0, w, ph);
+      shots.push({ id: uid(), url: c.toDataURL("image/jpeg", 0.88), key: pixelKey(c) });
+      c.width = c.height = 0;
+      if (y + ph >= h) break;
+    }
+    return shots;
   } finally {
     URL.revokeObjectURL(src);
   }
@@ -1150,112 +1164,207 @@ async function fileToShot(file) {
 // screen has changed, so scrolling through a chat once becomes a set of screenshots.
 // The video itself is never uploaded or saved.
 const isVideo = (f) => f.type.startsWith("video/") || /\.(mov|mp4|m4v|webm)$/i.test(f.name);
-async function videoToShots(file, room) {
+async function videoToShots(file, room, onProgress) {
   const src = URL.createObjectURL(file);
   const v = document.createElement("video");
   v.muted = true;
   v.playsInline = true;
   v.preload = "auto";
   v.src = src;
-  try {
-    await new Promise((res, rej) => {
-      v.onloadeddata = res;
-      v.onerror = () => rej(new Error("video"));
-      setTimeout(() => rej(new Error("timeout")), 15000);
+  const waitFor = (event, ms) =>
+    new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error("timeout")), ms);
+      v.addEventListener(event, () => { clearTimeout(t); res(); }, { once: true });
+      v.addEventListener("error", () => { clearTimeout(t); rej(new Error("video")); }, { once: true });
     });
+  const seek = async (t) => {
+    const done = waitFor("seeked", 4000);
+    v.currentTime = t;
+    await done;
+  };
+  try {
+    await waitFor("loadedmetadata", 15000);
+    // iPhones don't load a video's frames until it has played; a muted play-and-pause does it.
+    try {
+      await v.play();
+      v.pause();
+    } catch {}
+    if (v.readyState < 2) await waitFor("loadeddata", 15000);
     // Some recordings don't state their length up front; seeking far ahead makes the browser work it out.
     if (!Number.isFinite(v.duration)) {
-      await new Promise((res) => {
-        v.ondurationchange = () => Number.isFinite(v.duration) && res();
-        v.onseeked = res;
-        v.currentTime = 1e7;
-        setTimeout(res, 3000);
-      });
-      v.ondurationchange = null;
+      await seek(1e7).catch(() => {});
     }
     const duration = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
     if (!duration || !v.videoWidth) throw new Error("empty");
-    const scale = Math.min(1, MAX_EDGE / v.videoWidth, 16000 / v.videoHeight);
+    const scale = Math.min(1, MAX_EDGE / v.videoWidth, Math.sqrt(MAX_CANVAS_PX / (v.videoWidth * v.videoHeight)));
+    const W = Math.round(v.videoWidth * scale);
+    const H = Math.round(v.videoHeight * scale);
+    // Pass 1: a small brightness profile of each moment, to see how far the chat has scrolled.
+    const PW = 24;
+    const PH = 192;
+    const small = document.createElement("canvas");
+    small.width = PW;
+    small.height = PH;
+    const sctx = small.getContext("2d", { willReadFrequently: true });
+    const profileAt = async (t) => {
+      await seek(t);
+      sctx.drawImage(v, 0, 0, PW, PH);
+      const d = sctx.getImageData(0, 0, PW, PH).data;
+      const rows = new Float32Array(PH);
+      for (let y = 0; y < PH; y++) {
+        let sum = 0;
+        for (let x = 0; x < PW; x++) {
+          const i = (y * PW + x) * 4;
+          sum += d[i] + d[i + 1] + d[i + 2];
+        }
+        rows[y] = sum / (PW * 3);
+      }
+      return rows;
+    };
+    // How many rows the content moved between two profiles (the best-matching shift), and how
+    // well it matched there. Scrolling down moves content up, so b[y] ≈ a[y + shift].
+    const motion = (a, b) => {
+      let best = { shift: 0, err: Infinity };
+      const top = 12; // ignore the status bar and header, which don't scroll
+      for (let sh = -PH / 3; sh <= PH / 3; sh++) {
+        let err = 0;
+        let n = 0;
+        for (let y = top; y < PH - 8; y++) {
+          const ya = y + sh;
+          if (ya < top || ya >= PH - 8) continue;
+          err += Math.abs(a[ya] - b[y]);
+          n++;
+        }
+        if (n > PH / 3 && err / n < best.err) best = { shift: sh, err: err / n };
+      }
+      return best;
+    };
+    const start = duration > 3 ? 0.8 : 0; // skip the start (Control Center closing)
+    const step = Math.max(0.1, (duration - start) / 300);
+    const times = [];
+    for (let t = start; t < duration - 0.05; t += step) times.push(t);
+    times.push(Math.max(start, duration - 0.05));
+    // Scrolling is measured between neighboring samples (small, unambiguous steps) and added
+    // up; a frame is kept once about half a screen has gone by since the last one, so every
+    // message appears in at least two frames and the transcript can stitch them together.
+    const keep = [];
+    let prev = null;
+    let moved = 0;
+    for (let k = 0; k < times.length; k++) {
+      const prof = await profileAt(times[k]);
+      onProgress?.(k / times.length);
+      if (!prev) {
+        keep.push(times[k]);
+        prev = prof;
+        continue;
+      }
+      const m = motion(prev, prof);
+      prev = prof;
+      if (m.err > 18) {
+        // Not a scroll: the screen changed (another chat, a new message). Keep it.
+        keep.push(times[k]);
+        moved = 0;
+        continue;
+      }
+      moved += Math.abs(m.shift);
+      if (moved >= PH * 0.45) {
+        keep.push(times[k]);
+        moved = 0;
+      }
+    }
+    if (keep.at(-1) !== times.at(-1)) keep.push(times.at(-1)); // always the end of the chat
+    // More frames than room: spread the picks across the whole recording, first and last included.
+    let picked = keep;
+    let cut = false;
+    if (keep.length > room) {
+      cut = true;
+      picked = Array.from({ length: room }, (_, i) => keep[Math.round((i * (keep.length - 1)) / Math.max(1, room - 1))]);
+      picked = [...new Set(picked)];
+    }
+    // Pass 2: the chosen frames at full size.
     const c = document.createElement("canvas");
-    c.width = Math.round(v.videoWidth * scale);
-    c.height = Math.round(v.videoHeight * scale);
+    c.width = W;
+    c.height = H;
     const ctx = c.getContext("2d", { willReadFrequently: true });
-    const thumb = document.createElement("canvas");
-    thumb.width = 36;
-    thumb.height = 72;
-    const tctx = thumb.getContext("2d", { willReadFrequently: true });
-    const gray = () => {
-      tctx.drawImage(c, 0, 0, 36, 72);
-      const d = tctx.getImageData(0, 0, 36, 72).data;
-      const g = new Uint8Array(36 * 72);
-      for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
-      return g;
-    };
-    const diff = (a, b) => {
-      let sum = 0;
-      for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
-      return sum / a.length;
-    };
-    const step = Math.max(0.5, duration / 60);
     const shots = [];
-    let last = null;
-    for (let t = Math.min(0.1, duration / 2); t < duration && shots.length < room; t += step) {
-      await new Promise((res) => {
-        v.onseeked = res;
-        v.currentTime = t;
-      });
-      ctx.drawImage(v, 0, 0, c.width, c.height);
-      const g = gray();
-      // Keep a frame once the screen has moved on; while it's still, skip.
-      if (last && diff(last, g) < 6) continue;
-      last = g;
+    for (const t of picked) {
+      await seek(t);
+      ctx.drawImage(v, 0, 0, W, H);
       shots.push({ id: uid(), url: c.toDataURL("image/jpeg", 0.88), key: pixelKey(c), fromVideo: true });
     }
+    c.width = c.height = 0;
+    shots.cut = cut;
     return shots;
   } finally {
+    v.removeAttribute("src");
+    v.load();
     URL.revokeObjectURL(src);
   }
 }
 
+let addGeneration = 0;
 async function addFiles(fileList) {
   const files = [...fileList].filter((f) => f.type.startsWith("image/") || isVideo(f) || /\.(heic|heif)$/i.test(f.name));
   if (!files.length) return fileList.length ? toast("Only photos and screen recordings can be imported.") : undefined;
   ensureChat();
-  const room = MAX_IMAGES - pending.length;
-  if (room <= 0) return toast(`You can import up to ${MAX_IMAGES} screenshots at a time.`);
-  if (files.length > room) toast(`Added ${room}. The limit is ${MAX_IMAGES} screenshots at a time.`);
-  let failed = 0;
+  // Everything below belongs to the chat that was open when you picked. If you leave it or
+  // start another before this finishes, the results are dropped rather than landing elsewhere.
+  const target = chat;
+  const gen = ++addGeneration;
+  const stillHere = () => chat === target && gen === addGeneration;
+  if (MAX_IMAGES - pending.length <= 0) return toast(`You can import up to ${MAX_IMAGES} screenshots at a time.`);
+  let failedImages = 0;
+  let failedVideos = 0;
   let dupes = 0;
   let frames = 0;
-  for (const f of files.slice(0, room)) {
-    if (isVideo(f)) {
-      try {
-        const left = MAX_IMAGES - pending.length;
-        if (left <= 0) break;
-        toast("Pulling the messages out of your screen recording…");
-        const shots = await videoToShots(f, left);
-        for (const shot of shots) if (!pending.some((p) => p.key === shot.key)) pending.push(shot);
-        frames += shots.length;
-      } catch {
-        failed++;
-      }
-      continue;
-    }
-    if (pending.length >= MAX_IMAGES) break;
+  let over = 0;
+  let cut = false;
+  const add = (shot) => {
+    if (pending.some((p) => p.key === shot.key)) return dupes++, false;
+    if (pending.length >= MAX_IMAGES) return over++, false;
+    pending.push(shot);
+    return true;
+  };
+  const images = files.filter((f) => !isVideo(f));
+  const videos = files.filter(isVideo);
+  // Photos first, so a recording can't crowd them out; then recordings share what's left.
+  for (const f of images) {
     try {
-      const shot = await fileToShot(f);
-      if (pending.some((p) => p.key === shot.key)) dupes++;
-      else pending.push(shot);
+      const shots = await fileToShot(f);
+      if (!stillHere()) return;
+      shots.forEach(add);
     } catch {
-      failed++;
+      failedImages++;
     }
   }
+  for (let i = 0; i < videos.length; i++) {
+    const room = Math.floor((MAX_IMAGES - pending.length) / (videos.length - i));
+    if (room <= 0) {
+      over++;
+      continue;
+    }
+    try {
+      toast("Pulling the messages out of your screen recording…");
+      const shots = await videoToShots(videos[i], room, (p) => {
+        if (stillHere()) $("toast").textContent = `Pulling the messages out of your screen recording… ${Math.round(p * 100)}%`;
+      });
+      if (!stillHere()) return;
+      if (shots.cut) cut = true;
+      for (const shot of shots) if (add(shot)) frames++;
+    } catch {
+      failedVideos++;
+    }
+  }
+  if (!stillHere()) return;
   render();
   const notes = [];
-  if (frames) notes.push(`${plural(frames, "frame")} from your recording`);
-  if (failed) notes.push(`${failed} couldn't be opened`);
+  if (frames) notes.push(`${plural(frames, "frame")} from your recording${cut ? ", which was too long to cover every part" : ""}`);
+  if (failedImages) notes.push(`${plural(failedImages, "photo")} couldn't be opened`);
+  if (failedVideos) notes.push(`${failedVideos === 1 ? "a recording" : `${failedVideos} recordings`} couldn't be read`);
   if (dupes) notes.push(`skipped ${plural(dupes, "duplicate")}`);
-  toast(pending.length ? `${plural(pending.length, "screenshot")} ready${notes.length ? ` (${notes.join(", ")})` : ""}. ${sampler ? "Tap send." : "Open Arguably on claude.ai while signed in to get a verdict."}` : "We couldn't open those images. Try PNG or JPEG.");
+  if (over) notes.push(`${over} didn't fit (limit ${MAX_IMAGES})`);
+  if (!pending.length) return toast(failedVideos && !failedImages ? "That screen recording couldn't be read. Try screenshots instead." : "We couldn't open those images. Try PNG or JPEG.");
+  toast(`${plural(pending.length, "screenshot")} ready${notes.length ? ` (${notes.join("; ")})` : ""}. ${sampler ? "Tap send." : "Open Arguably on claude.ai while signed in to get a verdict."}`);
 }
 
 // Where to cut a tall screenshot: blank rows between bubbles, close to evenly spaced.
@@ -1313,7 +1422,7 @@ async function sliceShots(shots) {
       c.width = im.width;
       c.height = y1 - y0;
       c.getContext("2d").drawImage(im, 0, y0, im.width, c.height, 0, 0, im.width, c.height);
-      slices.push({ n: s.n, part: p + 1, parts, blob: await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)) });
+      slices.push({ n: s.n, part: p + 1, parts, overlapTop: overlapTop > 0, blob: await new Promise((r) => c.toBlob(r, "image/jpeg", 0.9)) });
     }
   }
   return slices;
@@ -1396,7 +1505,8 @@ function ocrStart() {
 // which keeps white text on blue bubbles. Light mode: grayscale, with colored bubbles flattened.
 async function ocrImage(url) {
   const img = await loadImage(url);
-  const scale = img.width < 1200 ? Math.min(2, 1200 / img.width) : 1; // small text reads better enlarged
+  let scale = img.width < 1200 ? Math.min(2, 1200 / img.width) : 1; // small text reads better enlarged
+  scale = Math.min(scale, Math.sqrt(MAX_CANVAS_PX / (img.width * img.height)));
   const c = document.createElement("canvas");
   c.width = Math.round(img.width * scale);
   c.height = Math.round(img.height * scale);
@@ -1418,15 +1528,54 @@ async function ocrImage(url) {
   return { png: await blob.arrayBuffer(), width: c.width, height: c.height };
 }
 
-async function ocrRecognize(url) {
+// One reading on the phone. Gives up after a minute or when stopped, and restarts the reader
+// if it stopped answering, so a stuck reader can never lock the app.
+async function ocrRecognize(url, signal) {
   await ocrStart();
   const { png, width, height } = await ocrImage(url);
   const id = uid();
+  const state = ocr;
   const tsv = await new Promise((resolve, reject) => {
-    ocr.waiting.set(id, { resolve, reject });
-    ocr.worker.postMessage({ type: "ocr", id, png }, [png]);
+    const finish = (fn, v) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      state.waiting.delete(id);
+      fn(v);
+    };
+    const onAbort = () => finish(reject, { code: "cancelled" });
+    const timer = setTimeout(() => {
+      finish(reject, new Error("OCR timed out"));
+      // A reader that stops answering is replaced on the next use.
+      state.worker.terminate();
+      state.waiting.forEach((w) => w.reject(new Error("OCR reset")));
+      if (ocr === state) ocr = null;
+    }, 60000);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    state.waiting.set(id, { resolve: (v) => finish(resolve, v), reject: (e) => finish(reject, e) });
+    state.worker.postMessage({ type: "ocr", id, png }, [png]);
   });
   return parseTsv(tsv, width, height);
+}
+
+// A tall screenshot, cut into phone-shaped pieces (with a little overlap) for the phone's reader,
+// whose layout rules assume one screen's worth of chat.
+async function phonePieces(url) {
+  const img = await loadImage(url);
+  const pieceH = Math.round(img.width * 2.2);
+  if (img.height <= pieceH * 1.15) return [url];
+  const out = [];
+  const overlap = Math.round(pieceH * 0.12);
+  for (let y = 0; y < img.height; y += pieceH - overlap) {
+    const h = Math.min(pieceH, img.height - y);
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = h;
+    c.getContext("2d").drawImage(img, 0, y, img.width, h, 0, 0, img.width, h);
+    out.push(c.toDataURL("image/png"));
+    c.width = c.height = 0;
+    if (y + h >= img.height) break;
+  }
+  return out;
 }
 
 async function readWithOcr(shots, thinking, signal) {
@@ -1448,10 +1597,20 @@ async function readWithOcr(shots, thinking, signal) {
   for (let i = 0; i < shots.length; i++) {
     if (signal.aborted) throw { code: "cancelled" };
     const n = shots[i].n;
-    const lines = await ocrRecognize(shots[i].url).catch(() => []);
-    if (signal.aborted) throw { code: "cancelled" };
-    lineCount += lines.length;
-    const msgs = linesToMessages(lines);
+    const pieces = await phonePieces(shots[i].url);
+    let lines = [];
+    const pieceMsgs = [];
+    for (let k = 0; k < pieces.length; k++) {
+      const got = await ocrRecognize(pieces[k], signal).catch((err) => {
+        if (err?.code === "cancelled") throw err;
+        return [];
+      });
+      if (signal.aborted) throw { code: "cancelled" };
+      if (k === 0) lines = got;
+      pieceMsgs.push(...linesToMessages(got).map((m) => ({ ...m, part: k + 1, overlapTop: k > 0 })));
+    }
+    lineCount += lines.length || pieceMsgs.length;
+    const msgs = pieces.length > 1 ? joinSlices(pieceMsgs) : pieceMsgs;
     readings.push({ n, header: headerOf(lines), app: "", isGroup: msgs.some((m) => m.side === "left" && m.sender_label), msgs });
     if (readingQuality(lines, msgs).poor) {
       poorCount++;
@@ -1525,10 +1684,20 @@ async function readWithVision(shots, thinking, signal) {
     if (!out || !Array.isArray(out.messages)) throw { code: "invalid_json" };
     batch.forEach((s, i) => {
       const info = (out.images || []).find((x) => Number(x.image) === i + 1) || {};
+      // A one-image batch owns every message, whatever number the reply gave it.
+      let lastLabel = "";
       const msgs = out.messages
-        .filter((m) => Number(m.image) === i + 1)
-        .map((m) => ({ ...m, part: s.part, text: String(m.text ?? "") }))
-        .sort((a, c) => (Number(a.y) || 0) - (Number(c.y) || 0));
+        .filter((m) => m && (batch.length === 1 || Number(m.image) === i + 1))
+        .map((m) => {
+          // Group chats name only the first bubble of a run; the rest belong to the same sender.
+          let label = String(m.sender_label || "").trim();
+          if (m.side === "left") {
+            if (label) lastLabel = label;
+            else label = lastLabel;
+          } else lastLabel = "";
+          return { ...m, sender_label: label, part: s.part, overlapTop: s.overlapTop, text: String(m.text ?? "") };
+        });
+      // (The reply lists messages top to bottom; its rough y values aren't precise enough to re-sort.)
       bySlice.push({ n: s.n, part: s.part, header: String(info.header_name || "").trim(), app: info.app || "", msgs });
     });
   }

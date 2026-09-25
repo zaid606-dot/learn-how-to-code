@@ -407,3 +407,71 @@ test("sameMessage never merges messages whose meaning differs", () => {
   assert.equal(P.sameMessage("you did it again and again", "you didn't it again and again"), false);
   assert.equal(P.sameMessage("You said you'd do the dishes last night?", "You said youd do the dishes last night"), true);
 });
+
+// ---------- Batch 4 regressions: import accuracy ----------
+const seqOf = (n, pairs) => ({ n, header: "Jordan", msgs: pairs.map(([side, text], i) => ({ side, text, kind: "text", y: 10 + i * 10 })) });
+const groupsFor = (readings) => P.defaultMapping(P.phoneGroups(readings));
+const texts = (t) => t.map((m) => (m.kind === "gap" ? "--GAP--" : m.text));
+
+test("a bubble cut off at a screenshot's edge is stitched, not duplicated with a gap", () => {
+  const long = "Ok and you left your laundry in the dryer for 3 days so don't start with me";
+  const a = seqOf(1, [["right", "You said you'd do the dishes last night?"], ["left", long]]);
+  const b = seqOf(2, [["left", "dryer for 3 days so don't start with me"], ["right", "This is literally the same thing that happened in March"]]);
+  const t = P.buildTranscript([a, b], groupsFor([a, b]));
+  assert.deepEqual(texts(t), ["You said you'd do the dishes last night?", long, "This is literally the same thing that happened in March"]);
+  // and the other way: the upper screenshot shows only the start of its last bubble
+  const c = seqOf(1, [["right", "You said you'd do the dishes last night?"], ["left", "Ok and you left your laundry in the"]]);
+  const d = seqOf(2, [["left", long], ["right", "This is literally the same thing that happened in March"]]);
+  assert.deepEqual(texts(P.buildTranscript([c, d], groupsFor([c, d]))), texts(t));
+});
+
+test("screenshots imported in any order give the same transcript", () => {
+  const msgs = ["That's not what I said at all", "You literally said it yesterday", "Show me where then, go ahead", "Scroll up, it's right there", "Ok fine but that's not the point", "The point is you never listen"];
+  const shot = (n, from, to) => seqOf(n, msgs.slice(from, to).map((t, i) => [i % 2 ? "left" : "right", t]));
+  // keep sides consistent with the message index
+  const fix = (r, from) => ({ ...r, msgs: r.msgs.map((m, i) => ({ ...m, side: (from + i) % 2 ? "left" : "right" })) });
+  const s1 = fix(shot(1, 0, 3), 0), s2 = fix(shot(2, 2, 5), 2), s3 = fix(shot(3, 4, 6), 4);
+  const inOrder = texts(P.buildTranscript([s1, s2, s3], groupsFor([s1, s2, s3])));
+  const shuffled = texts(P.buildTranscript([s1, s3, s2], groupsFor([s1, s3, s2])));
+  assert.deepEqual(inOrder, msgs);
+  assert.deepEqual(shuffled, msgs);
+});
+
+test("who's who: a misread header, a header-less screenshot, and the other phone later", () => {
+  const r = (n, header, text) => ({ n, header, msgs: [{ side: "left", text, kind: "text" }] });
+  const g = P.phoneGroups([r(1, "Jordan", "You literally left me on read"), r(2, "Jordon", "Wow ok sorry I'm not perfect"), r(3, "", "You literally left me on read")]);
+  assert.equal(g.length, 1, "Jordan/Jordon and the header-less screenshot are one phone");
+  assert.deepEqual(g[0].shots, [1, 2, 3]);
+  const known = [{ key: "jordan", header: "Jordan", me: "Maya", them: "Jordan", shots: [1] }];
+  const later = P.defaultMapping(P.phoneGroups([r(4, "Maya", "hi")]), known);
+  assert.equal(later[0].me, "Jordan", "on the phone showing 'Maya', the owner is Jordan");
+  assert.equal(later[0].them, "Maya");
+});
+
+test("a cropped screenshot's first short message isn't taken for the contact name", () => {
+  const line = (y, l, r, text) => ({ y, l, r, conf: 90, text });
+  assert.equal(P.headerOf([line(4, 8, 30, "Seriously"), line(12, 8, 60, "You're doing this again?")]), "");
+  assert.equal(P.headerOf([line(2, 5, 15, "9:41"), line(7, 14, 24, "Sam"), line(20, 8, 60, "Are you coming tonight?")]), "Sam", "still found under a status bar");
+});
+
+test("wrapped last words like 'seen' and a lone number sent as a message are kept", () => {
+  const line = (y, l, r, text) => ({ y, l, r, conf: 90, text });
+  const msgs = P.linesToMessages([
+    line(2, 5, 15, "9:41"), line(6, 42, 58, "Jordan"),
+    line(20, 8, 60, "That's the worst movie I've ever"),
+    line(23, 8, 20, "seen"),
+    line(40, 88, 92, "5"),
+    line(55, 8, 50, "ok see you then"),
+  ]);
+  assert.equal(msgs[0].text, "That's the worst movie I've ever seen");
+  assert.ok(msgs.some((m) => m.text === "5"), "the 5 is a message");
+});
+
+test("a later import doesn't change an earlier verdict's snapshot", () => {
+  const a = seqOf(1, [["right", "You said you'd do the dishes last night?"], ["left", "Ok and you left your laundry in the dryer"]]);
+  const first = P.buildTranscript([a], groupsFor([a]));
+  const snapshot = first.map((m) => ({ ...m }));
+  const b = seqOf(2, [["right", "Earlier message from before all of this"], ["left", "And another one before that one too"]]);
+  P.buildTranscript([b], groupsFor([b]), first);
+  assert.deepEqual(first, snapshot);
+});
