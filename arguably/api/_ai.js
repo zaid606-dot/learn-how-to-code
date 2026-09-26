@@ -9,7 +9,14 @@
 export const PROVIDERS = {
   groq: { id: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: "GROQ_API_KEY", model: "qwen/qwen3.8-27b", maxImages: 3, tokens: "max_completion_tokens", name: "Qwen", maker: "Alibaba, running on Groq" },
   xai: { id: "xai", url: "https://api.x.ai/v1/chat/completions", key: "XAI_API_KEY", model: "grok-4.7", maxImages: 4, tokens: "max_tokens", name: "Grok", maker: "xAI" },
+  // Vercel AI Gateway: no API key needed on Vercel (the project's own OIDC identity signs in).
+  gateway: { id: "gateway", url: "https://ai-gateway.vercel.sh/v1/chat/completions", key: "AI_GATEWAY_API_KEY", altKey: "VERCEL_OIDC_TOKEN", model: "google/gemini-2.5-flash", maxImages: 4, tokens: "max_tokens", name: "Gemini", maker: "Google, through Vercel AI Gateway" },
 };
+// On Vercel, each function request carries the project's OIDC token in a header.
+export function useOidc(req) {
+  const t = req?.headers?.["x-vercel-oidc-token"];
+  if (typeof t === "string" && t) process.env.VERCEL_OIDC_TOKEN = t;
+}
 export function provider(env = process.env) {
   if (PROVIDERS[env.AI_PROVIDER]) return PROVIDERS[env.AI_PROVIDER];
   return env.GROQ_API_KEY || !env.XAI_API_KEY ? PROVIDERS.groq : PROVIDERS.xai;
@@ -167,7 +174,7 @@ export function errorCode(status, bodyText = "") {
 // (429, with Retry-After) the call waits and tries again while there's time left.
 export async function complete(body, signal, timeoutMs = 110_000) {
   const p = provider();
-  const key = process.env[p.key];
+  const key = process.env[p.key] || (p.altKey && process.env[p.altKey]);
   if (!key) throw { status: 500, code: "sampling_disabled" };
   const tpm = tokensPerMinute();
   if (tpm && body.max_tokens) {

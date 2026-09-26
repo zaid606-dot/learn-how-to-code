@@ -1,10 +1,12 @@
 // POST /api/json {prompt, images: [dataUrl], tier} -> the JSON object the model returns.
 // Used for reading screenshots and for verdicts.
 import { send, readBody, rateLimited, foreignOrigin, complete, modelFor, parseJsonReply, provider, fromApp, LIMITS } from "./_ai.js";
+import { useOidc } from "./_ai.js";
 
 const IMAGE = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/;
 
 export default async function handler(req, res) {
+  useOidc(req);
   if (req.method !== "POST") return send(res, 405, { code: "method_not_allowed" });
   if (foreignOrigin(req)) return send(res, 403, { code: "forbidden" });
   if (rateLimited(req, "json")) return send(res, 429, { code: "rate_limited" });

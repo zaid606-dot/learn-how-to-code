@@ -2,8 +2,10 @@
 // then exactly one of {"done": true, "truncated": bool} or {"error": code}. Used for follow-up
 // questions and for the quick second look at poorly read screenshots.
 import { send, readBody, rateLimited, foreignOrigin, complete, modelFor, toMessages, thinkFilter, errorCode, fromApp } from "./_ai.js";
+import { useOidc } from "./_ai.js";
 
 export default async function handler(req, res) {
+  useOidc(req);
   if (req.method !== "POST") return send(res, 405, { code: "method_not_allowed" });
   if (foreignOrigin(req)) return send(res, 403, { code: "forbidden" });
   if (rateLimited(req, "chat", Number(process.env.RATE_LIMIT_PER_10_MIN || 40) * 2)) return send(res, 429, { code: "rate_limited" });

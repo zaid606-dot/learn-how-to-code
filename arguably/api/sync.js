@@ -9,7 +9,7 @@ import { send, readBody, rateLimited, foreignOrigin } from "./_ai.js";
 import { storeConfig, redis } from "./_store.js";
 import { sessionUser } from "./_auth.js";
 
-const CHAT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const CHAT_ID = /^(?!__proto__$)[A-Za-z0-9_-]{1,64}$/;
 const MAX_CHAT_BYTES = 300_000;
 const MAX_CHATS = 100;
 const PREF_KEYS = ["name", "tone", "notify", "readOnPhone"];

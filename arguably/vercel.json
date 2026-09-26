@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install @vercel/blob --no-save --no-audit --no-fund",
-  "buildCommand": "node scripts/probe.mjs",
+  "buildCommand": "node scripts/live-check.mjs && bash scripts/fetch-ocr.sh && node scripts/build-artifact.mjs --web",
   "outputDirectory": "web-dist",
   "functions": {
     "api/*.js": {

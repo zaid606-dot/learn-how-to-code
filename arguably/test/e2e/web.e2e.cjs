@@ -245,6 +245,11 @@ test("website build: accounts: sign up, chats sync to a second phone, deletes st
   await a.page.fill("#acPassword", "leftovers forever");
   await a.page.screenshot({ path: path.join(OUT, "web-signup.png") });
   await a.page.click('.auth-form [type="submit"]');
+  // First, the recovery code (shown once).
+  await a.page.waitForSelector(".recovery-code");
+  assert.match(await a.page.locator(".recovery-code").innerText(), /^[A-Z2-9]{5}(-[A-Z2-9]{5}){3}$/);
+  await a.page.screenshot({ path: path.join(OUT, "web-recovery-code.png") });
+  await a.page.click('[data-action="code-saved"]');
   await a.page.waitForSelector('.settings [data-action="account"]');
   assert.match(await a.page.locator(".settings").innerText(), /sam@example\.com/);
   await a.page.waitForFunction(() => true);
@@ -432,6 +437,9 @@ test("website build: QA fixes — safe sign-out, offline deletes stick, reset li
   await page.click('[data-auth-mode="signup"]');
   await page.fill("#acPassword", "qa password 1");
   await page.click('.auth-form [type="submit"]');
+  await page.waitForSelector(".recovery-code");
+  const code = await page.locator(".recovery-code").innerText();
+  await page.click('[data-action="code-saved"]');
   await page.waitForSelector('.settings [data-action="account"]');
 
   // A chat, then offline: signing out is refused while it isn't saved, nothing is lost.
@@ -478,6 +486,22 @@ test("website build: QA fixes — safe sign-out, offline deletes stick, reset li
   await page.reload();
   await page.click("#settingsBtn");
   assert.match(await page.locator(".settings").innerText(), /Create account or sign in/, "really signed out");
+
+  // Forgot password, no email service: the recovery code gets you back in.
+  await page.click('.settings [data-action="account"]');
+  await page.click('[data-auth-mode="login"]');
+  await page.click('[data-auth-mode="forgot"]');
+  await page.click('[data-auth-mode="recover"]');
+  await page.fill("#acEmail", "qa@example.com");
+  await page.fill("#acCode", code.toLowerCase());
+  await page.fill("#acPassword", "qa password 2");
+  await page.click('.auth-form [type="submit"]');
+  await page.waitForSelector(".recovery-code");
+  assert.notEqual(await page.locator(".recovery-code").innerText(), code, "a fresh code");
+  await page.click('[data-action="code-saved"]');
+  await page.click('.settings [data-action="account"]');
+  await page.click('[data-action="sign-out"]');
+  await page.waitForFunction(() => !document.querySelector(".account"));
 
   // A reset link opened in an already-open tab goes straight to "choose a new password".
   await page.evaluate(() => { location.hash = "#reset=abc123"; });
