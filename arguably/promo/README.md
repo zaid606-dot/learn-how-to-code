@@ -1,6 +1,7 @@
 # Promo videos
 
-Made from the real app by `node scripts/make-promo.cjs` (about a minute each):
+Made from the real app by `node scripts/make-promo.cjs` (about a minute each). Add `--frames 60`
+to also save 60 evenly spaced 1080×1920 stills to `promo/frames/`.
 
 | File | What it is | Use it for |
 |---|---|---|

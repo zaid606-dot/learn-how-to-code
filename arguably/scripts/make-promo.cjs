@@ -46,7 +46,7 @@ const STAGE_HTML = `<!doctype html><html><head><meta charset="utf-8">
   html, body { width: ${STAGE.w}px; height: ${STAGE.h}px; overflow: hidden; background: var(--ink); font-family: "Liberation Sans", Arial, sans-serif; color: #fff; }
   .bg { position: absolute; inset: 0; background:
       radial-gradient(70% 45% at 50% 18%, rgba(255,90,71,.38), transparent 70%),
-      radial-gradient(circle at 85% 100%, rgba(37,38,104,.5), transparent 55%), var(--ink); }
+      linear-gradient(to top, rgba(37,38,104,.42), rgba(37,38,104,0) 45%), var(--ink); }
   .cap { position: absolute; left: 22px; right: 22px; top: 44px; height: 112px; display: grid; place-items: center; text-align: center; }
   .cap span { font: 700 29px/1.12 "Liberation Sans", Arial, sans-serif; letter-spacing: -.02em; text-wrap: balance;
     opacity: 0; transform: translateY(14px); transition: opacity .35s ease, transform .45s cubic-bezier(.2,.9,.3,1.2); position: absolute; }
@@ -186,21 +186,26 @@ function serve() {
   // ---- capture ----
   const cdp = await context.newCDPSession(page);
   const frames = []; // {t, data}
-  let t0 = 0;
+  // The page paints nothing while it sits still, so the frame from before the story can be a
+  // half-painted first paint. The video starts with the first frame painted after goLive().
+  let t0 = 0, live = false;
   cdp.on("Page.screencastFrame", (f) => {
     const t = f.metadata.timestamp * 1000;
-    if (!t0) t0 = t;
-    frames.push({ t: t - t0, data: Buffer.from(f.data, "base64") });
+    if (live) {
+      if (!t0) t0 = t;
+      frames.push({ t: t - t0, data: Buffer.from(f.data, "base64") });
+    }
     cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 90, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
+  const goLive = () => (live = true);
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 95, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
   const wait = (ms) => page.waitForTimeout(ms);
   const stage = (js) => page.evaluate(js);
   const cap = (html) => stage(`stage.caption(${JSON.stringify(html)})`);
 
   // ---- the story ----
+  goLive();
   if (!CLEAN) {
-    await wait(250);
     await stage("stage.hook()");
     await wait(2300);
     await stage("stage.phoneUp()");
@@ -264,6 +269,18 @@ function serve() {
   // ---- encode: a steady 30 fps from the frames as they were painted ----
   const total = frames.at(-1).t + 400;
   fs.mkdirSync(OUT, { recursive: true });
+  // --frames N: N stills spread evenly from first frame to last (e.g. for a storyboard or thumbnails).
+  const nFrames = Number(process.argv[process.argv.indexOf("--frames") + 1]) || 0;
+  if (process.argv.includes("--frames") && nFrames > 0) {
+    const dir = path.join(OUT, CLEAN ? "frames-app" : "frames");
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    for (let n = 0, k = 0; n < nFrames; n++) {
+      const at = (n / (nFrames - 1)) * frames.at(-1).t;
+      while (k + 1 < frames.length && frames[k + 1].t <= at) k++;
+      fs.writeFileSync(path.join(dir, `frame-${String(n + 1).padStart(2, "0")}-${(at / 1000).toFixed(2)}s.jpg`), frames[k].data);
+    }
+  }
   if (process.env.STILLS) { // one still a second, for checking the cut
     const dir = path.join(OUT, "stills");
     fs.mkdirSync(dir, { recursive: true });
