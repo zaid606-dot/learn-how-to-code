@@ -46,7 +46,8 @@ async function blob() {
   }
   return blobImpl;
 }
-const pathOf = (key) => `kv/${encodeURIComponent(key)}.json`;
+// File names use only letters, digits, "-" and "_" (base64url), so no URL encoding can change them.
+const pathOf = (key) => `kv/${Buffer.from(key).toString("base64url")}.json`;
 const OPTS = { access: "private", addRandomSuffix: false, contentType: "application/json", cacheControlMaxAge: 60 };
 
 async function load(key) {
