@@ -10,12 +10,12 @@ import { send, readBody, rateLimited, foreignOrigin, clientIp } from "./_ai.js";
 import { storeConfig, redis } from "./_store.js";
 import {
   normalEmail, passwordProblem, hashPassword, checkPassword, burnTime, newId, newToken, sha256,
-  startSession, sessionUser, endAllSessions, clearSessionCookie, publicUser,
+  startSession, sessionUser, endAllSessions, clearSessionCookie, publicUser, newRecoveryCode, hashCode, checkCode,
 } from "./_auth.js";
 
 const MAX_FAILS = 10; // wrong passwords per email, per network, per 15 minutes
 const MAX_FAILS_ANYWHERE = 100; // per email from everywhere: a stranger can't lock you out cheaply
-const OPS = new Set(["me", "signup", "login", "logout", "reset-request", "reset", "delete"]);
+const OPS = new Set(["me", "signup", "login", "logout", "reset-request", "reset", "recover", "recovery-code", "delete"]);
 const cleanName = (n) => (typeof n === "string" ? n.trim().replace(/[\u0000-\u001f<>]/g, "").slice(0, 40) : "");
 
 async function sendResetEmail(req, email, token) {
@@ -75,7 +75,8 @@ export default async function handler(req, res) {
       const problem = passwordProblem(body.password);
       if (problem) return send(res, 400, { code: problem });
       const id = newId();
-      const user = { id, email, name: cleanName(body.name), pw: hashPassword(body.password), createdAt: Date.now() };
+      const recoveryCode = newRecoveryCode();
+      const user = { id, email, name: cleanName(body.name), pw: hashPassword(body.password), rc: hashCode(recoveryCode), createdAt: Date.now() };
       // Write the account, then claim the email (SET NX) so two sign-ups for one email can't both win.
       await redis(["SET", `user:${id}`, JSON.stringify(user)]);
       if ((await redis(["SET", `user:email:${email}`, id, "NX"])) !== "OK") {
@@ -83,7 +84,46 @@ export default async function handler(req, res) {
         return send(res, 409, { code: "email_taken" });
       }
       await startSession(req, res, id);
-      return send(res, 200, { user: publicUser(user) });
+      return send(res, 200, { user: publicUser(user), recoveryCode });
+    }
+
+    // Forgot password, no email needed: email + recovery code + new password. The code is
+    // replaced with a new one, and every other phone is signed out.
+    if (op === "recover") {
+      const email = normalEmail(body.email);
+      const problem = passwordProblem(body.password);
+      if (problem) return send(res, 400, { code: problem });
+      if (email && locked(await failCount(req, email))) return send(res, 429, { code: "too_many_attempts" });
+      const id = email ? await redis(["GET", `user:email:${email}`]) : null;
+      const raw = typeof id === "string" ? await redis(["GET", `user:${id}`]) : null;
+      const user = typeof raw === "string" ? JSON.parse(raw) : null;
+      if (!user) burnTime(body.code);
+      if (!user || !user.rc || !checkCode(body.code, user.rc)) {
+        if (email) await addFail(req, email);
+        return send(res, 401, { code: "wrong_code" });
+      }
+      const recoveryCode = newRecoveryCode();
+      const updated = { ...user, pw: hashPassword(body.password), rc: hashCode(recoveryCode) };
+      await redis(["SET", `user:${user.id}`, JSON.stringify(updated)]);
+      for (const k of failKeys(req, email)) await redis(["DEL", k]);
+      await endAllSessions(user.id);
+      await startSession(req, res, user.id);
+      return send(res, 200, { user: publicUser(updated), recoveryCode });
+    }
+
+    // A fresh recovery code (signed in, with the password): the old one stops working.
+    if (op === "recovery-code") {
+      const user = await sessionUser(req);
+      if (!user) return send(res, 401, { code: "signed_out" });
+      if (locked(await failCount(req, user.email))) return send(res, 429, { code: "too_many_attempts" });
+      if (!checkPassword(body.password, user.pw)) {
+        await addFail(req, user.email);
+        return send(res, 401, { code: "wrong_password" });
+      }
+      const recoveryCode = newRecoveryCode();
+      const { sessionKey, ...stored } = user;
+      await redis(["SET", `user:${user.id}`, JSON.stringify({ ...stored, rc: hashCode(recoveryCode) })]);
+      return send(res, 200, { recoveryCode });
     }
 
     if (op === "login") {

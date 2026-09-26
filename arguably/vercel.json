@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "echo 'no install needed'",
+  "installCommand": "npm install @vercel/blob --no-save --no-audit --no-fund",
   "buildCommand": "node scripts/probe.mjs",
   "outputDirectory": "web-dist",
   "functions": {

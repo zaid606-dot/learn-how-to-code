@@ -2696,6 +2696,25 @@ $("thread").addEventListener("click", (e) => {
   }
   if (action === "account") return openAccount(account ? "" : "signup");
   if (action === "sign-out") return signOut();
+  if (action === "copy-code") {
+    navigator.clipboard?.writeText(newRecoveryCode).then(() => toast("Recovery code copied."), () => toast("Couldn't copy. Screenshot it instead."));
+    return;
+  }
+  if (action === "code-saved") {
+    newRecoveryCode = "";
+    return openPage("settings");
+  }
+  if (action === "new-code") {
+    makingCode = true;
+    authError = "";
+    render();
+    return $("acCodePw")?.focus();
+  }
+  if (action === "new-code-cancel") {
+    makingCode = false;
+    authError = "";
+    return render();
+  }
   if (action === "delete-account") {
     deletingAccount = true;
     authError = "";
@@ -3204,6 +3223,8 @@ let authNote = "";
 let authBusy = false;
 let resetToken = "";
 let deletingAccount = false;
+let newRecoveryCode = ""; // shown once, right after it's made
+let makingCode = false; // the "new recovery code" password form is open
 let lastSynced = 0;
 // Whose chats are on this phone. Signing in as someone else erases them first, so one person's
 // chats can never flow into another person's account on a shared phone.
@@ -3232,7 +3253,8 @@ const AUTH_ERRORS = {
   too_many_attempts: "Too many tries. Wait 15 minutes, then try again.",
   rate_limited: "Too many tries. Wait a few minutes, then try again.",
   reset_expired: "That reset link has expired or was already used. Ask for a new one.",
-  reset_unavailable: "Password reset isn't set up yet.",
+  reset_unavailable: "Password reset by email isn't set up yet. Use your recovery code.",
+  wrong_code: "That email and recovery code don't match.",
   signed_out: "You've been signed out. Sign in again.",
   accounts_off: "Accounts aren't available right now.",
   network_error: "Couldn't reach Arguably. Check your connection and try again.",
@@ -3403,18 +3425,20 @@ async function submitAuth(form) {
   if (authBusy) return;
   const email = form.querySelector("#acEmail")?.value.trim() || authEmail;
   const password = form.querySelector("#acPassword")?.value || "";
+  const code = form.querySelector("#acCode")?.value.trim() || "";
   authEmail = email;
   authError = "";
   authNote = "";
   // Check the obvious on the phone first.
   if (authMode !== "reset" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) authError = AUTH_ERRORS.email_invalid;
-  else if ((authMode === "signup" || authMode === "reset") && password.length < 8) authError = AUTH_ERRORS.password_short;
+  else if ((authMode === "signup" || authMode === "reset" || authMode === "recover") && password.length < 8) authError = AUTH_ERRORS.password_short;
+  else if (authMode === "recover" && code.replace(/[^A-Za-z0-9]/g, "").length !== 20) authError = "Enter the 20-character recovery code you saved.";
   else if (authMode === "login" && !password) authError = "Enter your password.";
   if (authError) return render();
   authBusy = true;
   render();
-  const op = { signup: "signup", login: "login", forgot: "reset-request", reset: "reset" }[authMode];
-  const body = authMode === "forgot" ? { email } : authMode === "reset" ? { token: resetToken, password } : { email, password };
+  const op = { signup: "signup", login: "login", forgot: "reset-request", reset: "reset", recover: "recover" }[authMode];
+  const body = authMode === "forgot" ? { email } : authMode === "reset" ? { token: resetToken, password } : authMode === "recover" ? { email, code, password } : { email, password };
   const r = await api(`/api/auth?op=${op}`, { method: "POST", body });
   authBusy = false;
   if (!r.ok) {
@@ -3428,13 +3452,14 @@ async function submitAuth(form) {
   }
   account = r.data.user;
   resetToken = "";
+  newRecoveryCode = r.data.recoveryCode || "";
   // Chats made signed out join this account; chats that belong to another account never do.
   if (localOwner() && localOwner() !== account.email) eraseDevice();
   setOwner(account.email);
   if (location.hash.startsWith("#reset=")) history.replaceState(null, "", location.pathname + location.search);
-  const welcome = authMode === "signup" ? (chats.length ? "Account created. Your chats are saved to it." : "Account created. New chats will be saved to it.") : authMode === "reset" ? "Password changed. You're signed in." : "Signed in. Your chats are syncing.";
+  const welcome = authMode === "recover" ? "Password changed. Here's your new recovery code." : authMode === "signup" ? (chats.length ? "Account created. Your chats are saved to it." : "Account created. New chats will be saved to it.") : authMode === "reset" ? "Password changed. You're signed in." : "Signed in. Your chats are syncing.";
   await syncDown();
-  page = "settings";
+  page = newRecoveryCode ? "account" : "settings"; // show the recovery code before anything else
   render();
   toast(welcome);
 }
@@ -3461,6 +3486,27 @@ async function signOut() {
   page = null;
   render();
   toast("Signed out. Your chats are saved to your account, not this phone.");
+}
+
+async function makeRecoveryCode(form) {
+  if (authBusy) return;
+  const password = form.querySelector("#acCodePw")?.value || "";
+  if (!password) {
+    authError = "Enter your password to make a new recovery code.";
+    return render();
+  }
+  authBusy = true;
+  authError = "";
+  render();
+  const r = await api("/api/auth?op=recovery-code", { method: "POST", body: { password } });
+  authBusy = false;
+  if (!r.ok) {
+    authError = AUTH_ERRORS[r.data?.code] || "Couldn't make a new code. Try again.";
+    return render();
+  }
+  makingCode = false;
+  newRecoveryCode = r.data.recoveryCode;
+  render();
 }
 
 async function deleteAccount(form) {
@@ -3492,6 +3538,15 @@ function accountHTML() {
   const err = authError ? `<p class="auth-error" role="alert">${esc(authError)}</p>` : "";
   const note = authNote ? `<p class="auth-note" role="status">${esc(authNote)}</p>` : "";
   const busyAttr = authBusy ? ' aria-busy="true" disabled' : "";
+  if (account && newRecoveryCode) {
+    return `<section class="account">
+      <h1 class="page-title" tabindex="-1">Save your recovery code</h1>
+      <p class="doc-lede">If you ever forget your password, this code gets you back in. It's shown only now. Screenshot it or keep it in your notes.</p>
+      <div class="recovery-code" aria-label="Recovery code">${esc(newRecoveryCode)}</div>
+      <button class="cta secondary" type="button" data-action="copy-code">Copy code</button>
+      <button class="cta" type="button" data-action="code-saved">I saved it</button>
+    </section>`;
+  }
   if (account && !(authMode === "reset" && resetToken)) {
     return `<section class="account">
       <h1 class="page-title" tabindex="-1">Your account</h1>
@@ -3502,6 +3557,18 @@ function accountHTML() {
       ${deletingAccount ? "" : err}
       <button class="cta secondary" type="button" data-action="sign-out">Sign out</button>
       <p class="set-foot">Signing out removes your chats from this phone. They stay in your account.</p>
+      ${
+        makingCode
+          ? `<form class="auth-form danger-zone" data-form="new-code" novalidate>
+              <h2 class="plain">New recovery code</h2>
+              <p>Your old code stops working. Enter your password to continue.</p>
+              <label class="field"><span>Password</span><input id="acCodePw" type="password" autocomplete="current-password" required></label>
+              ${err}
+              <div class="auth-row"><button class="ghost-btn" type="button" data-action="new-code-cancel">Cancel</button>
+              <button class="cta" type="submit"${busyAttr}>Make new code</button></div>
+            </form>`
+          : `<button class="set-row" type="button" data-action="new-code">${tile("shield", "green")}<span class="set-text"><span class="set-title">New recovery code</span><span class="set-sub">Lost it? Make a new one.</span></span></button>`
+      }
       ${
         deletingAccount
           ? `<form class="auth-form danger-zone" data-form="delete-account" novalidate>
@@ -3522,25 +3589,29 @@ function accountHTML() {
     signup: ["Create your account", "Save your chats and verdicts, and pick them up on any phone. Optional: Arguably works without one."],
     login: ["Welcome back", "Sign in to get your saved chats and verdicts."],
     forgot: ["Reset your password", resetByEmail ? "Enter your email and we'll send you a link to choose a new password." : ""],
+    recover: ["Use your recovery code", "Enter your email, the recovery code you saved when you made your account, and a new password."],
     reset: ["Choose a new password", "You'll be signed out on your other phones."],
   };
   const [h, lede] = heads[authMode];
   let body;
   if (authMode === "forgot" && !resetByEmail) {
-    body = `<p>Email <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Reset my Arguably password")}">${SUPPORT_EMAIL}</a> from the address on your account and we'll help you get back in.</p>
+    body = `<button class="cta" type="button" data-auth-mode="recover">Use my recovery code</button>
+      <p>Lost the code too? Email <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Reset my Arguably password")}">${SUPPORT_EMAIL}</a> from the address on your account and we'll help you get back in.</p>
       <button class="text-btn" type="button" data-auth-mode="login">Back to sign in</button>`;
   } else {
     body = `<form class="auth-form" data-form="auth" novalidate>
       ${authMode !== "reset" ? field("acEmail", "Email", "email", "email", `inputmode="email" autocapitalize="off" spellcheck="false" required value="${esc(authEmail)}"`) : ""}
-      ${authMode !== "forgot" ? field("acPassword", authMode === "reset" ? "New password" : "Password", "password", authMode === "login" ? "current-password" : "new-password", `required minlength="8"`) : ""}
-      ${authMode === "signup" || authMode === "reset" ? '<p class="field-hint">At least 8 characters.</p>' : ""}
+      ${authMode === "recover" ? field("acCode", "Recovery code", "text", "one-time-code", `autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" required`) : ""}
+      ${authMode !== "forgot" ? field("acPassword", authMode === "reset" || authMode === "recover" ? "New password" : "Password", "password", authMode === "login" ? "current-password" : "new-password", `required minlength="8"`) : ""}
+      ${authMode === "signup" || authMode === "reset" || authMode === "recover" ? '<p class="field-hint">At least 8 characters.</p>' : ""}
       ${err}${note}
-      <button class="cta" type="submit"${busyAttr}>${authBusy ? "One moment…" : { signup: "Create account", login: "Sign in", forgot: "Send reset link", reset: "Save new password" }[authMode]}</button>
+      <button class="cta" type="submit"${busyAttr}>${authBusy ? "One moment…" : { signup: "Create account", login: "Sign in", forgot: "Send reset link", reset: "Save new password", recover: "Save new password" }[authMode]}</button>
     </form>
     ${authMode === "login" ? '<button class="text-btn" type="button" data-auth-mode="forgot">Forgot password?</button>' : ""}
     ${authMode === "signup" ? '<p class="auth-switch">Already have an account? <button class="text-btn" type="button" data-auth-mode="login">Sign in</button></p>' : ""}
     ${authMode === "login" ? '<p class="auth-switch">New here? <button class="text-btn" type="button" data-auth-mode="signup">Create an account</button></p>' : ""}
-    ${authMode === "forgot" ? '<button class="text-btn" type="button" data-auth-mode="login">Back to sign in</button>' : ""}
+    ${authMode === "forgot" ? '<button class="text-btn" type="button" data-auth-mode="recover">Use my recovery code instead</button><button class="text-btn" type="button" data-auth-mode="login">Back to sign in</button>' : ""}
+    ${authMode === "recover" ? '<button class="text-btn" type="button" data-auth-mode="login">Back to sign in</button>' : ""}
     ${authMode === "reset" ? '<p class="auth-switch"><button class="text-btn" type="button" data-auth-mode="forgot">Ask for a new link</button> · <button class="text-btn" type="button" data-auth-mode="login">Sign in</button></p>' : ""}
     ${authMode === "signup" ? '<p class="auth-fine">By creating an account you agree to the <button class="text-btn" type="button" data-doc="terms">Terms</button> and <button class="text-btn" type="button" data-doc="privacy">Privacy Policy</button>.</p>' : ""}`;
   }
@@ -3742,6 +3813,7 @@ $("thread").addEventListener("submit", (e) => {
   e.preventDefault();
   if (form.dataset.form === "auth") submitAuth(form);
   if (form.dataset.form === "delete-account") deleteAccount(form);
+  if (form.dataset.form === "new-code") makeRecoveryCode(form);
 });
 // A password-reset link from the email opens the "choose a new password" page (after the intro,
 // on a phone that hasn't seen it yet).

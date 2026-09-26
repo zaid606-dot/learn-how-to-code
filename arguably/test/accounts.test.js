@@ -259,3 +259,36 @@ test("junk requests: unknown ops, mangled cookies and made-up deletes are harmle
   for (let i = 0; i < 5; i++) await p.req(`/api/sync?id=nope${i}`, { method: "DELETE" });
   assert.deepEqual((await p.req("/api/sync")).data.deleted, [], "no tombstones for chats that never existed");
 });
+
+test("recovery code: shown once at sign-up, resets the password without email, then is replaced", async () => {
+  const a = phone();
+  const r = await signup(a);
+  const code = r.data.recoveryCode;
+  assert.match(code, /^[A-Z2-9]{5}(-[A-Z2-9]{5}){3}$/);
+  assert.ok(!JSON.stringify([...redis.data].map(([, e]) => e.v)).includes(code.replace(/-/g, "")), "stored only as a hash");
+  const p = phone();
+  const wrong = await p.req("/api/auth?op=recover", { method: "POST", body: { email: "maya@example.com", code: "AAAAA-BBBBB-CCCCC-DDDDD", password: "new password 9" } });
+  assert.equal(wrong.data.code, "wrong_code");
+  const ok = await p.req("/api/auth?op=recover", { method: "POST", body: { email: "maya@example.com", code: code.toLowerCase().replace(/-/g, " "), password: "new password 9" } });
+  assert.equal(ok.status, 200, "case and spacing don't matter");
+  assert.notEqual(ok.data.recoveryCode, code, "a new code replaces the used one");
+  assert.equal((await a.req("/api/auth?op=me")).data.user, null, "other phones signed out");
+  const again = await phone().req("/api/auth?op=recover", { method: "POST", body: { email: "maya@example.com", code, password: "new password 10" } });
+  assert.equal(again.data.code, "wrong_code", "the old code is spent");
+  assert.equal((await phone().req("/api/auth?op=login", { method: "POST", body: { email: "maya@example.com", password: "new password 9" } })).status, 200);
+});
+
+test("recovery code guessing counts toward the lockout; a signed-in user can make a new code with the password", async () => {
+  const a = phone();
+  const first = (await signup(a)).data.recoveryCode;
+  const g = phone();
+  for (let i = 0; i < 10; i++) await g.req("/api/auth?op=recover", { method: "POST", body: { email: "maya@example.com", code: "AAAAA-BBBBB-CCCCC-DDDDD", password: "whatever 1" } });
+  assert.equal((await g.req("/api/auth?op=recover", { method: "POST", body: { email: "maya@example.com", code: first, password: "whatever 1" } })).data.code, "too_many_attempts");
+  for (const k of redis.keys()) if (k.startsWith("fail:")) redis.data.delete(k); // (both test phones share one network)
+  assert.equal((await a.req("/api/auth?op=recovery-code", { method: "POST", body: { password: "nope nope" } })).data.code, "wrong_password");
+  const fresh = await a.req("/api/auth?op=recovery-code", { method: "POST", body: { password: "correct horse" } });
+  assert.match(fresh.data.recoveryCode, /^[A-Z2-9]{5}(-[A-Z2-9]{5}){3}$/);
+  for (const k of redis.keys()) if (k.startsWith("fail:")) redis.data.delete(k);
+  assert.equal((await phone().req("/api/auth?op=recover", { method: "POST", body: { email: "maya@example.com", code: first, password: "whatever 2" } })).data.code, "wrong_code", "the old code stopped working");
+  assert.equal((await phone().req("/api/auth?op=recover", { method: "POST", body: { email: "maya@example.com", code: fresh.data.recoveryCode, password: "whatever 2" } })).status, 200);
+});

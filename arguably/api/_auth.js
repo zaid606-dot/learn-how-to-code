@@ -83,4 +83,15 @@ export async function endAllSessions(userId) {
   for (const k of keys) await redis(["DEL", `session:${k}`]);
   await redis(["DEL", `sessions:${userId}`]);
 }
+// Recovery codes: the no-email way back into an account. Shown once, stored only as a hash.
+const RC_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I/L
+export function newRecoveryCode() {
+  const bytes = crypto.randomBytes(20);
+  const chars = [...bytes].map((b) => RC_ALPHABET[b % RC_ALPHABET.length]).join("");
+  return chars.match(/.{5}/g).join("-");
+}
+export const normalCode = (code) => String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/O/g, "0").slice(0, 40);
+export const hashCode = (code) => hashPassword(normalCode(code));
+export const checkCode = (code, stored) => normalCode(code).length === 20 && checkPassword(normalCode(code), stored);
+
 export const publicUser = (u) => ({ email: u.email, name: u.name || "", createdAt: u.createdAt });
