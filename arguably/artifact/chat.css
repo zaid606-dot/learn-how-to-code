@@ -713,7 +713,7 @@ body.on-paywall .topbar, body.on-paywall .composer { display: none !important; }
 .pw-links button { min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #cdbfb9; font: 600 13px/1 var(--font-body); }
 
 /* The paywall sits flush under the status bar. */
-body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
+body.on-paywall .thread { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .pw-benefits svg { width: 20px; height: 20px; }
 
 /* Long words, URLs and names wrap instead of widening the page. */
@@ -936,3 +936,15 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .account textarea { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1.5px solid var(--sand-300); border-radius: 14px; font: 16px/1.4 var(--font-body); resize: vertical; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .v-foot .text-btn { display: inline-flex; min-height: 44px; vertical-align: middle; font-size: inherit; }
+.pw-cta[aria-busy="true"] { opacity: .7; pointer-events: none; }
+/* iPhone SE: the paywall's buy button stays on screen. */
+@media (max-height: 600px) {
+  .paywall .pw-icon { display: none; }
+  .paywall h1 { font-size: 28px !important; margin: 4px 0 8px !important; }
+  .pw-benefits { gap: 6px !important; margin: 8px 0 !important; }
+  .pw-benefits span { font-size: 0; }
+  .pw-benefits strong { font-size: 14px; }
+}
+.plans > .plan { min-width: 0; }
+.plan-title { flex-wrap: wrap; row-gap: 4px; }
+.pw-links { flex-wrap: wrap; }

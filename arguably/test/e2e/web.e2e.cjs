@@ -568,3 +568,60 @@ test("website build: a sample argument runs a real verdict, and a verdict can be
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("iPhone app: store outages say so, links leave the app, the paywall fits an iPhone SE", async () => {
+  const context = await browser.newContext({ ...devices["iPhone SE"] });
+  await context.addInitScript(() => {
+    localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true }));
+    const down = async () => { await new Promise((r) => setTimeout(r, 200)); throw new Error("The Internet connection appears to be offline."); };
+    const pkg = (id, price) => ({ identifier: id, product: { identifier: `arguably.pro.${id}`, priceString: `$${price}`, price } });
+    window.__opened = [];
+    window.open = (u) => window.__opened.push(["window", u]);
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: {
+        Purchases: {
+          configure: async () => {},
+          getCustomerInfo: async () => ({ customerInfo: { entitlements: { active: {} } } }),
+          getOfferings: async () => ({ current: { availablePackages: [pkg("yearly", 29.99), pkg("monthly", 9.99)] } }),
+          purchasePackage: down,
+          restorePurchases: down,
+          showManageSubscriptions: async () => window.__opened.push(["manage"]),
+        },
+        Browser: { open: async ({ url }) => window.__opened.push(["browser", url]) },
+      },
+    };
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(url);
+  assert.equal(await page.locator("#toast:not([hidden])").count(), 0, "no welcome toast over the first screen");
+  await page.click("#settingsBtn");
+  await page.click('[data-action="paywall"]');
+  await page.waitForSelector('.pw-cta[data-action="purchase"]');
+  const fit = await page.evaluate(() => ({ w: document.documentElement.scrollWidth, cta: document.querySelector(".pw-cta").getBoundingClientRect().bottom }));
+  assert.ok(fit.w <= 320, `no sideways scroll (${fit.w}px)`);
+  assert.ok(fit.cta <= 568, `buy button on screen (${fit.cta}px)`);
+
+  await page.click(".pw-cta");
+  await page.waitForSelector("#toast:not([hidden])");
+  assert.match(await page.locator("#toast").innerText(), /Couldn't reach the App Store/);
+  assert.equal(await page.locator(".pw-cta").getAttribute("aria-busy"), null, "buy button usable again");
+  await page.click('.paywall [data-action="restore"]');
+  await page.waitForFunction(() => /Couldn't reach the App Store/.test(document.querySelector("#toast").innerText) && !/charged/.test(document.querySelector("#toast").innerText));
+
+  await page.evaluate(() => {
+    for (const [id, href] of [["ext", "https://example.com/help"], ["mng", "https://apps.apple.com/account/subscriptions"]]) {
+      const a = Object.assign(document.createElement("a"), { id, href, target: "_blank", textContent: id });
+      document.body.append(a);
+    }
+  });
+  await page.click("#ext", { force: true });
+  await page.click("#mng", { force: true });
+  await page.waitForFunction(() => window.__opened.length === 2);
+  assert.deepEqual(await page.evaluate(() => window.__opened), [["browser", "https://example.com/help"], ["manage"]]);
+  assert.equal(new URL(page.url()).origin, new URL(url).origin, "the app itself never navigates away");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

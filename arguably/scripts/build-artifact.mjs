@@ -37,8 +37,12 @@ function replaceOnce(src, from, to, label) {
 
 // Shared brand styles. The Artifact skeleton already pads :root by the safe-area insets.
 let css = read("public/styles.css");
-css = replaceOnce(css, "--safe-t: env(safe-area-inset-top, 0px);", "--safe-t: 0px;", "safe-t");
-css = replaceOnce(css, "position: sticky; top: 0; z-index: 20;", "position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;", "topbar top");
+// The website (and the iPhone app) instead lets the top bar reach under the status bar, with its
+// own background there, so scrolled content never shows through behind the clock.
+if (!web) {
+  css = replaceOnce(css, "--safe-t: env(safe-area-inset-top, 0px);", "--safe-t: 0px;", "safe-t");
+  css = replaceOnce(css, "position: sticky; top: 0; z-index: 20;", "position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;", "topbar top");
+}
 css += "\n" + read("artifact/chat.css");
 
 const body = read("artifact/chat.html")
@@ -87,7 +91,7 @@ if (web) {
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<style>[hidden]{display:none!important}html,body{margin:0}:root{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}</style>
+<style>[hidden]{display:none!important}html,body{margin:0}:root{padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}</style>
 <script>
 ${read("artifact/web-shim.js")}
 </script>

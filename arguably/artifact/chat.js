@@ -249,7 +249,7 @@ function forget(c) {
   if (busy?.chatId === c.id) busy.ctl.abort();
 }
 
-function notify(kind, title, body, chatId) {
+function notify(kind, title, body, chatId, quiet = false) {
   if (chatId && deletedIds.has(chatId)) return;
   if (kind !== "rate" && !prefs.notify[kind]) return;
   const seen = !page && chatId && chat?.id === chatId && document.visibilityState === "visible";
@@ -260,7 +260,7 @@ function notify(kind, title, body, chatId) {
   saveInbox();
   renderHeader();
   if (page === "inbox") render(); // show it right away if you're looking at Notifications
-  if (!seen) toast(title);
+  if (!seen && !quiet) toast(title);
 }
 
 function newChatObject(saved = {}) {
@@ -2569,9 +2569,11 @@ async function storeCall(msg) {
       const { customerInfo } = await P.purchasePackage({ aPackage });
       return activePro(customerInfo) ? { ok: true, plan: msg.plan } : { ok: false };
     } catch (err) {
-      return { ok: false, cancelled: !!(err?.userCancelled || err?.code === "1" || /cancel/i.test(String(err?.message || ""))) };
+      const cancelled = !!(err?.userCancelled || err?.code === "1" || /cancel/i.test(String(err?.message || "")));
+      return { ok: false, cancelled, error: !cancelled };
     }
   }
+  if (NATIVE) return { ok: false, error: true }; // in the app without a working store connection
   const bridge = storeBridge();
   // Purchases are only simulated in a browser preview. Inside the native app a missing
   // StoreKit bridge is an error, never free Pro.
@@ -2594,14 +2596,15 @@ async function purchase() {
     res = await storeCall({ type: "purchase", plan: paywallPlan, productId: plan.id });
   } finally {
     purchasing = false;
+    document.querySelector(".pw-cta")?.removeAttribute("aria-busy");
   }
-  if (!res?.ok) return res?.cancelled ? undefined : toast("The purchase didn't go through. You weren't charged.");
+  if (!res?.ok) return res?.cancelled ? undefined : toast(res?.error && NATIVE ? "Couldn't reach the App Store. Check your connection and try again. You weren't charged." : "The purchase didn't go through. You weren't charged.");
   unlockPro(res.plan || paywallPlan, res.preview ? "Preview: purchase simulated. You're Pro." : "You're Pro. Welcome in.");
 }
 async function restore() {
   const res = await storeCall({ type: "restore" });
   if (res?.ok && res.plan) return unlockPro(res.plan, "Purchases restored. You're Pro.");
-  toast("No purchases to restore on this Apple ID.");
+  toast(res?.error ? "Couldn't reach the App Store. Check your connection and try again." : "No purchases to restore on this Apple ID.");
 }
 function unlockPro(plan, message) {
   prefs.pro = { plan, since: Date.now() };
@@ -2680,6 +2683,22 @@ $("thread").addEventListener("input", (e) => {
   m.groups[Number(input.dataset.g)][input.dataset.side] = input.value.trim();
   renderYouChips(m);
 });
+// In the iPhone app, links to other sites open in Safari (or the in-app browser sheet), never
+// inside the app; "Manage subscription" opens Apple's own subscription screen.
+if (NATIVE) {
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest?.('a[target="_blank"]');
+    if (!a) return;
+    e.preventDefault();
+    if (/apps\.apple\.com\/account\/subscriptions/.test(a.href) && plugin("Purchases")?.showManageSubscriptions) {
+      plugin("Purchases").showManageSubscriptions().catch(() => window.open(a.href, "_system"));
+      return;
+    }
+    const B = plugin("Browser");
+    if (B) B.open({ url: a.href }).catch(() => window.open(a.href, "_system"));
+    else window.open(a.href, "_system");
+  }, true);
+}
 $("thread").addEventListener("click", (e) => {
   const t = e.target;
   const action = t.closest("[data-action]")?.dataset.action;
@@ -3571,6 +3590,7 @@ function eraseDevice() {
   // The policy agreement and any purchase stay, so erasing can't reset a monthly allowance.
   prefs = { ...DEFAULT_PREFS, onboarded: true, notify: { ...DEFAULT_PREFS.notify }, policy: prefs.policy, pro: prefs.pro, proUsage: prefs.proUsage, freeUsed: prefs.freeUsed };
   savePrefs(false);
+  checkSubscription(); // the subscription belongs to the Apple ID, not to the data just erased
 }
 function signedOutElsewhere() {
   if (!account) return;
@@ -3923,7 +3943,7 @@ function finishOnboarding() {
   prefs.onboarded = true;
   savePrefs();
   page = STORE_BUILD && !prefs.pro ? "paywall" : null;
-  if (STORE_BUILD) notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. Only share chats the people in them would be okay with.");
+  if (STORE_BUILD) notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. Only share chats the people in them would be okay with.", "", true);
   else if (HOSTED) notify("tips", "Hey, welcome to Arguably!", "Put it on your Home Screen: tap Share, then Add to Home Screen. It opens like an app.");
   else notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. Only share chats the people in them would be okay with.");
   render();

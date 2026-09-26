@@ -14,7 +14,8 @@
     "@capacitor/filesystem": "latest",
     "@revenuecat/purchases-capacitor": "latest",
     "@capacitor/local-notifications": "latest",
-    "@capacitor/haptics": "latest"
+    "@capacitor/haptics": "latest",
+    "@capacitor/browser": "latest"
   },
   "devDependencies": {
     "@capacitor/cli": "latest"
