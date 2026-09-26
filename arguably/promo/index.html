@@ -1,0 +1,143 @@
+<title>Arguably Promo Cut</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@600;700&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #140e0c;
+    --panel: #1e1614;
+    --line: #3a2d2a;
+    --text: #f4ebe7;
+    --muted: #b9aaa4;
+    --coral: #ff5a47;
+    --clay: #e7a18a;
+    --navy: #252668;
+    --display: "Sora", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body {
+    background:
+      radial-gradient(60% 40% at 50% 0%, rgba(255, 90, 71, .22), transparent 70%),
+      radial-gradient(50% 35% at 100% 100%, rgba(37, 38, 104, .45), transparent 70%),
+      var(--ink);
+    color: var(--text);
+    font: 400 15px/1.55 var(--body);
+    min-height: 100%;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; display: grid; gap: 40px; }
+  header { display: grid; gap: 10px; max-width: 640px; }
+  .eyebrow { font: 600 12px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--clay); }
+  h1 { font: 700 clamp(34px, 6vw, 52px)/1.02 var(--display); letter-spacing: -.035em; margin: 0; text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--coral); }
+  header p { margin: 0; color: var(--muted); max-width: 60ch; }
+
+  .cuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+  .cut { display: grid; gap: 14px; align-content: start; }
+  .screen { position: relative; width: min(100%, 340px); aspect-ratio: 9 / 16; border-radius: 34px; overflow: hidden; background: #000;
+    box-shadow: 0 0 0 7px #1d1716, 0 0 0 8.5px var(--line), 0 30px 70px rgba(0, 0, 0, .55); justify-self: center; }
+  .screen video { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .meta { display: grid; gap: 6px; width: min(100%, 340px); justify-self: center; }
+  .meta h2 { font: 700 20px/1.2 var(--display); letter-spacing: -.02em; margin: 0; }
+  .specs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .specs span { font: 500 12px/1 var(--body); padding: 6px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .specs span.use { border-color: rgba(255, 90, 71, .5); color: var(--clay); }
+  .meta p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  section h2.h { font: 700 24px/1.2 var(--display); letter-spacing: -.02em; margin: 0 0 14px; }
+  .beats { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+  .beats li { display: grid; grid-template-columns: 84px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .tc { font: 600 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--clay); font-variant-numeric: tabular-nums; }
+  .beats strong { display: block; font-weight: 600; }
+  .beats span { color: var(--muted); font-size: 14px; }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 8px; align-content: start; }
+  .step h3 { margin: 0; font: 600 16px/1.3 var(--display); }
+  .step p { margin: 0; color: var(--muted); font-size: 14px; }
+  pre { margin: 0; overflow-x: auto; background: #0d0908; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); }
+  .copy { justify-self: start; font: 600 13px/1 var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer; }
+  .copy:hover { border-color: var(--clay); }
+  .copy:focus-visible, video:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
+  code { font: 12.5px ui-monospace, "SF Mono", Menlo, monospace; color: var(--clay); }
+  footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 18px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Arguably · launch video</span>
+    <h1>Who actually <em>won</em> the argument?</h1>
+    <p>Two cuts, both recorded from the real app running a real verdict. The social cut has the hook, captions and end card. The app capture is clean footage for the App Store preview.</p>
+  </header>
+
+  <div class="cuts">
+    <article class="cut">
+      <div class="screen"><video src="arguably-promo.webm" poster="poster-promo.jpg" controls playsinline muted loop preload="metadata" aria-label="Social promo, 28 seconds"></video></div>
+      <div class="meta">
+        <h2>Social cut</h2>
+        <div class="specs"><span>0:28</span><span>1080 × 1920</span><span>30 fps</span><span class="use">TikTok · Reels · Shorts</span></div>
+        <p>Add a trending sound in the app you post from. The cut has no audio on purpose.</p>
+      </div>
+    </article>
+    <article class="cut">
+      <div class="screen"><video src="arguably-app-capture.webm" poster="poster-app.jpg" controls playsinline muted loop preload="metadata" aria-label="App capture, 22 seconds"></video></div>
+      <div class="meta">
+        <h2>App capture</h2>
+        <div class="specs"><span>0:22</span><span>1080 × 1920</span><span>30 fps</span><span class="use">App Store preview</span></div>
+        <p>No captions or frame, so it meets Apple's rule that previews show the app itself.</p>
+      </div>
+    </article>
+  </div>
+
+  <section>
+    <h2 class="h">Social cut, beat by beat</h2>
+    <ol class="beats">
+      <li><span class="tc">0:00–0:03</span><div><strong>Hook</strong><span>“Who actually won the argument?” lands word by word while three chat bubbles fly in.</span></div></li>
+      <li><span class="tc">0:03–0:07</span><div><strong>Drop in the screenshots from both phones</strong><span>The phone rises into frame on the home screen, where the demo cycles through arguments on its own.</span></div></li>
+      <li><span class="tc">0:07–0:14</span><div><strong>Arguably reads every message…</strong><span>The conversation goes in and the judging steps run.</span></div></li>
+      <li><span class="tc">0:14–0:17</span><div><strong>…and picks a winner. With receipts.</strong><span>Maya wins, 72 to 41, 71% sure, with “Every quote checked against the conversation” above the card.</span></div></li>
+      <li><span class="tc">0:17–0:21</span><div><strong>Who started it, and what it's really about</strong><span>Glides to the first message and the root cause.</span></div></li>
+      <li><span class="tc">0:21–0:24</span><div><strong>Every low blow, called out</strong><span>Opens Personal shots: the sarcasm and the name-calling, each rated.</span></div></li>
+      <li><span class="tc">0:24–0:28</span><div><strong>End card</strong><span>Logo, “See who's right. With receipts.”, Try it free, and the site address.</span></div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2 class="h">Before you post</h2>
+    <div class="steps">
+      <div class="step">
+        <h3>Instagram and the App Store need MP4</h3>
+        <p>These files are WebM. TikTok and CapCut open them as they are. For the others, convert on your Mac:</p>
+        <pre id="cmd">ffmpeg -i arguably-promo.webm -f lavfi -i anullsrc=r=48000:cl=stereo -shortest -c:v libx264 -pix_fmt yuv420p -crf 18 -r 30 -c:a aac -b:a 256k arguably-promo.mp4</pre>
+        <button class="copy" type="button" id="copyBtn">Copy command</button>
+      </div>
+      <div class="step">
+        <h3>App Store preview size</h3>
+        <p>For 6.9" iPhones, convert the app capture the same way and add <code>-vf scale=886:1920</code>. Apple wants 15–30 seconds, 30 fps, and an audio track; the silent track in the command counts.</p>
+      </div>
+      <div class="step">
+        <h3>Where the files are</h3>
+        <p>In the repo under <code>arguably/promo/</code>. Run <code>node scripts/make-promo.cjs</code> (add <code>--clean</code> for the app capture) to render them again after the app changes.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>Rendered with system fonts on the build machine. Your phone shows the app in Inter and Sora, so it looks slightly sharper there.</footer>
+</div>
+
+<script>
+  document.getElementById("copyBtn").addEventListener("click", async (e) => {
+    const text = document.getElementById("cmd").textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      e.target.textContent = "Copied";
+    } catch {
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById("cmd"));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      e.target.textContent = "Selected. Press Copy";
+    }
+    setTimeout(() => (e.target.textContent = "Copy command"), 2200);
+  });
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) document.querySelectorAll("video").forEach((v) => v.removeAttribute("loop"));
+</script>
