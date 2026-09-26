@@ -69,7 +69,7 @@ async function shot(page, name) {
 test("home screen: loads cleanly and fits phones", async () => {
   for (const width of [undefined, 360]) {
     const { page, errors } = await openApp({}, { width });
-    await page.waitForTimeout(700); // let the entrance animation settle before the screenshot
+    await page.waitForTimeout(3000); // let the entrance animation (verdict card flip) settle before measuring
     await shot(page, `home-${width || 390}`);
     assert.deepEqual(errors, []);
     assert.deepEqual(await layoutProblems(page), []);
@@ -92,7 +92,7 @@ test("home demo: arguments take turns, and tapping the phones skips ahead", asyn
     await page.locator(".demo").screenshot({ path: path.join(OUT, `demo-${i}.png`) });
     assert.deepEqual(await layoutProblems(page), []);
     await page.click(".demo-phones");
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(1500); // judging sweep + phones fling away, then the next pair starts
   }
   assert.equal(await page.locator(".demo-dots i").count(), 4);
   assert.deepEqual(errors, []);

@@ -708,14 +708,21 @@ function demoHTML(demo) {
       .join("");
   const [sa, sb] = demo.scores;
   const win = demo.winner === "a" ? demo.a : demo.b;
+  // Each phone gives a little jolt when its first label slams on.
+  const firstStamp = (list, start) => {
+    const i = list.findIndex((b) => b[2]);
+    return i < 0 ? 99999 : start + i * 350 + 850;
+  };
+  const shake = (list, start) => ` style="--sd:${firstStamp(list, start)}ms"`;
   return `
       <div class="demo-phones" aria-hidden="true" data-action="demo-next">
-        <div class="demo-phone maya">
+        <div class="demo-scan"><span>Judging…</span></div>
+        <div class="demo-phone maya"${shake(demo.left, 150)}>
           <span class="demo-label"><i></i>${esc(demo.a)}'s phone</span>
           <span class="demo-chat">${esc(demo.b)}</span>
           ${bubbles(demo.left, 150)}
         </div>
-        <div class="demo-phone jordan">
+        <div class="demo-phone jordan"${shake(demo.right, 700)}>
           <span class="demo-label"><i></i>${esc(demo.b)}'s phone</span>
           <span class="demo-chat">${esc(demo.a)}</span>
           ${bubbles(demo.right, 700)}
@@ -724,25 +731,35 @@ function demoHTML(demo) {
       </div>
       <button class="demo-verdict" type="button" data-action="example" aria-label="${esc(win)} has the stronger case. See a full example verdict"${d(1800)}>
         <span class="dv-top"><span class="dv-eyebrow">Verdict</span><span class="dv-tag">Example</span></span>
-        <span class="dv-title">${esc(win)} has the stronger case.</span>
+        <span class="dv-title"><span class="dv-win">${esc(win)}</span> has the stronger case.</span>
         <span class="dv-bar"><i style="flex:${sa};--d:2000ms"></i><i style="flex:${sb};--d:2000ms"></i></span>
-        <span class="dv-scores"><span><i class="dot maya"></i>${esc(demo.a)} ${sa}</span><span>${esc(demo.b)} ${sb}<i class="dot jordan"></i></span></span>
+        <span class="dv-scores"><span><i class="dot maya"></i>${esc(demo.a)} <b class="dv-n" style="--to:${sa}" data-n="${sa}"></b></span><span>${esc(demo.b)} <b class="dv-n" style="--to:${sb}" data-n="${sb}"></b><i class="dot jordan"></i></span></span>
         <span class="dv-chips"${d(2300)}>${demo.chips.map((c) => `<span>${esc(c)}</span>`).join("")}<span class="ok">${svg(ICON.check, 13)}Quotes checked</span></span>
       </button>
       <div class="demo-dots" aria-hidden="true">${DEMOS.map((_, i) => `<i${i === demoIndex ? ' class="on"' : ""}></i>`).join("")}</div>`;
 }
-// Next argument: fade the old one out, then play the new one from the start.
+// Next argument: the phones get judged (a scan sweeps them), fling away like dismissed cards,
+// and the next pair rises in and plays from the start.
+let demoSwapping = false;
 function nextDemo() {
   const el = document.querySelector(".demo");
-  if (!el || chat || page) return;
-  el.classList.add("swapping");
-  setTimeout(() => {
+  if (!el || chat || page || demoSwapping) return;
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const swap = () => {
+    demoSwapping = false;
     demoIndex = (demoIndex + 1) % DEMOS.length;
     homeShownAt = performance.now();
     const now = document.querySelector(".demo");
     if (!now || chat || page) return;
     now.outerHTML = `<div class="demo" data-play="" style="--t0:0ms">${demoHTML(DEMOS[demoIndex])}</div>`;
-  }, 260);
+  };
+  if (still) return swap();
+  demoSwapping = true;
+  el.classList.add("judging");
+  setTimeout(() => {
+    document.querySelector(".demo")?.classList.add("leaving");
+    setTimeout(swap, 420);
+  }, 900);
 }
 // Changes every 8 seconds while the home screen is showing (not when motion is reduced).
 setInterval(() => {

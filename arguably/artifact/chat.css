@@ -167,8 +167,9 @@ body.on-home .thread { padding-bottom: 0; }
   background: var(--white); border: 1px solid var(--sand-300); border-radius: 22px;
   box-shadow: 0 12px 28px rgba(36, 16, 14, 0.1);
 }
-.demo-phone.maya { transform: rotate(-3.5deg); }
-.demo-phone.jordan { transform: translateY(10px) rotate(3deg); }
+.demo-phone.maya { --base: rotate(-3.5deg); }
+.demo-phone.jordan { --base: translateY(10px) rotate(3deg); }
+.demo-phone { transform: var(--base); }
 .demo-label { display: flex; align-items: center; gap: 6px; font: 700 12px/1.2 var(--font-body); color: var(--ink-900); }
 .demo-label i { width: 8px; height: 8px; border-radius: 50%; background: var(--ember-500); }
 .jordan .demo-label i { background: var(--logo-navy); }
@@ -226,21 +227,75 @@ body.on-home .thread { padding-bottom: 0; }
 .dv-check { display: flex; align-items: center; gap: 6px; font: 600 13px/1.3 var(--font-body); color: var(--success); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .demo[data-play] .bub { animation: bub-in 320ms var(--ease-out) calc(var(--d, 0ms) + var(--t0)) both; }
-  .demo[data-play] .bub.out { animation-name: bub-in-out; }
-  .demo[data-play] .stamp { animation: stamp 260ms cubic-bezier(.2, 1.4, .4, 1) calc(var(--d, 0ms) + var(--t0)) both; }
+  /* A new pair of phones rises in with a little bounce. */
+  .demo[data-play] .demo-phone { animation: phone-in 620ms cubic-bezier(.2, 1.25, .4, 1) var(--t0) both, phone-shake 320ms ease-in-out calc(var(--sd, 99999ms) + var(--t0) + 60ms) both; }
+  .demo[data-play] .demo-phone.jordan { animation-delay: calc(var(--t0) + 90ms), calc(var(--sd, 99999ms) + var(--t0) + 60ms); }
+  /* Each message: a bubble pops up with typing dots, then the words resolve. */
+  .demo[data-play] .bub:not(.typing) { animation: bub-in 380ms cubic-bezier(.2, 1.3, .4, 1) calc(var(--d, 0ms) + var(--t0)) both, bub-reveal 240ms ease-out calc(var(--d, 0ms) + var(--t0) + 380ms) both; }
+  .demo[data-play] .bub.out:not(.typing) { animation-name: bub-in-out, bub-reveal; }
+  .demo[data-play] .bub:not(.typing)::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 22px; height: 6px; margin: -3px 0 0 -11px; pointer-events: none;
+    background: radial-gradient(circle, var(--dot, var(--ink-600)) 2.4px, transparent 2.8px) 0 0 / 8px 6px repeat-x;
+    animation: bub-dots 400ms ease-in-out calc(var(--d, 0ms) + var(--t0)) both;
+  }
+  .demo[data-play] .bub.out:not(.typing)::after { --dot: rgba(255, 255, 255, .9); }
+  /* Labels slam on. */
+  .demo[data-play] .stamp { animation: stamp 300ms cubic-bezier(.2, 1.6, .4, 1) calc(var(--d, 0ms) + var(--t0)) both; }
   .demo[data-play] .bub.typing i { animation: typing 1s ease-in-out calc(var(--d, 0ms) + var(--t0) + 300ms) 4; }
   .demo[data-play] .bub.typing i:nth-child(2) { animation-delay: calc(var(--d, 0ms) + var(--t0) + 450ms); }
   .demo[data-play] .bub.typing i:nth-child(3) { animation-delay: calc(var(--d, 0ms) + var(--t0) + 600ms); }
-  .demo[data-play] .demo-verdict { animation: land 520ms var(--ease-out) calc(var(--d, 0ms) + var(--t0)) both; }
+  /* The verdict card flips open, the bar fills, scores count up, and light sweeps the winner. */
+  .demo[data-play] .demo-verdict { transform-origin: 50% 0; animation: flip-in 640ms cubic-bezier(.2, 1.2, .4, 1) calc(var(--d, 0ms) + var(--t0)) both; }
   .demo[data-play] .dv-bar i { animation: fill 700ms var(--ease-out) calc(var(--d, 0ms) + var(--t0)) both; }
+  .demo[data-play] .dv-n { animation: count 800ms cubic-bezier(.2, .8, .2, 1) calc(2000ms + var(--t0)) both; }
+  .demo[data-play] .dv-win {
+    background: linear-gradient(100deg, var(--ember-950) 42%, var(--ember-500) 50%, var(--ember-950) 58%) 100% 0 / 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: sweep 900ms ease-in-out calc(2200ms + var(--t0)) both;
+  }
   .demo[data-play] .dv-chips { animation: fade-up 360ms var(--ease-out) calc(var(--d, 0ms) + var(--t0)) both; }
+
+  /* Before the switch: a scan sweeps both phones ("Judging…"), then they fling away. */
+  .demo.judging .demo-scan { opacity: 1; }
+  .demo.judging .demo-scan::before { animation: scan 850ms cubic-bezier(.45, 0, .55, 1) both; }
+  .demo.judging .demo-scan span { animation: fade-up 240ms var(--ease-out) both; }
+  .demo.leaving .demo-scan { opacity: 0; }
+  .demo.leaving .demo-phone.maya { animation: fling-left 420ms cubic-bezier(.5, 0, .9, .4) both; }
+  .demo.leaving .demo-phone.jordan { animation: fling-right 420ms cubic-bezier(.5, 0, .9, .4) 40ms both; }
+  .demo.leaving .demo-verdict { transform-origin: 50% 0; animation: flip-out 360ms ease-in both; }
 }
-@keyframes bub-in { from { opacity: 0; transform: translate(-8px, 10px) scale(.92); } }
-@keyframes bub-in-out { from { opacity: 0; transform: translate(8px, 10px) scale(.92); } }
-@keyframes stamp { from { opacity: 0; transform: scale(1.8) rotate(-12deg); } }
+/* Scores are numbers drawn by CSS so they can count up; without animation they just show. */
+@property --n { syntax: "<integer>"; inherits: false; initial-value: 0; }
+.dv-n { --n: var(--to); counter-reset: n var(--n); font: inherit; }
+.dv-n::after { content: counter(n); }
+.demo-phones { position: relative; }
+.demo-scan { position: absolute; inset: -6px -4px; z-index: 3; pointer-events: none; opacity: 0; transition: opacity 160ms ease; overflow: hidden; border-radius: 24px; }
+.demo.judging .demo-scan { background: rgba(255, 247, 243, .28); }
+.demo-scan::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 90px; transform: translateY(-96px);
+  background: linear-gradient(180deg, rgba(183, 67, 36, 0), rgba(183, 67, 36, .22) 60%, rgba(183, 67, 36, .55) 90%, #ff7a5c 97%, rgba(183, 67, 36, 0));
+  box-shadow: 0 6px 18px rgba(255, 90, 71, .35);
+}
+.demo-scan span {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); padding: 7px 14px; border-radius: var(--radius-pill);
+  background: var(--ember-950); color: var(--white); font: 700 12px/1 var(--font-body); letter-spacing: .12em; text-transform: uppercase;
+  box-shadow: 0 10px 24px rgba(36, 16, 14, .3);
+}
+@keyframes bub-in { from { opacity: 0; transform: translate(-10px, 14px) scale(.6); } }
+@keyframes bub-in-out { from { opacity: 0; transform: translate(10px, 14px) scale(.6); } }
+@keyframes bub-reveal { from { color: transparent; } }
+@keyframes bub-dots { 0% { opacity: 0; } 15%, 60% { opacity: 1; transform: translateY(0); } 35% { transform: translateY(-2px); } 100% { opacity: 0; } }
+@keyframes stamp { 0% { opacity: 0; transform: scale(2.2) rotate(-14deg); } 70% { opacity: 1; } }
 @keyframes typing { 0%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
-@keyframes land { from { opacity: 0; transform: translateY(24px) scale(.97); } }
+@keyframes phone-in { from { opacity: 0; transform: var(--base) translateY(46px) scale(.92); } }
+@keyframes phone-shake { 25% { transform: var(--base) translateX(-3px) rotate(-1deg); } 55% { transform: var(--base) translateX(3px) rotate(.8deg); } 80% { transform: var(--base) translateX(-1px); } }
+@keyframes fling-left { to { opacity: 0; transform: var(--base) translate(-120%, 30px) rotate(-18deg); } }
+@keyframes fling-right { to { opacity: 0; transform: var(--base) translate(120%, 30px) rotate(18deg); } }
+@keyframes flip-in { from { opacity: 0; transform: perspective(900px) rotateX(-80deg) translateY(12px); } }
+@keyframes flip-out { to { opacity: 0; transform: perspective(900px) rotateX(80deg); } }
+@keyframes scan { to { transform: translateY(360px); } }
+@keyframes count { from { --n: 0; } }
+@keyframes sweep { to { background-position: 0 0; } }
 @keyframes fill { from { transform: scaleX(0); } }
 @keyframes fade-up { from { opacity: 0; transform: translateY(6px); } }
 
@@ -835,8 +890,6 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .plan-title b, .pw-links button, .pw-links a { white-space: nowrap; }
 /* Home demo: arguments take turns. */
 .demo-phones { cursor: pointer; }
-.demo > * { transition: opacity 240ms var(--ease-out); }
-.demo.swapping > * { opacity: 0; }
 .demo-dots { display: flex; justify-content: center; gap: 6px; margin-top: 12px; }
 .demo-dots i { width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--sand-300); transition: width var(--dur-md) var(--ease-out); }
 .demo-dots i.on { width: 18px; background: var(--ember-500); }
@@ -875,3 +928,4 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .account .page-title:focus { outline: none; }
 .recovery-code { padding: 18px 12px; border: 2px dashed var(--ember-300); border-radius: 18px; background: var(--white); text-align: center; font: 700 clamp(17px, 5.2vw, 22px)/1.3 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .04em; color: var(--ink-900); user-select: all; overflow-wrap: anywhere; }
 .danger-zone h2.plain { color: var(--ink-900); }
+.home { overflow-x: clip; } /* the demo animation flings phones off-screen; never let the page scroll sideways */
