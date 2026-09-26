@@ -15,7 +15,13 @@ const ROOT = path.join(__dirname, "..");
 const WEB = path.join(ROOT, "web-dist");
 const OUT = path.join(ROOT, "promo");
 const CLEAN = process.argv.includes("--clean");
-const FPS = 30;
+// --fps 60: the page runs in slow motion while it's captured (CSS animations, timers, clocks
+// and requestAnimationFrame all slowed by SLOW), then the frames are laid out at real speed,
+// so every one of the 60 frames a second is a real, separately painted frame. App Store
+// previews allow at most 30 fps, so the clean cut stays at 30 unless asked.
+const argOf = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
+const FPS = Number(argOf("--fps")) || 30;
+const SLOW = FPS > 30 ? 2.5 : 1;
 const W = 1080, H = 1920;
 const STAGE = { w: 432, h: 768, dpr: W / 432 }; // 432x768 CSS px at 2.5x = 1080x1920
 const APP = CLEAN ? { w: 432, h: 768 } : { w: 393, h: 852 }; // clean: the app fills the frame
@@ -155,6 +161,18 @@ function serve() {
 
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: STAGE.w, height: STAGE.h }, deviceScaleFactor: STAGE.dpr, isMobile: true, hasTouch: true });
+  if (SLOW > 1) await context.addInitScript((K) => {
+    const pn = performance.now.bind(performance);
+    const base = pn();
+    performance.now = () => base + (pn() - base) / K;
+    const dn = Date.now;
+    const dbase = dn();
+    Date.now = () => dbase + (dn() - dbase) / K;
+    const st = window.setTimeout, si = window.setInterval, raf = window.requestAnimationFrame.bind(window);
+    window.setTimeout = (f, d = 0, ...a) => st(f, d * K, ...a);
+    window.setInterval = (f, d = 0, ...a) => si(f, d * K, ...a);
+    window.requestAnimationFrame = (cb) => raf((t) => cb(base + (t - base) / K));
+  }, SLOW);
   await context.addInitScript(() => {
     if (location.pathname === "/__stage.html") return;
     localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, name: "", policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true }));
@@ -169,7 +187,7 @@ function serve() {
   await context.route("**/api/verdicts**", (r) => r.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
   await context.route("**/api/auth**", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ accounts: false, user: null }) }));
   await context.route("**/api/json", async (r) => {
-    await new Promise((ok) => setTimeout(ok, 3600)); // the judging moment
+    await new Promise((ok) => setTimeout(ok, 3600 * SLOW)); // the judging moment
     r.fulfill({ contentType: "application/json", body: JSON.stringify(sampleVerdict) });
   });
   const page = await context.newPage();
@@ -185,12 +203,16 @@ function serve() {
 
   // ---- capture ----
   const cdp = await context.newCDPSession(page);
+  if (SLOW > 1) {
+    await cdp.send("Animation.enable");
+    await cdp.send("Animation.setPlaybackRate", { playbackRate: 1 / SLOW }); // CSS animations and transitions
+  }
   const frames = []; // {t, data}
   // The page paints nothing while it sits still, so the frame from before the story can be a
   // half-painted first paint. The video starts with the first frame painted after goLive().
   let t0 = 0, live = false;
   cdp.on("Page.screencastFrame", (f) => {
-    const t = f.metadata.timestamp * 1000;
+    const t = (f.metadata.timestamp * 1000) / SLOW; // back to real speed
     if (live) {
       if (!t0) t0 = t;
       frames.push({ t: t - t0, data: Buffer.from(f.data, "base64") });
@@ -199,45 +221,65 @@ function serve() {
   });
   const goLive = () => (live = true);
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 95, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
-  const wait = (ms) => page.waitForTimeout(ms);
+  const wait = (ms) => page.waitForTimeout(ms * SLOW);
   const stage = (js) => page.evaluate(js);
   const cap = (html) => stage(`stage.caption(${JSON.stringify(html)})`);
 
   // ---- the story ----
+  const started = Date.now();
+  const mark = (step) => process.env.TIMINGS && console.log(`${(((Date.now() - started) / SLOW) / 1000).toFixed(1)}s  ${step}`);
   goLive();
   if (!CLEAN) {
     await stage("stage.hook()");
+    mark('await stage("stage.hook()");');
     await wait(2300);
+    mark('await wait(2300);');
     await stage("stage.phoneUp()");
+    mark('await stage("stage.phoneUp()");');
     await cap("Drop in the screenshots from <em>both</em> phones.");
+    mark('await cap("Drop in the screenshots from <em>both</em> phones');
     await wait(4200);
+    mark('await wait(4200);');
   } else {
     await wait(3500); // the home screen's own demo
+    mark('await wait(3500);');
   }
   await app.locator('#thread [data-action="paste"]').first().click();
+  mark('await app.locator(\'#thread [data-action="paste"]\').first().c');
   await wait(500);
+  mark('await wait(500);');
   await app.locator("#messageInput").fill("");
-  await app.locator("#messageInput").pressSequentially(CONVO.slice(0, 64), { delay: 18 });
+  mark('await app.locator("#messageInput").fill("");');
+  await app.locator("#messageInput").pressSequentially(CONVO.slice(0, 64), { delay: 18 * SLOW });
+  mark('await app.locator("#messageInput").pressSequentially(CONVO.s');
   await app.locator("#messageInput").fill(CONVO);
+  mark('await app.locator("#messageInput").fill(CONVO);');
   await wait(500);
+  mark('await wait(500);');
   if (!CLEAN) await cap("Arguably reads every message…");
   await app.locator("#sendBtn").click();
-  await app.locator(".msg.verdict").waitFor({ timeout: 20000 });
+  mark('await app.locator("#sendBtn").click();');
+  await app.locator(".msg.verdict").waitFor({ timeout: 20000 * SLOW });
+  mark('await app.locator(".msg.verdict").waitFor({ timeout: 20000 *');
   if (!CLEAN) await cap("…and picks a winner. <em>With receipts.</em>");
   await wait(2600);
+  mark('await wait(2600);');
   // Glide down through the verdict: winner, how it started, low blows, quote check.
-  const scrollBy = (y, ms) => appFrame.evaluate(async ([y, ms]) => {
-    const el = document.scrollingElement;
-    const from = el.scrollTop, start = performance.now();
-    await new Promise((done) => {
-      const step = (now) => {
-        const k = Math.min(1, (now - start) / ms);
-        el.scrollTop = from + y * (k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
-        k < 1 ? requestAnimationFrame(step) : done();
-      };
-      requestAnimationFrame(step);
-    });
-  }, [y, ms]);
+  // Scrolling is driven from here, on the recorder's own clock, so it keeps its pace even when
+  // the page is slowed down and busy painting.
+  const ease = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+  const scrollBy = async (y, ms) => {
+    const from = await appFrame.evaluate(() => document.scrollingElement.scrollTop);
+    const max = await appFrame.evaluate(() => document.scrollingElement.scrollHeight - innerHeight);
+    const to = Math.max(0, Math.min(max, from + y));
+    const t0 = Date.now(), total = ms * SLOW;
+    for (;;) {
+      const k = Math.min(1, (Date.now() - t0) / total);
+      await appFrame.evaluate((v) => { document.scrollingElement.scrollTop = v; }, from + (to - from) * ease(k));
+      if (k >= 1) break;
+      await new Promise((r) => setTimeout(r, 12));
+    }
+  };
   // Bring a part of the verdict to just under the top bar.
   const glideTo = async (text, ms) => {
     const y = await appFrame.evaluate((text) => {
@@ -245,21 +287,32 @@ function serve() {
       return el ? el.getBoundingClientRect().top - 70 : 400;
     }, text);
     await scrollBy(y, ms);
+    mark('await scrollBy(y, ms);');
   };
   if (!CLEAN) await cap("Who started it, and <em>what it's really about.</em>");
   await glideTo("Where it started", 1600);
+  mark('await glideTo("Where it started", 1600);');
   await wait(2600);
+  mark('await wait(2600);');
   await app.locator(".verdict").getByText("Personal shots", { exact: false }).first().click();
+  mark('await app.locator(".verdict").getByText("Personal shots", { ');
   await wait(300);
+  mark('await wait(300);');
   if (!CLEAN) await cap("Every low blow, <em>called out.</em>");
   await glideTo("Personal shots", 1500);
+  mark('await glideTo("Personal shots", 1500);');
   await wait(2800);
+  mark('await wait(2800);');
   if (!CLEAN) {
     await stage("stage.end()");
+    mark('await stage("stage.end()");');
     await wait(3400);
+    mark('await wait(3400);');
   } else {
     await scrollBy(-99999, 1400);
+    mark('await scrollBy(-99999, 1400);');
     await wait(1200);
+    mark('await wait(1200);');
   }
   await cdp.send("Page.stopScreencast");
   await browser.close();
@@ -294,7 +347,7 @@ function serve() {
     "-loglevel", "error", "-y",
     "-f", "image2pipe", "-framerate", String(FPS), "-c:v", "mjpeg", "-i", "pipe:0",
     "-vf", `scale=${W}:${H}:flags=lanczos,format=yuv420p`,
-    "-c:v", "libvpx", "-b:v", "6M", "-maxrate", "9M", "-bufsize", "9M", "-qmin", "2", "-qmax", "30", "-crf", "6",
+    "-c:v", "libvpx", "-b:v", FPS > 30 ? "5M" : "6M", "-maxrate", "9M", "-bufsize", "9M", "-qmin", "2", "-qmax", "30", "-crf", "6",
     "-deadline", "good", "-cpu-used", "1", "-auto-alt-ref", "1", "-lag-in-frames", "16", "-g", "60",
     out,
   ], { stdio: ["pipe", "inherit", "inherit"] });
