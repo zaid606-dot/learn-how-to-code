@@ -43,5 +43,11 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/(privacy|terms|support)",
+      "destination": "/index.html"
+    }
   ]
 }

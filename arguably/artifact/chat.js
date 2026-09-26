@@ -220,6 +220,13 @@ if (page !== "onboarding" && !policyOk()) {
   page = "onboarding";
   gateMode = true;
 }
+// Public links to the policy pages (arguably.app/privacy, /terms, /support) open them directly,
+// for anyone, even before agreeing (they're what you agree to). Back then goes to wherever the app would start.
+const LINKED_DOC = typeof location !== "undefined" ? location.pathname.replace(/^\/+|\/+$/g, "") : "";
+if (["privacy", "terms", "support"].includes(LINKED_DOC)) {
+  docReturn = { page, chat: null };
+  page = LINKED_DOC;
+}
 
 function savePrefs(sync = true) {
   storage(() => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)));
@@ -913,7 +920,7 @@ const SET_ICON = {
 };
 const tile = (icon, tint) => `<span class="tile ${tint}" aria-hidden="true">${pageSvg(SET_ICON[icon], 17)}</span>`;
 const chev = `<span class="set-chev" aria-hidden="true">${svg(ICON.chevron, 16)}</span>`;
-const DOC_PAGES = ["privacy", "ai", "terms", "safety", "licenses"];
+const DOC_PAGES = ["privacy", "ai", "terms", "safety", "licenses", "support"];
 
 function settingsHTML() {
   const text = (title, sub) => `<span class="set-text"><span class="set-title">${title}</span>${sub ? `<span class="set-sub">${sub}</span>` : ""}</span>`;
@@ -993,6 +1000,7 @@ function settingsHTML() {
       <h2>Support</h2>
       <div class="set-card">
         ${link('data-doc="safety"', "heart", "red", "If an argument doesn't feel safe")}
+        ${link('data-doc="support"', "info", "blue", "Help & support", "Cancel, restore, recover your account")}
         ${mail("Arguably support", "mail", "blue", "Contact support")}
         ${mail("Report a verdict", "flag", "ember", "Report a verdict", "Wrong, unfair or harmful? Tell us.")}
         ${link('data-action="example"', "play", "navy", "See an example verdict")}
@@ -1019,7 +1027,7 @@ function proSettingsHTML(link) {
       <div class="set-card">
         ${
           prefs.pro
-            ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${prefs.pro.plan === "monthly" ? "Monthly" : "Yearly"}</span><span class="set-sub">${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
+            ? `<div class="set-row static">${tile("scale", "ember")}<span class="set-text"><span class="set-title">Pro · ${prefs.pro.plan === "monthly" ? "Monthly" : "Yearly"}</span><span class="set-sub">${prefs.pro.trial && prefs.pro.expires ? `Free trial until ${esc(new Date(prefs.pro.expires).toLocaleDateString(undefined, { month: "long", day: "numeric" }))}, then ${PLANS[prefs.pro.plan]?.price || PLANS.yearly.price}/${PLANS[prefs.pro.plan]?.per || "year"} unless canceled · ` : ""}${used} of ${PRO_FAIR_USE} verdicts this month</span></span></div>
                <a class="set-row" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">${tile("doc", "sand")}<span class="set-text"><span class="set-title">Manage subscription</span></span>${chev}</a>`
             : link('data-action="paywall"', "scale", "ember", "Go Pro", trialEligible ? `Start your ${PLANS.yearly.trialDays}-day free trial` : `${PRO_FAIR_USE} verdicts a month`)
         }
@@ -1083,6 +1091,17 @@ const DOCS = {
       </ul>
       <p>In immediate danger, call your local emergency number.</p>`,
   },
+  support: {
+    title: "Help & support",
+    body: () => `<p class="doc-lede">Questions, problems, or a verdict that seems wrong? We read every message.</p>
+      <ul class="help-list"><li><a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Arguably support")}">Email support<span>${SUPPORT_EMAIL}</span></a></li></ul>
+      <h2>Cancel a subscription</h2><p>On iPhone: Settings › your name › Subscriptions › Arguably Pro › Cancel Subscription. Canceling at least 24 hours before renewal stops the next charge; you keep Pro until the period ends.</p>
+      <h2>Restore a purchase</h2><p>In Arguably: Settings › Arguably Pro › Restore purchases, signed in with the same Apple ID.</p>
+      <h2>Forgot your password</h2><p>On the sign-in page, tap Forgot password, then use the recovery code you saved when you made your account. Lost it too? Email us from the address on your account.</p>
+      <h2>Delete your account or data</h2><p>Settings › Account › Delete account erases your account and everything saved in it. Settings › Privacy &amp; data › Delete all data erases what's on your phone.</p>
+      <h2>Report a verdict</h2><p>Tap “Report this verdict” at the bottom of any verdict, or email us. Tell us what seemed wrong or unfair.</p>
+      <h2>Feeling unsafe</h2><p>See <button class="text-btn" type="button" data-doc="safety">Staying safe</button> for helplines.</p>`,
+  },
   licenses: {
     title: "Open-source licenses",
     body: () => `<p class="doc-lede">Arguably is built with open-source software. Thank you to its authors.</p>
@@ -1128,7 +1147,7 @@ function emptyChatHTML() {
   </section>`;
 }
 
-const PAGE_TITLES = { account: "Account", share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Open-source licenses" };
+const PAGE_TITLES = { support: "Help & support", account: "Account", share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Open-source licenses" };
 
 function renderHeader() {
   const onHome = !chat && !page;
@@ -2442,7 +2461,7 @@ async function checkSubscription() {
     const { customerInfo } = await P.getCustomerInfo();
     const pro = activePro(customerInfo);
     const was = !!prefs.pro;
-    prefs.pro = pro ? { plan: planOf(pro.productIdentifier), since: prefs.pro?.since || Date.now(), expires: pro.expirationDate || null } : null;
+    prefs.pro = pro ? { plan: planOf(pro.productIdentifier), since: prefs.pro?.since || Date.now(), expires: pro.expirationDate || null, trial: pro.periodType === "TRIAL" || pro.periodType === "trial" } : null;
     savePrefs(false);
     if (was !== !!prefs.pro) render();
   } catch {} // offline: keep what we knew
@@ -3750,6 +3769,8 @@ $("newBtn").addEventListener("click", () => {
   render();
 });
 $("backBtn").addEventListener("click", () => {
+  // Leaving a page opened from a public link (/privacy, /terms, /support): back to the app's own address.
+  if (LINKED_DOC && location.pathname !== "/") try { history.replaceState(history.state, "", "/" + location.search); } catch {}
   if (page === "share") {
     closeShare();
     page = null; // back to the chat the verdict is in

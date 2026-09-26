@@ -61,7 +61,7 @@ before(async () => {
   server = http.createServer((req, res) => {
     const p = new URL(req.url, "http://x").pathname;
     if (handlers[p]) return handlers[p](req, res);
-    const file = path.join(WEB, p === "/" ? "index.html" : path.normalize(p));
+    const file = path.join(WEB, p === "/" || /^\/(privacy|terms|support)\/?$/.test(p) ? "index.html" : path.normalize(p)); // same rewrites as vercel.json
     if (!file.startsWith(WEB) || !fs.existsSync(file)) { res.statusCode = 404; return res.end(); }
     const type = file.endsWith(".html") ? "text/html" : file.endsWith(".js") ? "text/javascript" : file.endsWith(".svg") ? "image/svg+xml" : "application/octet-stream";
     res.setHeader("Content-Type", type);
@@ -318,7 +318,7 @@ test("iPhone app (website inside the native shell): App Store mode, RevenueCat b
     const pkg = (id) => ({ identifier: id.includes("yearly") ? "$rc_annual" : "$rc_monthly", product: { identifier: id } });
     const state = (window.__rc = JSON.parse(sessionStorage.getItem("rc") || '{"calls":[],"active":null,"cancel":false,"restorable":null}'));
     const save = () => sessionStorage.setItem("rc", JSON.stringify(state));
-    const info = () => ({ customerInfo: { entitlements: { active: state.active ? { pro: { productIdentifier: state.active, expirationDate: "2027-01-01" } } : {} } } });
+    const info = () => ({ customerInfo: { entitlements: { active: state.active ? { pro: { productIdentifier: state.active, expirationDate: "2027-01-01T12:00:00Z", periodType: state.active.includes("yearly") ? "TRIAL" : "NORMAL" } } : {} } } });
     const call = (name, arg) => { state.calls.push([name, arg]); save(); };
     window.__share = [];
     window.Capacitor = {
@@ -373,6 +373,11 @@ test("iPhone app (website inside the native shell): App Store mode, RevenueCat b
   assert.equal((await pro()).plan, "yearly");
   assert.deepEqual((await rc()).calls.filter(([n]) => n === "purchasePackage").map(([, id]) => id), ["arguably.pro.yearly", "arguably.pro.yearly"]);
 
+  // In the trial, Settings says when it ends and what it costs after (read at launch).
+  await page.reload();
+  await page.click("#settingsBtn");
+  assert.match(await page.locator(".settings").innerText(), /Free trial until January 1, then \$29\.99\/year unless canceled/);
+  await page.click("#backBtn");
   // The subscription ends (cancelled in iPhone Settings): on next launch, Pro is gone.
   await page.evaluate(() => { window.__rc.active = null; sessionStorage.setItem("rc", JSON.stringify(window.__rc)); });
   await page.reload();
@@ -508,6 +513,24 @@ test("website build: QA fixes — safe sign-out, offline deletes stick, reset li
   await page.waitForSelector(".account");
   assert.equal(await page.locator(".page-title").innerText(), "Choose a new password");
   assert.ok(await page.locator('[data-auth-mode="forgot"]').isVisible(), "a way out if the link expired");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("website build: public policy links (/privacy, /terms, /support) open for anyone, then back into the app", async () => {
+  const context = await browser.newContext(devices["iPhone 13"]);
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  for (const [route, title] of [["privacy", "Privacy Policy"], ["terms", "Terms of Use"], ["support", "Help & support"]]) {
+    await page.goto(url + route);
+    await page.waitForSelector(".doc .page-title");
+    assert.equal(await page.locator(".doc .page-title").innerText(), title);
+  }
+  assert.match(await page.locator(".doc").innerText(), /Cancel a subscription[\s\S]*Restore a purchase[\s\S]*Delete your account/);
+  await page.click("#backBtn");
+  await page.waitForSelector(".onboard");
+  assert.equal(new URL(page.url()).pathname, "/", "back at the app's own address");
   assert.deepEqual(errors, []);
   await context.close();
 });
