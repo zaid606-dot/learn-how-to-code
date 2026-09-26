@@ -4,11 +4,20 @@
   "webDir": "www",
   "server": {
     "url": "https://arguably-gold.vercel.app",
-    "cleartext": false
+    "cleartext": false,
+    "errorPath": "index.html"
   },
   "ios": {
     "contentInset": "never",
     "backgroundColor": "#FFF7F3",
     "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "presentationOptions": [
+        "banner",
+        "sound"
+      ]
+    }
   }
 }

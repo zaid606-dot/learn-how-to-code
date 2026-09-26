@@ -929,3 +929,10 @@ body.on-paywall .thread { padding-top: 0; padding-bottom: 0; }
 .recovery-code { padding: 18px 12px; border: 2px dashed var(--ember-300); border-radius: 18px; background: var(--white); text-align: center; font: 700 clamp(17px, 5.2vw, 22px)/1.3 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .04em; color: var(--ink-900); user-select: all; overflow-wrap: anywhere; }
 .danger-zone h2.plain { color: var(--ink-900); }
 .home { overflow-x: clip; } /* the demo animation flings phones off-screen; never let the page scroll sideways */
+.report-reasons { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.report-opt { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 10px 14px; border: 1.5px solid var(--sand-300); border-radius: 14px; background: var(--white); font-size: 15px; cursor: pointer; }
+.report-opt:has(input:checked) { border-color: var(--ember-500); background: var(--ember-50); }
+.report-opt input { width: 20px; height: 20px; accent-color: var(--ember-500); margin: 0; }
+.account textarea { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1.5px solid var(--sand-300); border-radius: 14px; font: 16px/1.4 var(--font-body); resize: vertical; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.v-foot .text-btn { display: inline-flex; min-height: 44px; vertical-align: middle; font-size: inherit; }

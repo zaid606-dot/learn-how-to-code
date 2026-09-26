@@ -3,11 +3,15 @@
 // waits STEP*15 seconds before failing, so the failing step can be read from the build's length
 // (build logs aren't readable from the tools used to set this up).
 import http from "node:http";
+// Emergency switch: set SKIP_LIVE_CHECK=1 in Vercel to deploy even if storage is down.
+if (process.env.SKIP_LIVE_CHECK === "1") process.exit(0);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let step = 0;
+let cleanup = async () => {};
 async function check(ok) {
   step++;
   if (!ok) {
+    await cleanup().catch(() => {}); // never leave the test account behind
     await sleep(step * 15000);
     process.exit(1);
   }
@@ -31,6 +35,19 @@ const phone = () => {
   };
 };
 const email = `live-check-${Date.now()}@example.com`;
+const { redis } = await import("../api/_store.js");
+let vaultId = "";
+cleanup = async () => {
+  const id = await redis(["GET", `user:email:${email}`]);
+  if (typeof id === "string") {
+    for (const k of [`chats:${id}`, `deleted:${id}`, `prefs:${id}`, `user:${id}`]) await redis(["DEL", k]);
+    const sessions = (await redis(["SMEMBERS", `sessions:${id}`])) || [];
+    for (const k of sessions) await redis(["DEL", `session:${k}`]);
+    await redis(["DEL", `sessions:${id}`]);
+    await redis(["DEL", `user:email:${email}`]);
+  }
+  if (vaultId) await redis(["DEL", `v:${vaultId}`]);
+};
 const a = phone(), b = phone();
 const signup = await a("/api/auth?op=signup", "POST", { email, password: "live check pw 1" });
 await check(signup.status === 200 && !!signup.data.recoveryCode); // 2
@@ -44,10 +61,11 @@ await check(rec.status === 200 && rec.data.recoveryCode !== signup.data.recovery
 await check((await a("/api/auth?op=me")).data.user === null); // 9: other sessions ended
 const c = phone();
 await check((await c("/api/auth?op=login", "POST", { email, password: "live check pw 2" })).status === 200); // 10
-const id = [...crypto.getRandomValues(new Uint8Array(32))].map((x) => x.toString(16).padStart(2, "0")).join("");
+const id = (vaultId = [...crypto.getRandomValues(new Uint8Array(32))].map((x) => x.toString(16).padStart(2, "0")).join(""));
 await check((await c("/api/verdicts", "POST", { id, blob: "A".repeat(60) })).data.blob === "A".repeat(60)); // 11
 await check((await c("/api/verdicts", "POST", { id, blob: "B".repeat(60) })).data.blob === "A".repeat(60)); // 12
 await check((await c("/api/auth?op=delete", "POST", { password: "live check pw 2" })).status === 200); // 13
 await check((await phone()("/api/auth?op=login", "POST", { email, password: "live check pw 2" })).status === 401); // 14
+await cleanup(); // the test verdict and any leftovers
 server.close();
 process.exit(0);

@@ -12,7 +12,9 @@
     "@capacitor/ios": "latest",
     "@capacitor/share": "latest",
     "@capacitor/filesystem": "latest",
-    "@revenuecat/purchases-capacitor": "latest"
+    "@revenuecat/purchases-capacitor": "latest",
+    "@capacitor/local-notifications": "latest",
+    "@capacitor/haptics": "latest"
   },
   "devDependencies": {
     "@capacitor/cli": "latest"

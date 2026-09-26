@@ -57,6 +57,7 @@ before(async () => {
     "/api/verdicts": (await import(path.join(ROOT, "api/verdicts.js"))).default,
     "/api/auth": (await import(path.join(ROOT, "api/auth.js"))).default,
     "/api/sync": (await import(path.join(ROOT, "api/sync.js"))).default,
+    "/api/report": (await import(path.join(ROOT, "api/report.js"))).default,
   };
   server = http.createServer((req, res) => {
     const p = new URL(req.url, "http://x").pathname;
@@ -315,7 +316,7 @@ test("iPhone app (website inside the native shell): App Store mode, RevenueCat b
       sessionStorage.setItem("seeded", "1");
       localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true }));
     }
-    const pkg = (id) => ({ identifier: id.includes("yearly") ? "$rc_annual" : "$rc_monthly", product: { identifier: id } });
+    const pkg = (id) => ({ identifier: id.includes("yearly") ? "$rc_annual" : "$rc_monthly", product: { identifier: id, priceString: id.includes("yearly") ? "34,99 €" : "10,99 €", price: id.includes("yearly") ? 34.99 : 10.99 } });
     const state = (window.__rc = JSON.parse(sessionStorage.getItem("rc") || '{"calls":[],"active":null,"cancel":false,"restorable":null}'));
     const save = () => sessionStorage.setItem("rc", JSON.stringify(state));
     const info = () => ({ customerInfo: { entitlements: { active: state.active ? { pro: { productIdentifier: state.active, expirationDate: "2027-01-01T12:00:00Z", periodType: state.active.includes("yearly") ? "TRIAL" : "NORMAL" } } : {} } } });
@@ -356,6 +357,9 @@ test("iPhone app (website inside the native shell): App Store mode, RevenueCat b
   await page.click("#settingsBtn");
   await page.click('[data-action="paywall"]');
   await page.waitForSelector(".paywall");
+  await page.waitForFunction(() => /34,99 €/.test(document.querySelector(".paywall").innerText));
+  assert.match(await page.locator(".paywall").innerText(), /10,99 €[\s\S]*Save 73%|Save 73%[\s\S]*10,99 €/, "the App Store's own prices and the saving worked out from them");
+  assert.match(await page.locator(".paywall").innerText(), /Terms of Use \(EULA\)/);
   await page.screenshot({ path: path.join(OUT, "ios-paywall.png") });
 
   // Cancel in Apple's sheet: nothing happens, no scary error.
@@ -376,7 +380,7 @@ test("iPhone app (website inside the native shell): App Store mode, RevenueCat b
   // In the trial, Settings says when it ends and what it costs after (read at launch).
   await page.reload();
   await page.click("#settingsBtn");
-  assert.match(await page.locator(".settings").innerText(), /Free trial until January 1, then \$29\.99\/year unless canceled/);
+  assert.match(await page.locator(".settings").innerText(), /Free trial until January 1, then 34,99 €\/year unless canceled/);
   await page.click("#backBtn");
   // The subscription ends (cancelled in iPhone Settings): on next launch, Pro is gone.
   await page.evaluate(() => { window.__rc.active = null; sessionStorage.setItem("rc", JSON.stringify(window.__rc)); });
@@ -531,6 +535,36 @@ test("website build: public policy links (/privacy, /terms, /support) open for a
   await page.click("#backBtn");
   await page.waitForSelector(".onboard");
   assert.equal(new URL(page.url()).pathname, "/", "back at the app's own address");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("website build: a sample argument runs a real verdict, and a verdict can be reported in the app", async () => {
+  const context = await browser.newContext(devices["iPhone 13"]);
+  await context.addInitScript(() => localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true })));
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(url);
+  await page.locator('#thread [data-action="paste"]').first().click();
+  await page.click('[data-action="sample-argument"]');
+  assert.match(await page.inputValue("#messageInput"), /^Sam: did you eat my leftovers again\?/);
+  await page.click("#sendBtn");
+  await page.waitForSelector(".msg.verdict", { timeout: 30000 });
+  await page.click(".v-foot [data-report]");
+  assert.equal(await page.locator(".page-title").innerText(), "Report a verdict");
+  await page.click('.auth-form [type="submit"]');
+  await page.waitForSelector(".auth-error");
+  await page.click('.report-opt:has(input[value="unfair"])');
+  await page.fill("#reportDetails", "It ignored that I replaced the milk.");
+  await page.click('.auth-form [type="submit"]');
+  await page.waitForFunction(() => /Thanks for telling us/.test(document.body.innerText));
+  const stored = [...store.data].filter(([k]) => k.startsWith("report:")).map(([, e]) => JSON.parse(e.v));
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].reason, "unfair");
+  assert.match(stored[0].details, /replaced the milk/);
+  await page.click('[data-action="report-done"]');
+  assert.ok(await page.locator(".msg.verdict").isVisible(), "back at the verdict");
   assert.deepEqual(errors, []);
   await context.close();
 });

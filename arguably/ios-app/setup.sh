@@ -8,10 +8,12 @@ npm install
 npx cap sync ios
 
 PLIST="ios/App/App/Info.plist"
-set_key() { /usr/libexec/PlistBuddy -c "Set :$1 $2" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$1 $3 $2" "$PLIST"; }
+# Values are quoted so sentences with spaces are stored whole.
+set_key() { /usr/libexec/PlistBuddy -c "Set :$1 \"$2\"" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$1 $3 \"$2\"" "$PLIST"; }
 # Why the app asks (Apple rejects apps without these when the photo picker offers the camera).
 set_key NSPhotoLibraryUsageDescription "Arguably reads the screenshots and screen recordings you pick to judge the argument. It never browses the rest of your library." string
 set_key NSCameraUsageDescription "Take a photo of a conversation to judge it." string
+set_key NSMicrophoneUsageDescription "Recording a video of a conversation can include sound. Arguably only uses the frames, never the audio." string
 set_key NSPhotoLibraryAddUsageDescription "Save verdict cards to your photos." string
 # Arguably only uses standard HTTPS, so export compliance is simple.
 set_key ITSAppUsesNonExemptEncryption false bool

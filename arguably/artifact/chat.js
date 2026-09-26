@@ -19,6 +19,7 @@ const APP_VERSION = "1.0";
 // Bump when the Privacy Policy or Terms change: everyone is asked to agree again.
 // The website version adds accounts and the verdict vault, so its policy is a new version.
 const POLICY_VERSION = HOSTED ? "2026-09-25.2" : "2026-09-25";
+const APPLE_EULA = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
 const POLICY_DATE = "September 25, 2026";
 // App Store build only (node scripts/build-artifact.mjs --store). On claude.ai, verdicts run on
 // the viewer's own Claude plan, so there is nothing to gate.
@@ -222,8 +223,8 @@ if (page !== "onboarding" && !policyOk()) {
 }
 // Public links to the policy pages (arguably.app/privacy, /terms, /support) open them directly,
 // for anyone, even before agreeing (they're what you agree to). Back then goes to wherever the app would start.
-const LINKED_DOC = typeof location !== "undefined" ? location.pathname.replace(/^\/+|\/+$/g, "") : "";
-if (["privacy", "terms", "support"].includes(LINKED_DOC)) {
+const LINKED_DOC = HOSTED ? ["privacy", "terms", "support"].find((d) => location.pathname.replace(/^\/+|\/+$/g, "") === d) || "" : "";
+if (LINKED_DOC) {
   docReturn = { page, chat: null };
   page = LINKED_DOC;
 }
@@ -253,6 +254,8 @@ function notify(kind, title, body, chatId) {
   if (kind !== "rate" && !prefs.notify[kind]) return;
   const seen = !page && chatId && chat?.id === chatId && document.visibilityState === "visible";
   inbox.unshift({ id: uid(), kind, title, body, chatId: chatId || "", at: Date.now(), read: !!seen });
+  if (kind !== "tips") systemNotify(title, body);
+  if (kind === "verdict" && seen) haptic();
   inbox = inbox.slice(0, 50);
   saveInbox();
   renderHeader();
@@ -559,7 +562,7 @@ function verdictHTML(m, c) {
         : ""
     }
     <section class="card takeaway-card"><h2>How to move forward</h2><p class="takeaway">${esc(v.takeaway)}</p></section>
-    <p class="v-foot">An AI's opinion, not a fact. It can be wrong.${c?.shared ? "" : ` <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Report a verdict: ${v.title}`)}&amp;body=${encodeURIComponent("What's wrong or unfair about this verdict?")}">Report this verdict</a>`}</p>`;
+    <p class="v-foot">An AI's opinion, not a fact. It can be wrong.${c?.shared ? "" : HOSTED ? ` <button class="text-btn" type="button" data-report="${esc(v.title)}">Report this verdict</button>` : ` <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Report a verdict: ${v.title}`)}&amp;body=${encodeURIComponent("What's wrong or unfair about this verdict?")}">Report this verdict</a>`}</p>`;
 }
 
 // ---------- rendering: who's who ----------
@@ -855,14 +858,14 @@ function onboardingHTML() {
   const steps = [
     `<div class="ob-art ob-logo"><img src="${MARK_URI}" alt="" width="84" height="77"></div>
      <h1>Settle it.<br><em>With receipts.</em></h1>
-     <p>Import screenshots of any argument, yours or someone else's. See where it started, who made the stronger case, and every cheap shot along the way.</p>
+     <p>Import screenshots of an argument you're part of, or one you were asked to judge. See where it started, who made the stronger case, and every cheap shot along the way.</p>
      ${dots}
      <div class="ob-actions"><button class="cta" type="button" data-action="next">Get started</button></div>`,
     `<div class="ob-art">${pageSvg(PAGE_ICON.lock, 40)}</div>
      <h1>${gateMode ? "Before you continue" : "Private by default"}</h1>
      <ul class="ob-list">
        <li>${pageSvg(PAGE_ICON.device)}<span><strong>Screenshots aren't saved.</strong> They're read, then let go.</span></li>
-       <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Chats stay on this device.</strong> Delete them anytime in Settings.</span></li>
+       <li>${pageSvg(PAGE_ICON.lock)}<span><strong>Chats stay on this device${HOSTED ? " unless you make an account" : ""}.</strong> Delete them anytime in Settings.</span></li>
        <li>${pageSvg(PAGE_ICON.spark)}<span>${HOSTED ? "<strong>Accounts are optional.</strong> Sign in only if you want your chats on every phone." : `<strong>Runs on your ${AI_NAME} account.</strong> Verdicts use your ${AI_NAME} plan. No subscription here.`}</span></li>
      </ul>
      <label class="ob-agree${agreed ? " on" : ""}" id="obAgreeRow">
@@ -965,7 +968,7 @@ function settingsHTML() {
       <h2>AI &amp; screenshots</h2>
       <div class="set-card">
         ${sw("aiConsent", prefs.aiConsent, "claude", "navy", `Send chats to ${AI_NAME}`, `Needed for verdicts. ${AI_NAME} is an AI by ${AI_MAKER}.`)}
-        ${sw("readOnPhone", prefs.readOnPhone, "phone", "sand", "Read screenshots on this phone", `${AI_NAME} gets the text, never the images.`)}
+        ${maxImages ? sw("readOnPhone", prefs.readOnPhone, "phone", "sand", "Read screenshots on this phone", `${AI_NAME} gets the text, never the images.`) : ""}
         ${link('data-doc="ai"', "info", "blue", "How AI is used")}
       </div>
     </div>
@@ -973,7 +976,7 @@ function settingsHTML() {
     <div class="set-group">
       <h2>Notifications</h2>
       <div class="set-card">
-        ${sw("verdict", prefs.notify.verdict, "bell", "ember", "Verdict ready", "When a verdict finishes while you're elsewhere.")}
+        ${sw("verdict", prefs.notify.verdict, "bell", "ember", "Verdict ready", NATIVE ? "When a verdict finishes, even with Arguably closed." : "When a verdict finishes while you're on another screen.")}
         ${sw("who", prefs.notify.who, "bell", "blue", "Screenshots read", "When it's time to check who's who.")}
         ${sw("tips", prefs.notify.tips, "bell", "green", "Tips", "Now and then. Never marketing.")}
         ${link('data-action="inbox"', "bell", "sand", "All notifications")}
@@ -1051,9 +1054,10 @@ const DOCS = {
       <h2>Photos and videos</h2><p>Arguably only sees the screenshots and screen recordings you pick. It never browses the rest of your photo library. Screen recordings are turned into still frames on your device; the video itself is never uploaded or saved. Screenshots are read, then let go. They aren't stored with your chats.</p>
       <h2>What leaves your device</h2><p>When you ask for a verdict, the conversation, and the screenshots unless “Read screenshots on this phone” is on, is sent to ${AI_NAME}, an AI by ${AI_MAKER}, to write the verdict. It's sent only after you allow it, and only to answer you.</p>
       ${HOSTED
-        ? `<h2>How ${AI_NAME} is run</h2><p>On this website, requests pass through Arguably's server, which keeps no copy, to Groq, which runs the model. Groq doesn't use your conversations to train AI and doesn't keep them by default. It may keep logs for up to 30 days to investigate abuse or keep the service reliable.</p>`
+        ? `<h2>How ${AI_NAME} is run</h2><p>Requests pass through Arguably's server, which keeps no copy, to Groq, which runs the model. Groq receives the conversation; nothing is sent to Alibaba, which made the model. Groq doesn't use your conversations to train AI and doesn't keep them by default. It may keep logs for up to 30 days to investigate abuse or keep the service reliable.</p>`
         : `<h2>How ${AI_NAME} is run</h2><p>On claude.ai, verdicts run on your own ${AI_NAME} account, under Anthropic's terms and privacy policy for that account.</p>`}
-      ${STORE_BUILD ? `<h2>Subscriptions</h2><p>Arguably Pro is bought through Apple. Arguably never sees your payment details. Purchases are managed with RevenueCat, which receives an anonymous app ID and your purchase history (not your conversations) to confirm your subscription.</p>` : ""}
+      ${STORE_BUILD || LINKED_DOC ? `<h2>Subscriptions</h2><p>Arguably Pro is bought through Apple. Arguably never sees your payment details. Purchases are managed with RevenueCat, which receives an anonymous app ID and your purchase history (not your conversations) to confirm your subscription.</p>` : ""}
+      ${HOSTED ? `<h2>Who handles your data</h2><ul><li><strong>Vercel</strong> hosts Arguably and its server. Like any web host it sees your IP address, which Arguably also uses to stop abuse.</li><li><strong>Groq</strong> runs the AI that reads and judges conversations.</li><li><strong>Vercel Blob</strong> (or Upstash) stores accounts, saved chats and encrypted verdicts.</li>${STORE_BUILD || LINKED_DOC ? "<li><strong>Apple</strong> and <strong>RevenueCat</strong> handle subscriptions.</li>" : ""}</ul>` : ""}
       <h2>Tracking and ads</h2><p>Arguably doesn't track you across apps or websites, doesn't show ads, and doesn't sell or share your data with data brokers or advertisers.</p>
       <h2>Your choices</h2><p>Turn off “Send chats to ${AI_NAME}” anytime. Export or delete everything from Settings › Privacy &amp; data.${HOSTED ? " Delete your account from Settings › Account: it erases the account and everything saved in it, on every phone." : ""} Deleting is immediate and permanent.</p>
       <h2>Children</h2><p>Arguably isn't for children under 13, and doesn't knowingly collect anything from them.</p>
@@ -1078,8 +1082,8 @@ const DOCS = {
       <h2>Age</h2><p>You must be at least 13, and old enough to consent where you live.</p>
       ${HOSTED ? "<h2>Your account</h2><p>Accounts are optional. Keep your password to yourself; you're responsible for what happens under your account. Arguably may close accounts used to harass or threaten people. You can delete your account anytime in Settings.</p>" : ""}
       <h2>No warranty</h2><p>Arguably is provided as is. The AI can make mistakes.</p>
-      ${STORE_BUILD ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, or ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
-      ${HOSTED && !STORE_BUILD ? "" : "<h2>Apple</h2><p>If you got Arguably from the App Store, Apple's Licensed Application End User License Agreement also applies.</p>"}`,
+      ${STORE_BUILD || LINKED_DOC ? `<h2>Arguably Pro</h2><p>Pro is an auto-renewing subscription: ${PLANS.monthly.price}/month, or ${PLANS.yearly.price}/year with a ${PLANS.yearly.trialDays}-day free trial. Payment is charged to your Apple ID at confirmation. It renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel in your App Store account settings. Pro includes up to ${PRO_FAIR_USE} verdicts per month.</p>` : ""}
+      ${HOSTED && !STORE_BUILD && !LINKED_DOC ? "" : `<h2>Apple</h2><p>If you got Arguably from the App Store, Apple's <a href="${APPLE_EULA}" target="_blank" rel="noopener">Licensed Application End User License Agreement (EULA)</a> also applies.</p>`}`,
   },
   safety: {
     title: "Staying safe",
@@ -1105,6 +1109,7 @@ const DOCS = {
   licenses: {
     title: "Open-source licenses",
     body: () => `<p class="doc-lede">Arguably is built with open-source software. Thank you to its authors.</p>
+      ${NATIVE ? "<h2>Capacitor</h2><p>@capacitor/core, ios, share, filesystem, local-notifications and haptics. MIT License. Copyright Ionic.</p><h2>RevenueCat</h2><p>@revenuecat/purchases-capacitor. MIT License. Copyright RevenueCat, Inc.</p>" : ""}
       <h2>Tesseract OCR</h2><p>tesseract.js-core and tessdata_fast English data. Apache License 2.0. Copyright Google Inc. and the Tesseract contributors.</p>
       <ul class="help-list"><li><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0<span>apache.org</span></a></li></ul>`,
   },
@@ -1140,14 +1145,23 @@ function inboxHTML() {
   </section>`;
 }
 
+// A real (made-up) argument anyone can run through the AI, e.g. to try Arguably before using their own.
+const SAMPLE_ARGUMENT = `Sam: did you eat my leftovers again?
+Priya: there wasn't even a name on it
+Sam: it's the third time this month. I bought that for lunch tomorrow
+Priya: ok but you finished my oat milk last week and said nothing
+Sam: that's not the same, I replaced it the next day
+Priya: maybe just cook more food then 🙃
+Sam: I'm asking you to not eat things that aren't yours. that's it`;
 function emptyChatHTML() {
   return `<section class="start-hint">
     <h2>New argument</h2>
     <p>${pending.length ? "Add a note if it helps, like how you know each other, then send." : "Import screenshots with the image button, or paste the conversation below. Include names if you paste, like “Maya: …”."}</p>
+    ${pending.length ? "" : '<button class="text-btn" type="button" data-action="sample-argument">No argument handy? Try a sample one</button>'}
   </section>`;
 }
 
-const PAGE_TITLES = { support: "Help & support", account: "Account", share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Open-source licenses" };
+const PAGE_TITLES = { report: "Report a verdict", support: "Help & support", account: "Account", share: "Share verdict", shared: "Verdict", settings: "Settings", inbox: "Notifications", onboarding: "", paywall: "", privacy: "Privacy Policy", ai: "How AI is used", terms: "Terms of Use", safety: "Staying safe", licenses: "Open-source licenses" };
 
 function renderHeader() {
   const onHome = !chat && !page;
@@ -1182,6 +1196,12 @@ window.addEventListener("popstate", () => {
   if (!chat && !page) return; // home already: let the browser leave
   if (page === "onboarding" || page === "paywall" || page === "shared") {
     if (page === "shared") return leaveShared();
+  if (page === "report") {
+    page = null;
+    if (reportFor?.returnTo) chat = reportFor.returnTo;
+    reportFor = null;
+    return render();
+  }
     return syncHistory(false); // intro and paywall have their own buttons
   }
   $("backBtn").click();
@@ -1210,6 +1230,8 @@ function render() {
           ? shareHTML()
         : page === "account"
           ? accountHTML()
+        : page === "report"
+          ? reportHTML()
         : page === "shared"
           ? sharedHTML()
         : DOC_PAGES.includes(page)
@@ -2207,6 +2229,7 @@ function verdictPrompt(chat, note) {
 }
 
 async function runVerdict(c, note) {
+  askToNotify();
   const thinking = { id: uid(), role: "assistant", kind: "thinking", text: VERDICT_STEPS[0], transient: true };
   c.messages.push(thinking);
   const signal = startJob(c);
@@ -2384,7 +2407,8 @@ const nextYearDate = (days) => new Date(Date.now() + days * 864e5).toLocaleDateS
 function paywallHTML() {
   const y = PLANS.yearly, mo = PLANS.monthly;
   const plan = PLANS[paywallPlan];
-  const save = Math.round((1 - parseFloat(y.price.slice(1)) / (parseFloat(mo.price.slice(1)) * 12)) * 100);
+  const amount = (p) => (Number.isFinite(p.amount) ? p.amount : parseFloat(String(p.price).replace(/[^0-9.]/g, "")));
+  const save = Math.max(0, Math.round((1 - amount(y) / (amount(mo) * 12)) * 100));
   const trial = paywallPlan === "yearly" && trialEligible && y.trialDays;
   const radio = (key, title, price, sub, badge = "") => `<button type="button" role="radio" aria-checked="${paywallPlan === key}" class="plan${paywallPlan === key ? " on" : ""}" data-plan="${key}">
       <span class="plan-dot" aria-hidden="true"></span>
@@ -2406,7 +2430,13 @@ function paywallHTML() {
       ${radio("yearly", "Yearly", `${y.price}<small>/yr</small>`, trialEligible ? `${y.trialDays}-day free trial` : "Best value", `Save ${save}%`)}
       ${radio("monthly", "Monthly", `${mo.price}<small>/mo</small>`, "Cancel anytime")}
     </div>
-    <button class="cta pw-cta" type="button" data-action="purchase">${trial ? `Start ${y.trialDays}-day free trial` : `Subscribe for ${plan.price}/${plan.per}`}</button>
+    ${
+      !offeringsLoaded && pricesFailed
+        ? '<button class="cta pw-cta" type="button" data-action="retry-prices">Couldn\'t reach the App Store. Try again</button>'
+        : !offeringsLoaded
+          ? '<button class="cta pw-cta" type="button" disabled aria-busy="true">Loading prices…</button>'
+          : `<button class="cta pw-cta" type="button" data-action="purchase">${trial ? `Start ${y.trialDays}-day free trial` : `Subscribe for ${plan.price}/${plan.per}`}</button>`
+    }
     <p class="pw-terms">${
       trial
         ? `Free until ${nextYearDate(y.trialDays)}, then ${y.price} per year.`
@@ -2414,7 +2444,7 @@ function paywallHTML() {
     } Renews automatically unless canceled at least 24 hours before the end of the period. Manage or cancel anytime in your App Store account settings.</p>
     <div class="pw-links">
       <button type="button" data-action="restore">Restore purchases</button><span aria-hidden="true">·</span>
-      <button type="button" data-doc="terms">Terms</button><span aria-hidden="true">·</span>
+      <button type="button" data-doc="terms">Terms of Use (EULA)</button><span aria-hidden="true">·</span>
       <button type="button" data-doc="privacy">Privacy</button>
     </div>
   </section>`;
@@ -2423,6 +2453,35 @@ function paywallHTML() {
 // StoreKit lives in the native wrapper; it answers through window.ArguablyStore.
 // Without it (a browser preview) purchases are simulated so the flow can be tried end to end.
 const storeBridge = () => window.webkit?.messageHandlers?.storekit || null;
+// ---------- native iPhone extras (Capacitor plugins, only in the App Store app) ----------
+const plugin = (name) => (NATIVE ? window.Capacitor?.Plugins?.[name] : null);
+const haptic = (type = "SUCCESS") => plugin("Haptics")?.notification?.({ type }).catch?.(() => {});
+let notifyAsked = false;
+// Ask for notification permission when it's useful (a verdict is starting), not at launch.
+async function askToNotify() {
+  const LN = plugin("LocalNotifications");
+  if (!LN || notifyAsked || !prefs.notify.verdict) return;
+  notifyAsked = true;
+  try {
+    const { display } = await LN.checkPermissions();
+    if (display === "prompt" || display === "prompt-with-rationale") await LN.requestPermissions();
+  } catch {}
+}
+// A system notification when the app isn't on screen (e.g. the verdict finished in the background).
+function systemNotify(title, body) {
+  const LN = plugin("LocalNotifications");
+  if (!LN || document.visibilityState === "visible") return;
+  LN.schedule({ notifications: [{ id: Math.floor(Math.random() * 2e9), title, body }] }).catch(() => {});
+}
+// Save a file through the iPhone share sheet ("Save to Files", AirDrop, Mail…).
+async function nativeSaveFile(name, text) {
+  const Files = plugin("Filesystem"), NativeShare = plugin("Share");
+  if (!Files || !NativeShare) return false;
+  const { uri } = await Files.writeFile({ path: name, data: text, directory: "CACHE", encoding: "utf8" });
+  await NativeShare.share({ title: name, files: [uri] });
+  return true;
+}
+
 // In the iPhone app, subscriptions go through RevenueCat (Apple In-App Purchase underneath).
 // The "pro" entitlement is the source of truth: checked at launch, so an ended subscription
 // ends Pro here too.
@@ -2440,6 +2499,33 @@ function purchasesInit() {
 const activePro = (info) => info?.entitlements?.active?.pro || null;
 // Apple only lets people who haven't had the trial see a trial offer.
 let trialEligible = true;
+// Real prices from the App Store (in the person's currency), replacing the US defaults.
+let offeringsLoaded = !NATIVE;
+let pricesFailed = false;
+async function loadPrices() {
+  pricesFailed = false;
+  const ready = purchasesInit();
+  if (!ready) {
+    pricesFailed = NATIVE;
+    return;
+  }
+  try {
+    const P = await ready;
+    const offerings = await P.getOfferings();
+    const pkgs = [...(offerings?.current?.availablePackages || []), ...Object.values(offerings?.all || {}).flatMap((o) => o.availablePackages || [])];
+    for (const plan of Object.values(PLANS)) {
+      const product = pkgs.find((k) => k.product?.identifier === plan.id)?.product;
+      if (product?.priceString) {
+        plan.price = product.priceString;
+        if (Number.isFinite(product.price)) plan.amount = product.price;
+      }
+    }
+    offeringsLoaded = true;
+  } catch {
+    pricesFailed = true;
+  }
+  if (page === "paywall" || page === "settings") render();
+}
 async function checkTrial() {
   const ready = purchasesInit();
   if (!ready) return;
@@ -2614,6 +2700,17 @@ $("thread").addEventListener("click", (e) => {
   }
   if (action === "next") return goStep(onboardStep + 1);
   if (action === "demo-next") return nextDemo();
+  const reportBtn = t.closest("[data-report]");
+  if (reportBtn) {
+    reportFor = { title: reportBtn.dataset.report, reason: "", sent: false, error: "", busy: false, returnTo: chat };
+    return openPage("report");
+  }
+  if (action === "report-done") {
+    page = null;
+    chat = reportFor?.returnTo || chat;
+    reportFor = null;
+    return render();
+  }
   const shareBtn = t.closest("[data-share]");
   if (shareBtn) return openShare(chat?.messages.find((m) => m.id === shareBtn.dataset.share)?.verdict);
   if (action === "share-image") return shareImage();
@@ -2732,6 +2829,11 @@ $("thread").addEventListener("click", (e) => {
   }
   if (action === "account") return openAccount(account ? "" : "signup");
   if (action === "sign-out") return signOut();
+  if (action === "retry-prices") {
+    pricesFailed = false;
+    render();
+    return loadPrices();
+  }
   if (action === "copy-code") {
     navigator.clipboard?.writeText(newRecoveryCode).then(() => toast("Recovery code copied."), () => toast("Couldn't copy. Screenshot it instead."));
     return;
@@ -2798,6 +2900,11 @@ $("thread").addEventListener("click", (e) => {
     if (n.chatId) return openChat(n.chatId);
     return render();
   }
+  if (action === "sample-argument") {
+    $("messageInput").value = SAMPLE_ARGUMENT;
+    autosize();
+    return $("messageInput").focus();
+  }
   if (action === "paste") {
     ensureChat();
     render();
@@ -2849,6 +2956,7 @@ async function exportData() {
   const json = JSON.stringify(data, null, 2);
   const name = `arguably-export-${new Date().toISOString().slice(0, 10)}.json`;
   try {
+    if (await nativeSaveFile(name, json).catch(() => false)) return;
     const file = new File([json], name, { type: "application/json" });
     if (navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], title: "Arguably export" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(file), download: name });
@@ -2863,7 +2971,7 @@ async function exportData() {
       await navigator.clipboard.writeText(json);
       toast("Couldn't save a file here, so your data was copied instead.");
     } catch {
-      toast("Couldn't export here. Try from a browser.");
+      toast("Couldn't export here. Email support and we'll send you your data.");
     }
   }
 }
@@ -3373,11 +3481,27 @@ function queueUpload(c) {
   clearTimeout(uploadTimer);
   uploadTimer = setTimeout(flushUploads, 700);
 }
-async function flushUploads() {
+let flushing = null;
+function flushUploads() {
+  // One flush at a time. Anything saved meanwhile, or that failed (offline), is sent by the next
+  // flush: soon after a save, or in 15 seconds after a failure.
+  flushing ||= doFlush().then((failed) => {
+    flushing = null;
+    if (!uploads.size || !account) return;
+    clearTimeout(uploadTimer);
+    uploadTimer = setTimeout(flushUploads, failed ? 15000 : 700);
+  });
+  return flushing;
+}
+async function doFlush() {
+  let failed = false;
   for (const [id, c] of [...uploads]) {
     if (uploads.get(id) !== c) continue;
     const r = await api("/api/sync", { method: "PUT", body: { chat: c } });
-    if (r.status === 401) return signedOutElsewhere();
+    if (r.status === 401) {
+      signedOutElsewhere();
+      return false;
+    }
     if (r.status === 410) {
       // Deleted on another phone: it goes here too.
       uploads.delete(id);
@@ -3397,10 +3521,10 @@ async function flushUploads() {
       if (uploads.get(id) === c) uploads.delete(id); // sent, or will never fit: don't retry forever
       if (r.status === 413) toast(`“${c.title}” is too big to save to your account. It stays on this phone.`);
       if (r.status === 409) toast("Your account is full. Delete old chats to save new ones.");
-    }
+    } else failed = true;
   }
-  if (uploads.size) uploadTimer = setTimeout(flushUploads, 15000); // offline: try again later
-  else lastSynced = Date.now();
+  if (!uploads.size) lastSynced = Date.now();
+  return failed;
 }
 // Deletes made offline are remembered and sent later, so the chat can't come back from the account.
 const PENDING_DELETES = "arguably.pendingDeletes";
@@ -3609,7 +3733,7 @@ function accountHTML() {
         deletingAccount
           ? `<form class="auth-form danger-zone" data-form="delete-account" novalidate>
               <h2>Delete your account?</h2>
-              <p>This permanently deletes your account, every saved chat and verdict, and your settings, on every phone. It can't be undone.</p>
+              <p>This permanently deletes your account, every saved chat and verdict, and your settings, on every phone. It can't be undone.${STORE_BUILD ? ` It doesn't cancel Arguably Pro: <a href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">manage your subscription</a>.` : ""}</p>
               <label class="field"><span>Password</span><input id="acDeletePw" type="password" autocomplete="current-password" required></label>
               ${err}
               <div class="auth-row"><button class="ghost-btn" type="button" data-action="delete-account-cancel">Cancel</button>
@@ -3653,6 +3777,49 @@ function accountHTML() {
   }
   return `<section class="account"><h1 class="page-title" tabindex="-1">${h}</h1>${lede ? `<p class="doc-lede">${lede}</p>` : ""}${body}</section>`;
 }
+// ---------- reporting a verdict (in the app, no email needed) ----------
+let reportFor = null; // { title, reason, sent, error, busy, returnTo }
+function reportHTML() {
+  const r = reportFor;
+  if (!r) return "";
+  if (r.sent) {
+    return `<section class="account"><h1 class="page-title" tabindex="-1">Thanks for telling us</h1>
+      <p class="doc-lede">We read every report and use them to make verdicts fairer. If something in the conversation made you feel unsafe, see <button class="text-btn" type="button" data-doc="safety">Staying safe</button>.</p>
+      <button class="cta" type="button" data-action="report-done">Back to the verdict</button></section>`;
+  }
+  const opt = (v, label) => `<label class="report-opt"><input type="radio" name="reason" value="${v}"${r.reason === v ? " checked" : ""}><span>${label}</span></label>`;
+  return `<section class="account"><h1 class="page-title" tabindex="-1">Report a verdict</h1>
+    <p class="doc-lede">“${esc(r.title)}”. What's wrong with it? Your conversation isn't sent, only what you write here.</p>
+    <form class="auth-form" data-form="report" novalidate>
+      <fieldset class="report-reasons"><legend class="sr-only">Reason</legend>
+        ${opt("wrong", "It got the facts or the quotes wrong")}${opt("unfair", "It's unfair to someone")}${opt("harmful", "It's hurtful or harmful")}${opt("other", "Something else")}
+      </fieldset>
+      <label class="field"><span>Anything else? (optional)</span><textarea id="reportDetails" rows="4" maxlength="2000"></textarea></label>
+      ${r.error ? `<p class="auth-error" role="alert">${esc(r.error)}</p>` : ""}
+      <button class="cta" type="submit"${r.busy ? " disabled aria-busy=\"true\"" : ""}>${r.busy ? "Sending…" : "Send report"}</button>
+    </form>
+    <p class="auth-fine">Or email <a href="mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Report a verdict: ${r.title}`)}">${SUPPORT_EMAIL}</a></p>
+  </section>`;
+}
+async function sendReport(form) {
+  const r = reportFor;
+  if (!r || r.busy) return;
+  r.reason = form.querySelector('input[name="reason"]:checked')?.value || "";
+  if (!r.reason) {
+    r.error = "Pick what's wrong with it.";
+    return render();
+  }
+  r.busy = true;
+  r.error = "";
+  const details = form.querySelector("#reportDetails")?.value || "";
+  render();
+  const res = await api("/api/report", { method: "POST", body: { title: r.title, reason: r.reason, details } });
+  r.busy = false;
+  if (res.ok) r.sent = true;
+  else r.error = res.data?.code === "rate_limited" ? "Too many reports for now. Try again later." : `Couldn't send it. Email ${SUPPORT_EMAIL} instead.`;
+  render();
+}
+
 function openAccount(mode) {
   if (mode) authMode = mode;
   authError = "";
@@ -3756,9 +3923,9 @@ function finishOnboarding() {
   prefs.onboarded = true;
   savePrefs();
   page = STORE_BUILD && !prefs.pro ? "paywall" : null;
-  if (STORE_BUILD) notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. You can judge arguments you're not in, too.");
+  if (STORE_BUILD) notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. Only share chats the people in them would be okay with.");
   else if (HOSTED) notify("tips", "Hey, welcome to Arguably!", "Put it on your Home Screen: tap Share, then Add to Home Screen. It opens like an app.");
-  else notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. You can judge arguments you're not in, too.");
+  else notify("tips", "Hey, welcome to Arguably!", "Import screenshots from both phones for the fairest verdict. Only share chats the people in them would be okay with.");
   render();
 }
 $("newBtn").addEventListener("click", () => {
@@ -3852,6 +4019,7 @@ $("thread").addEventListener("submit", (e) => {
   if (form.dataset.form === "auth") submitAuth(form);
   if (form.dataset.form === "delete-account") deleteAccount(form);
   if (form.dataset.form === "new-code") makeRecoveryCode(form);
+  if (form.dataset.form === "report") sendReport(form);
 });
 // A password-reset link from the email opens the "choose a new password" page (after the intro,
 // on a phone that hasn't seen it yet).
@@ -3871,6 +4039,7 @@ openResetFromHash();
 refreshAccount();
 checkSubscription();
 checkTrial();
+loadPrices();
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkSubscription(); });
 openSharedFromHash();
 // The header only shows a (soft) edge once something scrolls under it.

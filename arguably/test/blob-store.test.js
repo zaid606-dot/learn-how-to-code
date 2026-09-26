@@ -24,11 +24,19 @@ const fakeBlob = {
     calls.get++;
     assert.equal(opts.useCache, false, "always a consistent read");
     if (!files.has(path)) return null;
+    await new Promise((r) => setTimeout(r, 2)); // a little latency, so overlapping requests really overlap
     return { stream: new Blob([files.get(path)]).stream(), blob: { pathname: path } };
   },
-  async del(path) {
+  async del(paths) {
     calls.del++;
-    files.delete(path);
+    for (const p of [].concat(paths)) files.delete(p);
+  },
+  async list({ prefix, cursor, limit = 1000 }) {
+    calls.list = (calls.list || 0) + 1;
+    const all = [...files.keys()].filter((p) => p.startsWith(prefix)).sort();
+    const start = Number(cursor || 0);
+    const page = all.slice(start, start + limit);
+    return { blobs: page.map((pathname) => ({ pathname })), hasMore: start + limit < all.length, cursor: String(start + limit) };
   },
 };
 
@@ -99,4 +107,25 @@ test("the verdict vault keeps the first verdict on Blob", async () => {
   assert.equal((await p(`/api/verdicts?id=${id}`)).status, 404);
   assert.equal((await p("/api/verdicts", { method: "POST", body: { id, blob: "A".repeat(100) } })).data.blob, "A".repeat(100));
   assert.equal((await p("/api/verdicts", { method: "POST", body: { id, blob: "B".repeat(100) } })).data.blob, "A".repeat(100));
+});
+
+test("concurrent saves never overwrite each other (each chat and session is its own file)", async () => {
+  await Promise.all(Array.from({ length: 12 }, (_, i) => redis(["HSET", "chats:u", `c${i}`, `v${i}`])));
+  assert.equal(await redis(["HLEN", "chats:u"]), 12, "all 12 chats kept");
+  await Promise.all(Array.from({ length: 8 }, (_, i) => redis(["SADD", "sessions:u", `s${i}`])));
+  assert.equal((await redis(["SMEMBERS", "sessions:u"])).length, 8, "all 8 sessions kept, so sign-out-everywhere reaches them all");
+  await Promise.all([redis(["HDEL", "chats:u", "c0"]), redis(["HSET", "chats:u", "c1", "new"])]);
+  const all = await redis(["HGETALL", "chats:u"]);
+  assert.ok(!all.includes("c0") && all[all.indexOf("c1") + 1] === "new");
+  await redis(["DEL", "chats:u"]);
+  assert.equal(await redis(["HLEN", "chats:u"]), 0);
+});
+
+test("hashes and sets saved in the old one-file layout are split up on first use", async () => {
+  const b64 = (x) => Buffer.from(x).toString("base64url");
+  files.set(`kv/${b64("chats:old")}.json`, JSON.stringify({ t: "hash", v: { a: "1", b: "2" }, exp: 0 }));
+  files.set(`kv/${b64("sessions:old")}.json`, JSON.stringify({ t: "set", v: ["s1", "s2"], exp: 0 }));
+  assert.deepEqual((await redis(["HGETALL", "chats:old"])).sort(), ["1", "2", "a", "b"]);
+  assert.deepEqual((await redis(["SMEMBERS", "sessions:old"])).sort(), ["s1", "s2"]);
+  assert.ok(!files.has(`kv/${b64("chats:old")}.json`), "old file removed after the split");
 });

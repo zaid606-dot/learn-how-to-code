@@ -97,8 +97,9 @@ export default async function handler(req, res) {
       const id = email ? await redis(["GET", `user:email:${email}`]) : null;
       const raw = typeof id === "string" ? await redis(["GET", `user:${id}`]) : null;
       const user = typeof raw === "string" ? JSON.parse(raw) : null;
-      if (!user) burnTime(body.code);
-      if (!user || !user.rc || !checkCode(body.code, user.rc)) {
+      // Always one full hash check, so how long this takes never reveals whether the email has an account.
+      const codeOk = user?.rc ? checkCode(body.code, user.rc) : (burnTime(body.code), false);
+      if (!user || !codeOk) {
         if (email) await addFail(req, email);
         return send(res, 401, { code: "wrong_code" });
       }
