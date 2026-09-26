@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     return send(res, 200, out);
   } catch (err) {
     if (ctl.signal.aborted) return res.end();
-    if (typeof err?.code === "string") return send(res, err.status || 500, { code: err.code });
+    if (typeof err?.code === "string") return send(res, err.status || 500, { code: err.code, ...(err.retryAfter ? { retryAfter: err.retryAfter } : {}) });
     console.error("json handler error", err?.name || "error");
     return send(res, 500, { code: "upstream_error" });
   }

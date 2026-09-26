@@ -37,7 +37,10 @@
     }
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw fail(typeof data.code === "string" ? data.code : res.status === 429 ? "rate_limited" : res.status === 413 ? "prompt_too_large" : "upstream_error");
+      const err = fail(typeof data.code === "string" ? data.code : res.status === 429 ? "rate_limited" : res.status === 413 ? "prompt_too_large" : "upstream_error");
+      const ra = Number(data.retryAfter || res.headers.get("retry-after"));
+      if (Number.isFinite(ra) && ra > 0) err.retryAfter = Math.min(ra, 60);
+      throw err;
     }
     return res;
   }
@@ -89,10 +92,33 @@
     return { text, truncated: done.truncated };
   }
 
+  const RETRIES = [15, 25, 40, 60]; // about 2½ minutes in all, then the error shows
+  async function pause(seconds, signal) {
+    for (let left = seconds; left > 0; left--) {
+      if (signal?.aborted) throw fail("cancelled");
+      window.dispatchEvent(new CustomEvent("arguably:ai-wait", { detail: { seconds: left } }));
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (signal?.aborted) throw fail("cancelled");
+    window.dispatchEvent(new CustomEvent("arguably:ai-wait", { detail: { seconds: 0 } }));
+  }
+
   sampler.json = async (prompt, opts = {}) => {
     const images = [];
     for (const img of opts.images || []) images.push(await shrink(img, opts.signal));
-    const res = await post("/api/json", { prompt, images, tier: opts.modelTier || "default" }, opts.signal);
+    // When the AI is busy (everyone shares one per-minute budget), wait and try again on our
+    // own instead of making the person start over. The app shows the countdown.
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await post("/api/json", { prompt, images, tier: opts.modelTier || "default" }, opts.signal);
+        break;
+      } catch (err) {
+        if (err?.code !== "rate_limited" || attempt >= RETRIES.length) throw err;
+        const seconds = Math.max(err.retryAfter || 0, RETRIES[attempt]) + Math.floor(Math.random() * 6); // spread phones out
+        await pause(seconds, opts.signal);
+      }
+    }
     try {
       return await res.json();
     } catch (err) {

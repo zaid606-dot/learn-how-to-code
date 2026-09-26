@@ -49,5 +49,11 @@
       "source": "/(privacy|terms|support)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cleanup",
+      "schedule": "17 4 * * *"
+    }
   ]
 }

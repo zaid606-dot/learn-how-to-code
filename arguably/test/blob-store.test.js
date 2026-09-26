@@ -129,3 +129,36 @@ test("hashes and sets saved in the old one-file layout are split up on first use
   assert.deepEqual((await redis(["SMEMBERS", "sessions:old"])).sort(), ["s1", "s2"]);
   assert.ok(!files.has(`kv/${b64("chats:old")}.json`), "old file removed after the split");
 });
+
+test("blob: the daily cleanup deletes only expired records, and only Vercel's cron can run it", async () => {
+  const { sweepExpired } = await import("../api/_store.js");
+  const { default: cleanup } = await import("../api/cleanup.js");
+  await redis(["SET", "fail:sweep@example.com", "3", "EX", 900]);
+  await redis(["SET", "session:sweep-old", "u1", "EX", 60]);
+  await redis(["SET", "session:sweep-live", "u1", "EX", 99999]);
+  await redis(["SET", "user:sweep", "{}"]); // no expiry: never touched
+  await redis(["HSET", "chats:sweep", "c1", "{}"]);
+  await redis(["SET", "sessionless:note", "x", "EX", 1]); // not a kind the sweep looks at
+  const before = files.size;
+  const r = await sweepExpired({ now: Date.now() + 1000 * 1000 });
+  assert.equal(r.removed, 2, JSON.stringify(r));
+  assert.equal(files.size, before - 2);
+  assert.equal(await redis(["GET", "fail:sweep@example.com"]), null);
+  assert.equal(await redis(["GET", "session:sweep-live"]), "u1");
+  assert.equal(await redis(["GET", "user:sweep"]), "{}");
+  assert.equal(await redis(["HEXISTS", "chats:sweep", "c1"]), 1);
+
+  const call = async (auth) => {
+    const out = { status: 0, body: "" };
+    const res = { setHeader() {}, set statusCode(v) { out.status = v; }, end(b) { out.body = b; }, writeHead(s) { out.status = s; } };
+    await cleanup({ headers: auth ? { authorization: auth } : {} }, res);
+    return out.status;
+  };
+  delete process.env.CRON_SECRET;
+  assert.equal(await call("Bearer x"), 503, "off until a secret is set");
+  process.env.CRON_SECRET = "s3cret-value";
+  assert.equal(await call(), 401);
+  assert.equal(await call("Bearer wrong"), 401);
+  assert.equal(await call("Bearer s3cret-value"), 200);
+  delete process.env.CRON_SECRET;
+});

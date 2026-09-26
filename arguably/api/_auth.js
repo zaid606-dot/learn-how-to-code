@@ -97,4 +97,4 @@ export const checkCode = (code, stored) => {
   return ok && normalCode(code).length === 20;
 };
 
-export const publicUser = (u) => ({ email: u.email, name: u.name || "", createdAt: u.createdAt });
+export const publicUser = (u) => ({ email: u.email, name: u.name || "", createdAt: u.createdAt, hasRecoveryCode: !!u.rc });

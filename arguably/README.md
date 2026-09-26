@@ -101,6 +101,13 @@ erases the account, its chats and settings, and every session.
   add `RESEND_API_KEY` (and `MAIL_FROM`, e.g. `Arguably <hello@yourdomain.com>` once your domain is
   verified in Resend) and `APP_URL` (e.g. `https://arguably-gold.vercel.app`) in Vercel, redeploy.
   Without it, the app tells people to email support.
+- **Recovery codes** are the no-email way back in. Accounts made before they existed are asked
+  (once, and in Settings › Account) to set one up.
+- **Cleanup**: on Blob storage, a daily Vercel Cron (`/api/cleanup`, see `vercel.json`) deletes
+  expired sign-ins, lockout counters, reset links and old reports. It runs only with the
+  `CRON_SECRET` environment variable set (Vercel sends it with each cron call).
+- **When the AI is busy** (the per-minute budget is shared by everyone), the app waits and tries
+  again by itself, up to about 2½ minutes, showing a countdown instead of an error.
 
 ## The iPhone app (App Store)
 

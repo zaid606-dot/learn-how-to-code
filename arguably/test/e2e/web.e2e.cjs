@@ -625,3 +625,53 @@ test("iPhone app: store outages say so, links leave the app, the paywall fits an
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("website build: when the AI is busy the app waits and tries again by itself, showing a countdown", async () => {
+  const context = await browser.newContext(devices["iPhone 13"]);
+  await context.addInitScript(() => localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true })));
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  let busy = 1;
+  await page.route("**/api/json", (route) => (busy-- > 0 ? route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ code: "rate_limited", retryAfter: 2 }) }) : route.continue()));
+  await page.goto(url);
+  await page.locator('#thread [data-action="paste"]').first().click();
+  await page.click('[data-action="sample-argument"]');
+  await page.fill("#messageInput", (await page.inputValue("#messageInput")) + "\nSam: and the milk was mine too"); // new text: not in the vault yet
+  await page.click("#sendBtn");
+  await page.waitForFunction(() => /Trying again in \d+s/.test(document.getElementById("thread").innerText), null, { timeout: 15000 });
+  await page.waitForSelector(".msg.verdict", { timeout: 45000 });
+  assert.equal(busy, -1, "asked once more after the wait");
+  assert.equal(await page.locator(".msg.error, .msg.failed").count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("website build: an account made before recovery codes is asked to set one up", async () => {
+  const context = await browser.newContext(devices["iPhone 13"]);
+  await context.addInitScript(() => localStorage.setItem("arguably.prefs.v1", JSON.stringify({ onboarded: true, policy: { version: "2026-09-25.2", at: 1 }, aiConsent: true })));
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(url);
+  const email = `legacy${Date.now()}@example.com`;
+  const made = await page.evaluate(async (email) => (await fetch("/api/auth?op=signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: "longpassword1" }) })).json(), email);
+  assert.equal(made.user.hasRecoveryCode, true);
+  const id = store.data.get(`user:email:${email}`).v;
+  const u = JSON.parse(store.data.get(`user:${id}`).v);
+  delete u.rc; // how accounts from before recovery codes look
+  store.data.get(`user:${id}`).v = JSON.stringify(u);
+  await page.reload();
+  await page.click("#settingsBtn");
+  await page.click('[data-action="account"]');
+  await page.waitForSelector(".needs-code");
+  assert.match(await page.locator(".needs-code").innerText(), /Set up a recovery code/);
+  await page.click(".needs-code");
+  await page.fill("#acCodePw", "longpassword1");
+  await page.click('[data-form="new-code"] [type="submit"]');
+  await page.waitForSelector(".recovery-code");
+  assert.match(await page.locator(".recovery-code").innerText(), /^[A-Z2-9]{5}(-[A-Z2-9]{5}){3}$/);
+  assert.ok(JSON.parse(store.data.get(`user:${id}`).v).rc, "saved on the account");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

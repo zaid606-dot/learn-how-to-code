@@ -213,3 +213,35 @@ async function blobCommand([cmd, key, ...args]) {
       throw { status: 500, code: "storage_error" };
   }
 }
+
+// ---------- cleanup (Blob only: Redis deletes expired keys by itself) ----------
+// Records saved with an expiry (sign-ins, lockout counters, reset links, reports) are
+// deleted when read after they expire, but ones never read again would stay forever.
+// The daily cron (api/cleanup.js) sweeps them. Each kind is listed on its own, by the start
+// of its file name, so saved chats and accounts are never even looked at.
+const EXPIRING = [
+  { prefix: "fail:", ttl: 900 },
+  { prefix: "reset:", ttl: 3600 },
+  { prefix: "session:", ttl: 60 * 86400 },
+  { prefix: "report:", ttl: 180 * 86400 },
+];
+// A file-name prefix that every key starting with `text` shares (base64 works in 3-byte groups).
+const b64Prefix = (text) => b64(text.slice(0, Math.floor(text.length / 3) * 3));
+export async function sweepExpired({ maxReads = 800, now = Date.now() } = {}) {
+  const cfg = storeConfig();
+  if (cfg?.kind !== "blob") return { checked: 0, removed: 0, skipped: "not_blob" };
+  let checked = 0;
+  const gone = [];
+  for (const { prefix, ttl } of EXPIRING) {
+    const paths = (await listDir(`kv/${b64Prefix(prefix)}`)).filter((p) => /^kv\/[A-Za-z0-9_-]+\.json$/.test(p));
+    for (const path of paths) {
+      if (checked >= maxReads) break;
+      if (!nameOf(path, "kv/").startsWith(prefix)) continue;
+      checked++;
+      const rec = await readFile(path);
+      if (rec?.exp && rec.exp <= now) gone.push(path);
+    }
+  }
+  for (let i = 0; i < gone.length; i += 100) await removeFiles(gone.slice(i, i + 100));
+  return { checked, removed: gone.length, more: checked >= maxReads };
+}

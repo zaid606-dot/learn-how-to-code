@@ -118,7 +118,7 @@ const SAMPLE_ERRORS = {
   not_granted: `Arguably needs permission to use ${AI_NAME}. Reload the page and choose Allow when asked.`,
   sampling_disabled: `${AI_NAME} isn't available right now, so Arguably can't reply here.`,
   session_expired: `Your ${AI_NAME} session expired. Sign in again, then try again.`,
-  rate_limited: HOSTED ? "The AI is at its limit for this minute. Wait a minute, then try again; your screenshots are kept." : `You've hit your ${AI_NAME} usage limit for now. Try again later.`,
+  rate_limited: HOSTED ? "The AI is still busy after a few tries. Wait a couple of minutes, then try again; your screenshots are kept." : `You've hit your ${AI_NAME} usage limit for now. Try again later.`,
   timeout: "That took too long to finish. Try again; your screenshots are kept.",
   image_rejected: "One of the screenshots couldn't be used. Remove it or try a different image.",
   images_unavailable: `This view can't send screenshots to ${AI_NAME}. Paste the conversation as text instead.`,
@@ -1303,11 +1303,23 @@ function renderComposer() {
   document.documentElement.style.setProperty("--composer-h", (form.hidden ? 0 : form.offsetHeight) + "px");
 }
 
+// While the AI is busy and the request is waiting to try again, the status line says so.
+let aiWait = 0;
+let lastThinking = null;
 function updateThinking(m, text, progress) {
-  m.text = text;
+  m.baseText ??= m.text;
+  if (text != null) m.baseText = text;
+  m.text = aiWait > 0 ? `Lots of people are getting verdicts right now. Trying again in ${aiWait}s…` : m.baseText;
   if (progress != null) m.progress = progress;
+  lastThinking = m;
   const el = document.getElementById(m.id);
   if (el) el.outerHTML = messageHTML(m);
+}
+if (HOSTED) {
+  window.addEventListener("arguably:ai-wait", (e) => {
+    aiWait = e.detail.seconds;
+    if (lastThinking && document.getElementById(lastThinking.id)) updateThinking(lastThinking, null);
+  });
 }
 
 // ---------- screenshots: import, dedupe, smart slicing ----------
@@ -1937,6 +1949,7 @@ function endJob(c) {
 
 async function runImport(c, shots, note) {
   const thinking = { id: uid(), role: "assistant", kind: "thinking", text: "Preparing screenshots", progress: 0, transient: true };
+  lastThinking = thinking;
   c.messages.push(thinking);
   const signal = startJob(c);
   render();
@@ -2232,6 +2245,7 @@ async function runVerdict(c, note) {
   askToNotify();
   const thinking = { id: uid(), role: "assistant", kind: "thinking", text: VERDICT_STEPS[0], transient: true };
   c.messages.push(thinking);
+  lastThinking = thinking;
   const signal = startJob(c);
   render();
   let step = 0;
@@ -3449,6 +3463,11 @@ async function refreshAccount() {
     if (localOwner() && localOwner() !== account.email) eraseDevice(); // someone else's chats
     setOwner(account.email);
     await syncDown();
+    // Accounts made before recovery codes existed have no way back in without email reset.
+    if (account.hasRecoveryCode === false && storage(() => localStorage.getItem("arguably.codeNudge"), "") !== account.email) {
+      storage(() => localStorage.setItem("arguably.codeNudge", account.email));
+      notify("tips", "Set up a recovery code", "It's how you get back into your account if you forget your password. Settings › Account.", "", true);
+    }
   }
   if (page === "settings" || page === "account") render();
 }
@@ -3686,6 +3705,7 @@ async function makeRecoveryCode(form) {
   }
   makingCode = false;
   newRecoveryCode = r.data.recoveryCode;
+  account.hasRecoveryCode = true;
   render();
 }
 
@@ -3740,14 +3760,16 @@ function accountHTML() {
       ${
         makingCode
           ? `<form class="auth-form danger-zone" data-form="new-code" novalidate>
-              <h2 class="plain">New recovery code</h2>
-              <p>Your old code stops working. Enter your password to continue.</p>
+              <h2 class="plain">${account.hasRecoveryCode === false ? "Set up a recovery code" : "New recovery code"}</h2>
+              <p>${account.hasRecoveryCode === false ? "Enter your password to make one." : "Your old code stops working. Enter your password to continue."}</p>
               <label class="field"><span>Password</span><input id="acCodePw" type="password" autocomplete="current-password" required></label>
               ${err}
               <div class="auth-row"><button class="ghost-btn" type="button" data-action="new-code-cancel">Cancel</button>
               <button class="cta" type="submit"${busyAttr}>Make new code</button></div>
             </form>`
-          : `<button class="set-row" type="button" data-action="new-code">${tile("shield", "green")}<span class="set-text"><span class="set-title">New recovery code</span><span class="set-sub">Lost it? Make a new one.</span></span></button>`
+          : account.hasRecoveryCode === false
+            ? `<button class="set-row needs-code" type="button" data-action="new-code">${tile("shield", "ember")}<span class="set-text"><span class="set-title">Set up a recovery code</span><span class="set-sub">Your account doesn't have one yet. Without it, a forgotten password can lock you out.</span></span></button>`
+            : `<button class="set-row" type="button" data-action="new-code">${tile("shield", "green")}<span class="set-text"><span class="set-title">New recovery code</span><span class="set-sub">Lost it? Make a new one.</span></span></button>`
       }
       ${
         deletingAccount

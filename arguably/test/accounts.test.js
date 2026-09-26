@@ -75,7 +75,7 @@ test("sign up: session cookie is HttpOnly and Lax; nothing sensitive is stored i
   const p = phone();
   const r = await signup(p, "  Maya@Example.com ");
   assert.equal(r.status, 200);
-  assert.deepEqual(Object.keys(r.data.user).sort(), ["createdAt", "email", "name"]);
+  assert.deepEqual(Object.keys(r.data.user).sort(), ["createdAt", "email", "hasRecoveryCode", "name"]);
   assert.equal(r.data.user.email, "maya@example.com", "normalized");
   assert.match(r.setCookie, /HttpOnly/);
   assert.match(r.setCookie, /SameSite=Lax/);
