@@ -23,17 +23,31 @@ For any website, landing page, UI, component, or visual design task:
    plays as you scroll). When the site is that kind of experience, follow its
    interview, grammar, and verification steps, with Impeccable and Taste still
    setting the quality bar.
-   - Image/video generation goes through kie.ai and needs `KIE_AI_API_KEY` in a
-     git-ignored `.env`. Without a key, build from the user's own assets or
-     Higgsfield-generated ones instead.
+   - Its image/video generation (kie.ai) is paid and off-limits (see Budget).
+     Always use its bring-your-own-assets route.
    - In cloud sessions, point its screenshot scripts at the preinstalled
      Chromium: `SCROLLCRAFT_CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
    - Builds live in `scrollcraft/builds/<name>/`. Keep raw generations out of
      git (`out/` and `scrollcraft/lab/` are ignored).
 4. Anthropic's `frontend-design` skill is the fallback when none of these apply.
 
-Hosting: deploy finished sites with the Netlify connector. Generate imagery with
-the Higgsfield connector.
+## Budget: zero spend
+
+The owner will not spend money on this project. Never trigger anything that
+costs money or uses up paid credits without asking first:
+
+- **kie.ai (scroll-craft generation): never.** Don't set up a key or run
+  `kie.mjs`.
+- **Higgsfield:** the account has a paid plan with limited credits. Don't
+  generate anything with it unless the owner approves that specific use.
+- **Netlify:** free tier only. No paid add-ons, domains, or upgrades.
+
+Free visuals to use instead: the owner's own photos and video, free-license
+stock (Unsplash, Pexels; note the credit/source), and visuals made in code
+(CSS, SVG, canvas, WebGL/Three.js). Scroll-craft's bring-your-own-assets
+route is the default.
+
+Hosting: deploy finished sites with the Netlify connector (free tier).
 
 ### Impeccable engine note
 
