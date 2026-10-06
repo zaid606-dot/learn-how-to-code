@@ -1,0 +1,2709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Strech · Appliance repair, tended</title>
+<meta name="description" content="Describe the fault, see a price range, approve one fixed quote, and watch your pro arrive. Strech is opening city by city.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%233daa4f'/><path d='M27 9H17l-5 6h10l-6 7h10l-7 9 13-11H22l5-11z' fill='%23fff'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Brygada+1918:ital,wght@0,400..700;1,400..700&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================================
+   scrollcraft.css: the taste floor
+   ----------------------------------------------------------------------------
+   Two layers, and the split matters:
+
+     TOKENS   what you override per brand. Colour roles, the type ramp, the
+              spacing scale, elevation, motion. A brand is ~12 values.
+     DEVICES  what the engine drives. Do not restyle these to taste; they are
+              the mechanism. Style your own markup instead.
+
+   Nothing here draws a "component". There are no card, badge, or pill classes,
+   because a stylesheet that ships those is how every page built on it ends up
+   with the same shapes. You get a floor and a vocabulary; the composition is
+   yours.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- tokens -- */
+:root {
+  /* --- colour roles. Override these six and the page is rebranded. -------- */
+  --sc-canvas:      #08090b;   /* the page ground. Drift interpolates this.   */
+  --sc-surface:     #101217;   /* anything raised off the ground             */
+  --sc-ink:         #f4f2ef;   /* primary text                               */
+  --sc-ink-soft:    #9a9ba1;   /* secondary text. Tinted, never flat gray.   */
+  --sc-accent:      #d8ff3e;   /* ONE accent. It owns a region, not confetti. */
+  --sc-accent-ink:  #08090b;   /* text that sits on the accent               */
+
+  --sc-hairline:    color-mix(in oklab, var(--sc-ink) 12%, transparent);
+  --sc-hairline-strong: color-mix(in oklab, var(--sc-ink) 22%, transparent);
+
+  /* --- type. Two families max. Display carries voice, text carries prose. - */
+  --sc-font-display: "Instrument Sans", "Geist", system-ui, sans-serif;
+  --sc-font-text:    "Geist", system-ui, sans-serif;
+  --sc-font-mono:    "Geist Mono", ui-monospace, monospace;
+
+  /* Fluid ramp. Tracking tightens as size grows because a face set at 6rem
+     with 0 tracking reads loose; this is optical correction, not decoration. */
+  --sc-t-xs:   clamp(0.75rem, 0.72rem + 0.15vw, 0.82rem);
+  --sc-t-sm:   clamp(0.875rem, 0.84rem + 0.18vw, 0.95rem);
+  --sc-t-base: clamp(1rem, 0.96rem + 0.22vw, 1.125rem);
+  --sc-t-lg:   clamp(1.2rem, 1.1rem + 0.5vw, 1.5rem);
+  --sc-t-xl:   clamp(1.6rem, 1.35rem + 1.2vw, 2.25rem);
+  --sc-t-2xl:  clamp(2.1rem, 1.6rem + 2.4vw, 3.4rem);
+  --sc-t-3xl:  clamp(2.8rem, 1.9rem + 4.2vw, 5rem);
+  --sc-t-4xl:  clamp(3.4rem, 1.9rem + 6.6vw, 7.5rem);
+
+  --sc-track-tight:  -0.035em;
+  --sc-track-snug:   -0.02em;
+  --sc-track-normal: -0.005em;
+  --sc-track-wide:    0.08em;
+
+  --sc-leading-none: 0.94;
+  --sc-leading-tight: 1.06;
+  --sc-leading-body: 1.62;
+
+  --sc-measure: 62ch;
+
+  /* --- space. 4px base: the useful middle steps an 8-only scale misses. --- */
+  --sc-1: 0.25rem;  --sc-2: 0.5rem;   --sc-3: 0.75rem;  --sc-4: 1rem;
+  --sc-5: 1.5rem;   --sc-6: 2rem;     --sc-7: 3rem;     --sc-8: 4rem;
+  --sc-9: 6rem;     --sc-10: 8rem;    --sc-11: 12rem;
+
+  /* Section rhythm is fluid so a phone doesn't inherit desktop air. */
+  --sc-section: clamp(4.5rem, 9vw, 11rem);
+  --sc-gutter:  clamp(1.25rem, 5vw, 5.5rem);
+  --sc-maxw:    82rem;
+
+  /* --- radius. Pick one scale for the page and hold it. ------------------- */
+  --sc-r-sm: 6px;  --sc-r-md: 12px;  --sc-r-lg: 20px;  --sc-r-pill: 999px;
+
+  /* --- elevation. Every shadow has an offset AND a soft blur, and is tinted
+         to the canvas hue. A zero-offset coloured halo is decoration, not
+         depth, so there isn't one here. ---------------------------------- */
+  --sc-shadow-color: 220 40% 2%;
+  --sc-e1: 0 1px 2px hsl(var(--sc-shadow-color) / 0.28),
+           0 2px 6px -1px hsl(var(--sc-shadow-color) / 0.20);
+  --sc-e2: 0 2px 4px hsl(var(--sc-shadow-color) / 0.24),
+           0 8px 18px -4px hsl(var(--sc-shadow-color) / 0.30);
+  --sc-e3: 0 4px 8px hsl(var(--sc-shadow-color) / 0.22),
+           0 18px 40px -8px hsl(var(--sc-shadow-color) / 0.38),
+           0 48px 90px -24px hsl(var(--sc-shadow-color) / 0.30);
+
+  /* Edge light: a 1px top highlight sells a raised surface better than any
+     amount of blur, because real raised things catch light on their lip. */
+  --sc-edge: inset 0 1px 0 color-mix(in oklab, var(--sc-ink) 10%, transparent);
+
+  /* --- motion. Built-in CSS easings are too weak for UI. ------------------ */
+  --sc-ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --sc-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --sc-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --sc-d-fast: 160ms;  --sc-d-base: 240ms;  --sc-d-slow: 420ms;
+
+  --sc-z-stage: 1; --sc-z-copy: 20; --sc-z-chrome: 60;
+}
+
+/* --------------------------------------------------------------- reset -- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  background: var(--sc-canvas);
+  color: var(--sc-ink);
+  font-family: var(--sc-font-text);
+  font-size: var(--sc-t-base);
+  line-height: var(--sc-leading-body);
+  letter-spacing: var(--sc-track-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis-weight: none;
+  overflow-x: clip;
+}
+img, video, canvas, svg { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ------------------------------------------------- the browser surfaces --
+   The parts you did not draw still carry the design. Selection, caret, focus
+   ring, scrollbar and tabular numerals all ship with defaults that belong to no
+   design system. Theming them is the cheapest signal that a page was built
+   rather than assembled, and it is the step that gets skipped most reliably. */
+::selection { background: var(--sc-accent); color: var(--sc-accent-ink); }
+:root { caret-color: var(--sc-accent); accent-color: var(--sc-accent); }
+:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+  border-radius: var(--sc-r-sm);
+}
+:where(a) { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.22em; }
+@supports (scrollbar-color: auto) {
+  html { scrollbar-color: color-mix(in oklab, var(--sc-ink) 26%, transparent) transparent; scrollbar-width: thin; }
+}
+:where(table, .sc-nums, [data-sc-count]) { font-variant-numeric: tabular-nums; }
+
+/* ----------------------------------------------------------- typography -- */
+.sc-display {
+  font-family: var(--sc-font-display);
+  font-weight: 500;
+  line-height: var(--sc-leading-none);
+  letter-spacing: var(--sc-track-tight);
+  text-wrap: balance;
+  margin: 0;
+}
+.sc-display--xl { font-size: var(--sc-t-4xl); }
+.sc-display--lg { font-size: var(--sc-t-3xl); }
+.sc-display--md { font-size: var(--sc-t-2xl); letter-spacing: var(--sc-track-snug); }
+.sc-lede {
+  font-size: var(--sc-t-lg);
+  line-height: 1.44;
+  letter-spacing: var(--sc-track-snug);
+  color: var(--sc-ink);
+  max-width: 46ch;
+  text-wrap: pretty;
+  margin: 0;
+}
+.sc-body { max-width: var(--sc-measure); color: var(--sc-ink-soft); text-wrap: pretty; margin: 0; }
+.sc-label {
+  font-family: var(--sc-font-mono);
+  font-size: var(--sc-t-xs);
+  letter-spacing: var(--sc-track-wide);
+  text-transform: uppercase;
+  color: var(--sc-ink-soft);
+}
+
+/* ---------------------------------------------------------------- layout -- */
+.sc-wrap { width: 100%; max-width: var(--sc-maxw); margin-inline: auto; padding-inline: var(--sc-gutter); }
+.sc-section { padding-block: var(--sc-section); }
+/* More space above a heading than below it: the gap belongs to the boundary,
+   not to the pair. */
+.sc-stack > * + * { margin-top: var(--sc-4); }
+.sc-stack > :is(h1,h2,h3) { margin-top: var(--sc-7); }
+.sc-stack > :is(h1,h2,h3):first-child { margin-top: 0; }
+.sc-rule { height: 1px; border: 0; background: var(--sc-hairline); margin: 0; }
+
+/* =============================================================== DEVICES ==
+   Driven by the engine. Restyle your own markup, not these.                */
+
+.sc-act--pinned { position: relative; }
+.sc-stage {
+  position: sticky; top: 0;
+  height: 100vh; height: 100svh;
+  overflow: clip;
+  z-index: var(--sc-z-stage);
+}
+
+/* scrub / sequence media */
+.sc-stage :is(video[data-sc-scrub], canvas[data-sc-sequence], .sc-stage__poster) {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+video[data-sc-scrub] { opacity: 0; transition: opacity 380ms var(--sc-ease-out); }
+.sc-has-clip video[data-sc-scrub] { opacity: 1; }
+/* The poster is a live frame-holder, not a placeholder: it stays up until a
+   real video frame has painted, which is what stops the blank-stage flash. */
+.sc-stage__poster { z-index: 0; transition: opacity 380ms var(--sc-ease-out); }
+.sc-has-clip .sc-stage__poster { opacity: 0; }
+
+/* A scrim only where text sits. A full-frame darkening layer flattens the
+   image everywhere to fix contrast in one corner. */
+.sc-scrim {
+  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: linear-gradient(
+    var(--sc-scrim-angle, 180deg),
+    color-mix(in oklab, var(--sc-canvas) var(--sc-scrim-a, 78%), transparent) 0%,
+    color-mix(in oklab, var(--sc-canvas) 30%, transparent) 42%,
+    transparent 68%);
+}
+/* Point the scrim at the copy. A scrim gradient that darkens the top while the
+   copy sits at the bottom fixes contrast nowhere and flattens the image
+   everywhere, which is the most common way text-over-video goes wrong. */
+.sc-scrim--bottom { --sc-scrim-angle: 0deg; }
+.sc-scrim--left   { --sc-scrim-angle: 90deg; }
+.sc-scrim--right  { --sc-scrim-angle: 270deg; }
+
+/* Corner scrims, for copy anchored to a corner. An edge gradient has to darken
+   a whole band across the frame to cover one corner; a corner gradient puts the
+   density where the text is and leaves the rest of the image alone. Pair with
+   .sc-copy--lead / .sc-copy--trail. */
+.sc-scrim--lead {
+  background: linear-gradient(to top right,
+    color-mix(in oklab, var(--sc-canvas) 94%, transparent) 0%,
+    color-mix(in oklab, var(--sc-canvas) 72%, transparent) 30%,
+    color-mix(in oklab, var(--sc-canvas) 30%, transparent) 52%,
+    transparent 72%);
+}
+.sc-scrim--trail {
+  background: linear-gradient(to top left,
+    color-mix(in oklab, var(--sc-canvas) 94%, transparent) 0%,
+    color-mix(in oklab, var(--sc-canvas) 72%, transparent) 30%,
+    color-mix(in oklab, var(--sc-canvas) 30%, transparent) 52%,
+    transparent 72%);
+}
+/* A band across the bottom, for copy that spans the full width of the frame.
+   That is what both corner anchors become below 860px, and it is also the right
+   shape whenever the copy block is wider than a corner. */
+.sc-scrim--band {
+  background: linear-gradient(to top,
+    color-mix(in oklab, var(--sc-canvas) 94%, transparent) 0%,
+    color-mix(in oklab, var(--sc-canvas) 74%, transparent) 22%,
+    color-mix(in oklab, var(--sc-canvas) 30%, transparent) 42%,
+    transparent 58%);
+}
+.sc-scrim--vignette {
+  background: radial-gradient(120% 90% at 50% 45%, transparent 40%,
+              color-mix(in oklab, var(--sc-canvas) 70%, transparent) 100%);
+}
+
+/* copy over a stage.
+   max-width is in rem, never ch. A `ch` on this container resolves against the
+   CONTAINER's font-size (body size), not the display size of the heading inside
+   it, so `max-width: 20ch` here silently produces a ~180px column and wraps a
+   hero headline to six lines. Set a ch measure on the text element itself. */
+.sc-copy {
+  position: absolute; z-index: var(--sc-z-copy);
+  inset-inline: var(--sc-gutter);
+  max-width: min(46rem, 76vw);
+  will-change: opacity, transform;
+}
+.sc-copy--lead   { left: var(--sc-gutter); bottom: clamp(3rem, 12vh, 9rem); }
+/* inset-inline FIRST. It is the shorthand for left+right, so declaring it after
+   `left: 50%` resets left to auto and the block drifts off the left edge. */
+.sc-copy--center { inset-inline: auto; left: 50%; top: 50%; translate: -50% -50%; text-align: center; }
+.sc-copy--trail  { inset-inline: auto; right: var(--sc-gutter); bottom: clamp(3rem, 12vh, 9rem); text-align: right; }
+
+/* cue defaults: the engine writes opacity/transform inline, these are the
+   pre-paint state so nothing flashes before the first read() */
+[data-sc-cue] { opacity: 0; will-change: opacity, transform; }
+.sc-ready [data-sc-cue] { transition: none; }
+
+/* kinetic split */
+.sc-split { display: inline-block; overflow: hidden; vertical-align: top; }
+/* Descenders live below the baseline; a line mask clipped to the line box eats
+   the tails off g, y, p, j. The padding buys them room back. */
+.sc-split--line { display: block; padding-bottom: 0.14em; margin-bottom: -0.14em; }
+.sc-split__i { display: inline-block; will-change: transform, opacity; }
+.sc-is-split { opacity: 1 !important; }
+
+/* horizontal rail */
+[data-sc-pan] { display: flex; will-change: transform; }
+
+/* reveal + parallax */
+[data-sc-reveal] { will-change: clip-path; }
+[data-sc-parallax] { will-change: transform; }
+
+/* flow reveal (fires once) */
+[data-sc-in], [data-sc-stagger] > * {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  transition: opacity 620ms var(--sc-ease-out), transform 620ms var(--sc-ease-out);
+}
+[data-sc-in].sc-in, [data-sc-stagger] > .sc-in { opacity: 1; transform: none; }
+
+/* pointer devices */
+[data-sc-tilt] { transform-style: preserve-3d; will-change: transform; }
+[data-sc-magnet] { will-change: transform; }
+/* isolation always; position only if nothing more specific already set it.
+   Written with :where() (zero specificity) on purpose: a plain `position:
+   relative` here has the same weight as `.sc-stage` and, being later in the
+   file, silently wins. A stage carrying both attributes then stops being
+   sticky and the whole act scrolls away instead of pinning. */
+[data-sc-spotlight] { isolation: isolate; }
+:where([data-sc-spotlight]) { position: relative; }
+[data-sc-spotlight]::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background: radial-gradient(
+    28rem 28rem at calc(var(--sc-mx, 0.5) * 100%) calc(var(--sc-my, 0.5) * 100%),
+    color-mix(in oklab, var(--sc-accent) 16%, transparent), transparent 70%);
+  opacity: 0; transition: opacity var(--sc-d-slow) var(--sc-ease-out);
+}
+[data-sc-spotlight]:hover::after { opacity: 1; }
+
+/* =========================================================== WORLDFLIGHT ==
+   One fixed stage for the whole page. The only thing in document flow is the
+   spacer, and it is empty. If you find yourself adding a section here, you want
+   act mode instead: the moment a real block scrolls past the fixed stage, the
+   page has a seam again and the whole point is gone.                        */
+
+[data-sc-mode="worldflight"] { position: relative; }
+
+.sc-world {
+  position: fixed; inset: 0;
+  overflow: clip;
+  z-index: var(--sc-z-stage);
+  background: var(--sc-canvas);
+}
+
+/* Every leg is mounted for the life of the page and stacked in the same box.
+   The engine owns opacity, visibility and z-index here; do not set them. */
+.sc-world__seg {
+  position: absolute; inset: 0;
+  opacity: 0;
+  will-change: opacity;
+}
+.sc-world__seg > :is(video, img, canvas) {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+/* The poster is the frame-holder AND the first camera move: the engine pushes
+   it in slowly until a real decoded frame is available to replace it. */
+.sc-world__poster {
+  z-index: 0;
+  transform-origin: 50% 50%;
+  transition: opacity 420ms var(--sc-ease-out);
+}
+.sc-world__seg > video { z-index: 1; }
+.sc-world__seg.sc-has-clip .sc-world__poster { opacity: 0; }
+/* The act stylesheet lights a clip through its ancestor act. A worldflight leg
+   has no act, so match the class the engine also writes on the clip itself. */
+video[data-sc-scrub].sc-has-clip { opacity: 1; }
+
+/* The copy layer is fixed too, and inert by default: the engine hands
+   pointer-events back to a block only while it is actually legible. */
+.sc-world__copy {
+  position: fixed; inset: 0;
+  z-index: var(--sc-z-copy);
+  pointer-events: none;
+}
+.sc-world__scrim { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+[data-sc-copy] {
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+.sc-ready [data-sc-copy] { transition: none; }
+
+/* The track. Empty on purpose. */
+.sc-world__spacer { pointer-events: none; }
+
+/* scroll progress */
+[data-sc-progress] {
+  position: fixed; inset: 0 0 auto 0; height: 2px; z-index: var(--sc-z-chrome);
+  background: var(--sc-accent); transform-origin: 0 50%; transform: scaleX(0);
+  will-change: transform;
+}
+
+/* ----------------------------------------------------------- atmosphere --
+   Depth is not only shadow. Grain keeps a flat dark ground from banding, and
+   it is the difference between "a dark page" and "a lit room". */
+.sc-grain { position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0.045; }
+.sc-grain::before {
+  content: ""; position: absolute; inset: -50%;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>");
+}
+
+/* -------------------------------------------------------- reduced motion -- */
+@media (prefers-reduced-motion: reduce) {
+  /* Fewer and gentler, not zero. Opacity still carries the reveal so the page
+     is comprehensible; every position change is dropped. */
+  [data-sc-in], [data-sc-stagger] > * { transform: none; transition-duration: 220ms; }
+  [data-sc-parallax], [data-sc-pan], .sc-split__i { transform: none !important; }
+  /* A wipe is a position change too. Show reveal content settled. */
+  [data-sc-reveal] { clip-path: none !important; }
+  /* A rail's transform IS its navigation, not decoration. Zeroing it the way
+     parallax and kinetic type are zeroed parks the act on its first screenful
+     and makes everything past the fold unreachable: a device degrading into
+     missing content. Hand the travel back to the reader as an ordinary scroll
+     region instead, so the same items are all still gettable without motion.
+     A build that would rather re-lay the rail out as a grid can still do that;
+     this is the floor, not the ceiling. */
+  [data-sc-act="pan"] .sc-stage,
+  [data-sc-act="pan"] [data-sc-stage] {
+    overflow-x: auto; overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+  }
+  [data-sc-pan] > * { scroll-snap-align: center; }
+  [data-sc-spotlight]::after { display: none; }
+  /* A worldflight keeps its whole story here. No clip is ever fetched, so the
+     posters are the film, and they cross-dissolve through exactly the same
+     seams at exactly the same scroll positions. The push-in and the copy drift
+     are the only things that go. */
+  .sc-world__poster, [data-sc-copy] { transform: none !important; }
+}
+
+/* --------------------------------------------------------------- mobile -- */
+@media (max-width: 860px) {
+  .sc-copy { inset-inline: var(--sc-gutter); max-width: none; }
+  .sc-copy--trail { text-align: left; }
+  .sc-stage { height: 100svh; }
+  /* .sc-copy--trail re-anchors to the left and spans the full width here, so a
+     bottom-RIGHT corner gradient darkens the one corner the copy just left and
+     guarantees a contrast failure over any bright clip. Point the density at
+     the copy: the same band .sc-scrim--band paints. */
+  .sc-scrim--trail {
+    background: linear-gradient(to top,
+      color-mix(in oklab, var(--sc-canvas) 94%, transparent) 0%,
+      color-mix(in oklab, var(--sc-canvas) 74%, transparent) 22%,
+      color-mix(in oklab, var(--sc-canvas) 30%, transparent) 42%,
+      transparent 58%);
+  }
+}
+
+</style>
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  :root {
+    --forest:   #16211a;
+    --forest-2: #1b2a20;
+    --night:    #0e1611;
+    --paper:    #f4efe5;
+    --paper-2:  #ebe4d6;
+    --ink:      #17201a;
+    --ink-soft: #566257;
+    --cream:    #f1ece1;
+    --cream-soft: #aebaad;
+    --green:    #3daa4f;
+    --green-hi: #5cc96d;
+    --green-deep: #2f8f40;
+    --drench:   #3aa64c;
+    --drench-ink: #0d1a10;
+    --ochre:    #c99a3c;
+
+    --sc-canvas: var(--forest);
+    --sc-surface: var(--forest-2);
+    --sc-ink: var(--cream);
+    --sc-ink-soft: var(--cream-soft);
+    --sc-accent: var(--green);
+    --sc-accent-ink: var(--drench-ink);
+    --sc-font-display: "Brygada 1918", Georgia, serif;
+    --sc-font-text: "Hanken Grotesk", system-ui, sans-serif;
+
+    --rail: 232px;
+    --gut: clamp(20px, 4vw, 64px);
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
+  }
+
+  /* ------------------------------------------------------- browser surfaces */
+  html { scroll-behavior: smooth; background: var(--forest); }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    font-family: var(--sc-font-text);
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--cream);
+    background: var(--forest);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection { background: var(--green-hi); color: var(--drench-ink); }
+  * { box-sizing: border-box; }
+  input { caret-color: var(--green-deep); }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--night); }
+  ::-webkit-scrollbar-thumb { background: #2c3d31; border-radius: 10px; border: 2px solid var(--night); }
+  html { scrollbar-color: #2c3d31 var(--night); }
+  a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px; }
+  :focus-visible { outline: 2px solid var(--green-hi); outline-offset: 3px; border-radius: 4px; }
+  .paper :focus-visible, .drench :focus-visible { outline-color: var(--ink); }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  h1, h2, h3, p { margin: 0; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ------------------------------------------------------------ type scale */
+  .display {
+    font-family: var(--sc-font-display);
+    font-weight: 600;
+    letter-spacing: -0.022em;
+    line-height: 1.02;
+    text-wrap: balance;
+  }
+  .d-xl { font-size: clamp(2.2rem, 9.4vw, 6rem); }
+  @media (min-width: 721px) { .d-xl { font-size: clamp(3rem, 7.4vw, 6rem); } }
+  .d-lg { font-size: clamp(2.4rem, 5vw, 4.5rem); line-height: 1.04; }
+  .d-md { font-size: clamp(1.8rem, 3vw, 2.6rem); line-height: 1.1; }
+  .d-sm { font-size: clamp(1.25rem, 1.6vw, 1.5rem); line-height: 1.2; letter-spacing: -0.01em; }
+  .it { font-style: italic; font-weight: 500; }
+  .lede { font-size: clamp(1.08rem, 1.3vw, 1.24rem); line-height: 1.6; max-width: 34em; }
+  .small { font-size: .875rem; line-height: 1.5; }
+  .soft { color: var(--cream-soft); }
+  .paper .soft { color: var(--ink-soft); }
+  .drench .soft { color: #143a1c; }
+
+  /* --------------------------------------------------------------- layout */
+  .chapter {
+    position: relative;
+    padding: clamp(96px, 14vh, 168px) var(--gut) clamp(96px, 14vh, 168px) calc(var(--rail) + var(--gut));
+  }
+  .wrap { max-width: 1180px; }
+  .paper  { background: var(--paper); color: var(--ink); }
+  .night  { background: var(--night); }
+  .forest { background: var(--forest); }
+  .forest2{ background: var(--forest-2); }
+  .drench { background: var(--drench); color: var(--drench-ink); }
+
+  @media (max-width: 1099px) {
+    :root { --rail: 0px; }
+    .chapter { padding-bottom: clamp(112px, 16vh, 168px); }
+  }
+
+  /* ---------------------------------------------------- folio + job ticket */
+  .rail {
+    position: fixed; z-index: 40; inset: 0 auto 0 0; width: var(--rail);
+    padding: 28px 22px 26px 28px;
+    display: flex; flex-direction: column;
+    color: var(--cream);
+    transition: color .5s var(--ease-out);
+    pointer-events: none;
+  }
+  .rail > * { pointer-events: auto; }
+  .rail[data-ground="paper"] { color: var(--ink); }
+  .rail[data-ground="drench"] { color: var(--drench-ink); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .brand span { font-family: var(--sc-font-display); font-weight: 600; font-size: 1.3rem; letter-spacing: -0.01em; }
+  .folio { margin-top: 44px; }
+  .folio__title {
+    font-family: var(--sc-font-display); font-style: italic; font-size: 1.05rem; line-height: 1.3;
+    min-height: 2.6em;
+  }
+  .ticket {
+    margin-top: 22px; padding: 16px 0 0;
+    border-top: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    font-size: .8125rem; line-height: 1.45;
+  }
+  .ticket__head { display: flex; justify-content: space-between; gap: 8px; opacity: .72; }
+  .ticket__job { margin-top: 6px; font-weight: 600; font-size: .9375rem; }
+  .ticket__steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; }
+  .ticket__steps li { display: flex; align-items: center; gap: 10px; opacity: .38; transition: opacity .4s var(--ease-out); }
+  .ticket__steps li::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none;
+    border: 1.5px solid currentColor; transition: background .4s var(--ease-out), border-color .4s;
+  }
+  .ticket__steps li.done { opacity: .78; }
+  .ticket__steps li.done::before { background: currentColor; }
+  .ticket__steps li.now { opacity: 1; font-weight: 600; }
+  .ticket__steps li.now::before { background: var(--green-hi); border-color: var(--green-hi); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green-hi) 25%, transparent); }
+  .rail[data-ground="drench"] .ticket__steps li.now::before { background: var(--drench-ink); border-color: var(--drench-ink); box-shadow: none; }
+  .ticket__amt { margin-top: 14px; font-family: var(--sc-font-display); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
+  .rail__cta {
+    margin-top: auto; font-weight: 600; font-size: .9375rem; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .rail__cta svg { width: 16px; height: 16px; transition: transform .3s var(--ease-out); }
+  .rail__cta:hover svg { transform: translateX(3px); }
+  .rail__cta:hover { text-decoration: underline; }
+
+  /* the vine: grows with the page, sits on the rail's right edge */
+  .vine { position: fixed; z-index: 39; left: calc(var(--rail) - 26px); top: 0; height: 100vh; width: 40px; pointer-events: none; }
+  .vine path.stem { fill: none; stroke: var(--green); stroke-width: 1.5; stroke-linecap: round; }
+  .vine path.ghost { fill: none; stroke: currentColor; stroke-opacity: .12; stroke-width: 1; }
+  .vine .leaf { fill: var(--green); transform-box: fill-box; transform-origin: 0% 50%; transform: scale(0); transition: transform .7s var(--ease-out); }
+  .vine .leaf.on { transform: scale(1); }
+  .vine .bud { fill: var(--green-hi); transform-box: fill-box; transform-origin: 50% 100%; transform: scale(0); transition: transform .9s var(--ease-out); }
+  .vine .bud.on { transform: scale(1); }
+  .vine-wrap { color: var(--cream); transition: color .5s; }
+  .vine-wrap[data-ground="paper"] { color: var(--ink); }
+  .vine-wrap[data-ground="drench"] { color: var(--drench-ink); }
+  .vine-wrap[data-ground="drench"] path.stem, .vine-wrap[data-ground="drench"] .leaf { stroke: var(--drench-ink); }
+  .vine-wrap[data-ground="drench"] .leaf { fill: var(--drench-ink); }
+
+  /* mobile ticket: a slim bar at the bottom */
+  .mbar { display: none; }
+  @media (max-width: 1099px) {
+    .rail, .vine-wrap { display: none; }
+    .mbar {
+      display: flex; position: fixed; z-index: 40; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom));
+      align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 10px 10px 16px; border-radius: 999px;
+      background: color-mix(in srgb, var(--night) 92%, transparent);
+      color: var(--cream); font-size: .8125rem;
+      box-shadow: 0 10px 30px -12px rgba(0,0,0,.55);
+    }
+    .mbar__status { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .mbar__status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green-hi); flex: none; }
+    .mbar__status span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mbar a { flex: none; background: var(--green); color: var(--drench-ink); text-decoration: none; font-weight: 600; padding: 9px 16px; border-radius: 999px; }
+  }
+
+  /* ------------------------------------------------- title page: dispatch */
+  .title {
+    min-height: 100svh; display: flex; flex-direction: column;
+    padding-top: 28px; padding-bottom: 40px;
+    overflow: hidden;
+  }
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .masthead .brand { visibility: hidden; }
+  @media (max-width: 1099px) { .masthead .brand { visibility: visible; } }
+  .masthead nav { display: flex; gap: clamp(16px, 2.4vw, 34px); font-size: .9375rem; }
+  .masthead nav a { text-decoration: none; opacity: .8; }
+  .masthead nav a:hover { opacity: 1; text-decoration: underline; }
+  @media (max-width: 720px) { .masthead nav a:not(:last-child) { display: none; } }
+
+  .dispatch { margin-top: auto; margin-bottom: auto; padding: 6vh 0 2vh; position: relative; z-index: 2; max-width: 1080px; }
+  .dispatch h1 { position: relative; }
+  .dispatch h1 .line { display: block; }
+  .appl {
+    font: inherit; letter-spacing: inherit; color: var(--green-hi);
+    border-bottom: 2px dotted color-mix(in srgb, var(--green-hi) 60%, transparent);
+    display: inline-flex; align-items: baseline; gap: .14em; line-height: 1.02;
+    transition: color .2s, border-color .2s;
+  }
+  .appl:hover { border-bottom-style: solid; }
+  .appl svg { width: .34em; height: .34em; align-self: center; margin-top: .08em; opacity: .7; }
+  .appl__word { display: inline-block; }
+  .appl__word.swap { animation: swap .42s var(--ease-out); }
+  @keyframes swap { from { opacity: 0; transform: translateY(.18em); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+  .tapline { position: relative; display: block; height: 1.04em; }
+  .tapline > * { position: absolute; left: 0; top: 0; white-space: nowrap; }
+  .tap {
+    font: inherit; letter-spacing: inherit;
+    display: inline-flex; align-items: center; gap: .22em;
+    color: var(--cream);
+    transition: transform .25s var(--ease-out);
+  }
+  .tap__ring {
+    width: .62em; height: .62em; border-radius: 50%; position: relative; flex: none;
+    background: var(--green); box-shadow: 0 .06em .2em -.04em rgba(0,0,0,.4);
+  }
+  .tap__ring::after {
+    content: ""; position: absolute; inset: -.14em; border-radius: 50%;
+    border: 2px solid var(--green-hi); opacity: 0;
+    animation: ping 2.2s var(--ease-out) infinite 1.2s;
+  }
+  @keyframes ping { 0% { transform: scale(.7); opacity: .9; } 70%,100% { transform: scale(1.6); opacity: 0; } }
+  .tap:hover { transform: translateX(.04em); }
+  .tap:hover .tap__ring { background: var(--green-hi); }
+  .tap:active { transform: scale(.98); }
+  .matching { opacity: 0; display: inline-flex; align-items: baseline; gap: .3em; color: var(--cream-soft); font-style: italic; font-weight: 500; }
+  .matching i { display: inline-block; width: 1.4em; height: 2px; background: var(--green-hi); transform-origin: left; transform: scaleX(0); align-self: center; }
+  .result { opacity: 0; color: var(--cream); }
+  .matching, .result { pointer-events: none; }
+  .tap { z-index: 1; }
+  .result em { color: var(--green-hi); font-weight: 500; }
+
+  [data-state="matching"] .tap { opacity: 0; pointer-events: none; transform: translateY(-.2em); transition: opacity .2s, transform .3s var(--ease-out); }
+  [data-state="matching"] .matching { opacity: 1; transition: opacity .25s .1s; }
+  [data-state="matching"] .matching i { transform: scaleX(1); transition: transform .7s var(--ease-out) .15s; }
+  [data-state="done"] .tap, [data-state="done"] .matching { opacity: 0; pointer-events: none; }
+  [data-state="done"] .result { opacity: 1; }
+
+  .sub { margin-top: clamp(22px, 3.4vh, 36px); max-width: 30em; color: var(--cream-soft); font-size: clamp(1.02rem, 1.25vw, 1.18rem); }
+
+  .slip {
+    margin-top: clamp(24px, 3.6vh, 40px);
+    display: grid; grid-template-columns: auto auto auto; gap: 0;
+    width: max-content; max-width: 100%;
+    border-top: 1px solid color-mix(in srgb, var(--cream) 18%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--cream) 18%, transparent);
+    opacity: 0; transform: translateY(10px);
+    transition: opacity .6s var(--ease-out) .25s, transform .7s var(--ease-out) .25s;
+  }
+  [data-state="done"] .slip { opacity: 1; transform: none; }
+  .slip > div { padding: 14px 28px 14px 0; }
+  .slip > div + div { padding-left: 28px; border-left: 1px solid color-mix(in srgb, var(--cream) 14%, transparent); }
+  .slip dt { font-size: .75rem; letter-spacing: .02em; color: var(--cream-soft); }
+  .slip dd { margin: 3px 0 0; font-size: 1.02rem; font-weight: 600; white-space: nowrap; }
+  .slip dd small { font-weight: 400; color: var(--cream-soft); font-size: .85rem; }
+  .pro { display: flex; align-items: center; gap: 10px; }
+  .pro b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--green); color: var(--drench-ink); font-size: .72rem; font-weight: 700; }
+  .slip .live { color: var(--green-hi); }
+  @media (max-width: 720px) {
+    .slip { grid-template-columns: 1fr 1fr; width: 100%; }
+    .slip > div:first-child { grid-column: 1 / -1; border-bottom: 1px solid color-mix(in srgb, var(--cream) 14%, transparent); }
+    .slip > div + div { border-left: 0; padding-left: 0; }
+    .slip > div:last-child { padding-left: 20px; border-left: 1px solid color-mix(in srgb, var(--cream) 14%, transparent); }
+    .slip dd { white-space: normal; }
+    .slip dd small { display: block; }
+    .colophon { padding-bottom: 120px; }
+  }
+  .again { margin-top: 18px; font-size: .875rem; color: var(--cream-soft); display: flex; gap: 16px; flex-wrap: wrap; align-items: center; min-height: 1.5em; }
+  .again button { text-decoration: underline; text-underline-offset: .22em; color: var(--cream); }
+  .again button:hover { color: var(--green-hi); }
+
+  /* the street: a hairline route that draws itself after a tap */
+  .street { position: absolute; z-index: 1; right: 3vw; bottom: 4vh; width: min(56vw, 880px); height: auto; pointer-events: none; }
+  .street .road { fill: none; stroke: var(--cream); stroke-opacity: .16; stroke-width: 1; stroke-dasharray: 2 7; }
+  .street .route { fill: none; stroke: var(--green); stroke-width: 2; stroke-linecap: round; }
+  .street .home { fill: var(--forest); stroke: var(--cream); stroke-opacity: .55; stroke-width: 1.2; }
+  .street .van { fill: var(--green-hi); }
+  .street .vanhalo { fill: var(--green-hi); opacity: .18; }
+  .street text { fill: var(--cream-soft); font: 500 12px var(--sc-font-text); letter-spacing: .02em; }
+  @media (max-width: 720px) { .street { width: 130vw; right: -40vw; bottom: 22vh; opacity: .7; } }
+
+  /* --------------------------------------------- ch I: your words are enough */
+  .spread { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: clamp(40px, 7vw, 120px); align-items: start; }
+  @media (max-width: 900px) { .spread { grid-template-columns: 1fr; } }
+  .spread .copy > * + * { margin-top: 22px; }
+  .marks { list-style: none; padding: 0; margin: 34px 0 0; display: grid; gap: 14px; }
+  .marks li { display: grid; grid-template-columns: 18px 1fr; gap: 14px; align-items: start; }
+  .marks svg { width: 18px; height: 18px; margin-top: 4px; color: var(--green-deep); }
+  .forest .marks svg, .night .marks svg, .forest2 .marks svg { color: var(--green-hi); }
+
+  .describe {
+    background: #fffdf8; color: var(--ink);
+    border-radius: 18px; padding: 26px clamp(20px, 2.6vw, 32px) 24px;
+    box-shadow: 0 1px 0 rgba(23,32,26,.06), 0 24px 48px -28px rgba(23,32,26,.35);
+  }
+  .describe label { font-weight: 600; font-size: .9375rem; display: block; }
+  .describe .field {
+    margin-top: 12px; display: flex; align-items: center; gap: 10px;
+    border: 1px solid #d9d2c3; border-radius: 12px; padding: 4px 4px 4px 16px;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .describe .field:focus-within { border-color: var(--green-deep); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent); }
+  .describe input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 1.02rem; padding: 10px 0; color: var(--ink); }
+  .describe input::placeholder { color: #8a917f; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip { font-size: .875rem; padding: 7px 13px; border-radius: 999px; border: 1px solid #d9d2c3; transition: background .2s, border-color .2s, color .2s; }
+  .chip:hover { border-color: var(--green-deep); }
+  .chip[aria-pressed="true"] { background: #e3f1e3; border-color: var(--green-deep); color: #1e5c29; font-weight: 600; }
+  .readout { margin-top: 22px; padding-top: 18px; border-top: 1px solid #ebe4d6; min-height: 92px; }
+  .readout__label { font-size: .8125rem; color: var(--ink-soft); }
+  .readout__value { font-family: var(--sc-font-display); font-weight: 600; font-size: 2rem; letter-spacing: -0.015em; margin-top: 2px; }
+  .readout__note { font-size: .875rem; color: var(--ink-soft); }
+  .readout.pending .readout__value { color: #b6ae9f; }
+  .figcap { margin-top: 14px; font-size: .8125rem; color: var(--ink-soft); font-style: italic; font-family: var(--sc-font-display); }
+
+  /* --------------------------------------------- ch II: the quote, pinned */
+  .quote-act { padding: 0; }
+  .quote-act [data-sc-stage] {
+    height: 100svh; display: grid; align-items: center;
+    padding: 0 var(--gut) 0 calc(var(--rail) + var(--gut));
+  }
+  .quote-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 470px); gap: clamp(40px, 7vw, 120px); align-items: center; max-width: 1180px; width: 100%; }
+  @media (max-width: 900px) {
+    .quote-grid { grid-template-columns: 1fr; gap: 28px; }
+    .quote-act [data-sc-stage] { align-items: start; padding-top: 10vh; }
+    .quote-grid .copy p, .receipt__intro, .warranty { display: none; }
+    .receipt { padding: 20px 20px 18px; }
+    .lines li { padding: 8px 0; font-size: .875rem; }
+    .stamp { right: -6px; top: -18px; font-size: 1.3rem; }
+  }
+  .receipt {
+    position: relative; background: #fbf8f1; color: var(--ink);
+    padding: 28px 30px 26px; border-radius: 4px;
+    box-shadow: 0 2px 0 rgba(0,0,0,.25), 0 40px 70px -30px rgba(0,0,0,.7);
+    transform: rotate(-1.2deg);
+  }
+  .receipt::after { /* torn bottom edge */
+    content: ""; position: absolute; left: 0; right: 0; bottom: -9px; height: 10px;
+    background: radial-gradient(circle at 6px -1px, transparent 6px, #fbf8f1 6.5px) 0 0 / 12px 10px repeat-x;
+  }
+  .receipt__top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .receipt__top h3 { font-family: var(--sc-font-display); font-size: 1.35rem; font-weight: 600; }
+  .receipt__top span { font-size: .8125rem; color: var(--ink-soft); }
+  .receipt__intro { margin-top: 8px; font-size: .9375rem; color: var(--ink-soft); }
+  .lines { margin: 18px 0 0; padding: 0; list-style: none; border-top: 1px solid #e6dfd0; }
+  .lines li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed #e0d8c8; font-size: .9375rem; }
+  .lines li.credit { color: var(--green-deep); }
+  .lines li.total { border-bottom: 0; padding-top: 14px; font-weight: 600; font-size: 1.06rem; }
+  .lines b { font-weight: 600; }
+  .band { margin-top: 18px; }
+  .band__track { position: relative; height: 6px; border-radius: 6px; background: #e8e1d2; }
+  .band__fill { position: absolute; inset: 0; border-radius: 6px; background: linear-gradient(90deg, #cfe7cf, #8fd197); }
+  .band__pin {
+    position: absolute; top: 50%; left: 0; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%;
+    background: var(--green-deep); box-shadow: 0 0 0 4px #fbf8f1;
+    transform: translateX(calc(var(--band, 0) * 1px));
+  }
+  .band__ends { display: flex; justify-content: space-between; margin-top: 8px; font-size: .8125rem; color: var(--ink-soft); }
+  .warranty { margin-top: 16px; font-size: .8125rem; background: #edf6ec; color: #22502b; padding: 10px 12px; border-radius: 8px; }
+  .stamp {
+    position: absolute; right: -16px; top: -24px; background: color-mix(in srgb, #fbf8f1 70%, transparent);
+    font-family: var(--sc-font-display); font-style: italic; font-weight: 700; font-size: 1.7rem;
+    color: var(--green-deep); border: 2.5px solid var(--green-deep); border-radius: 8px; padding: 2px 14px 4px;
+    transform: rotate(-9deg); 
+  }
+
+  /* --------------------------------------------- ch III: tracking */
+  .track { margin-top: clamp(48px, 8vh, 80px); }
+  .track__eta { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  .track__eta strong { font-family: var(--sc-font-display); font-size: clamp(3rem, 6vw, 5rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+  .track__eta span { color: var(--cream-soft); }
+  .stages { position: relative; margin-top: 34px; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .stages::before, .stages::after {
+    content: ""; position: absolute; left: 6px; right: calc(25% - 6px); top: 6px; height: 2px; background: #2d3f33;
+  }
+  .stages::after { background: var(--green-hi); right: auto; width: calc((75% - 12px) * var(--trk, 0)); }
+  .stage { position: relative; padding-top: 28px; font-size: .9375rem; color: var(--cream-soft); transition: color .4s; }
+  .stage::before { content: ""; position: absolute; left: 0; top: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--forest-2); border: 2px solid #3a5040; transition: background .4s, border-color .4s; z-index: 1; }
+  .stage.on { color: var(--cream); }
+  .stage.on::before { background: var(--green-hi); border-color: var(--green-hi); }
+  .stage b { display: block; font-weight: 600; color: inherit; }
+  @media (max-width: 640px) { .stage { font-size: .8125rem; } }
+
+  /* --------------------------------------------- ch IV: small stuff */
+  .tasks { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 4px 0; font-family: var(--sc-font-display); font-size: clamp(1.4rem, 2.6vw, 2.2rem); line-height: 1.35; letter-spacing: -0.012em; }
+  .task { color: var(--ink); opacity: .42; text-align: left; transition: opacity .25s, color .25s; }
+  .task:hover { opacity: .8; }
+  .task[aria-pressed="true"] { opacity: 1; color: var(--green-deep); font-style: italic; }
+  .tasks { column-gap: .72em; }
+  .smallq { margin-top: 36px; display: flex; flex-wrap: wrap; gap: 14px 40px; align-items: baseline; padding-top: 22px; border-top: 1px solid #d9d1c1; }
+  .smallq__price { font-family: var(--sc-font-display); font-weight: 600; font-size: 2.2rem; letter-spacing: -0.02em; }
+  .smallq__what { font-weight: 600; }
+
+  /* --------------------------------------------- ch V: pros, drenched */
+  .pros-head { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: clamp(30px, 6vw, 100px); align-items: end; }
+  @media (max-width: 900px) { .pros-head { grid-template-columns: 1fr; } }
+  .ledger { margin-top: clamp(56px, 9vh, 96px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1.5px solid var(--drench-ink); }
+  .ledger > div { padding: 26px 32px 30px 0; border-bottom: 1px solid color-mix(in srgb, var(--drench-ink) 30%, transparent); }
+  .ledger > div:nth-child(2n) { padding-left: 32px; border-left: 1px solid color-mix(in srgb, var(--drench-ink) 30%, transparent); }
+  .ledger h3 { font-family: var(--sc-font-display); font-weight: 600; font-size: 1.5rem; letter-spacing: -0.01em; }
+  .ledger p { margin-top: 8px; max-width: 30em; color: #12301a; }
+  @media (max-width: 720px) {
+    .ledger { grid-template-columns: 1fr; }
+    .ledger > div:nth-child(2n) { padding-left: 0; border-left: 0; }
+  }
+  .standard { margin-top: clamp(56px, 9vh, 96px); display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(30px, 6vw, 100px); }
+  @media (max-width: 900px) { .standard { grid-template-columns: 1fr; } }
+  .standard ul { list-style: none; margin: 0; padding: 0; }
+  .standard li { padding: 14px 0; border-bottom: 1px solid color-mix(in srgb, var(--drench-ink) 25%, transparent); font-size: 1.06rem; }
+  .standard li:first-child { padding-top: 0; }
+  .pill-link {
+    display: inline-flex; align-items: center; gap: 10px; margin-top: 36px;
+    background: var(--drench-ink); color: var(--cream); text-decoration: none; font-weight: 600;
+    padding: 15px 24px; border-radius: 999px;
+    box-shadow: 0 10px 24px -14px rgba(0,0,0,.6);
+    transition: transform .25s var(--ease-out), box-shadow .25s;
+  }
+  .pill-link:hover { transform: translateY(-2px); box-shadow: 0 16px 30px -16px rgba(0,0,0,.65); }
+  .pill-link svg { width: 16px; height: 16px; }
+
+  /* --------------------------------------------- ch VI: the garden, pinned */
+  .garden-act { padding: 0; }
+  .garden-act [data-sc-stage] {
+    height: 100svh; display: grid; align-content: center;
+    padding: 0 var(--gut) 0 calc(var(--rail) + var(--gut));
+    --w: clamp(0, (var(--sc-p, 0) - .26) * 5, 1);
+    --r: clamp(0, (var(--sc-p, 0) - .6) * 5, 1);
+    --wilt: calc(var(--w) * (1 - var(--r)));
+  }
+  .garden-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: clamp(30px, 6vw, 90px); align-items: end; max-width: 1180px; }
+  @media (max-width: 900px) { .garden-top { grid-template-columns: 1fr; } .garden-top .lede { display: none; } }
+  .shelf { position: relative; margin-top: clamp(20px, 4vh, 44px); max-width: 1180px; }
+  .shelf__plants { display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; gap: clamp(8px, 2vw, 28px); }
+  .shelf__board { height: 10px; margin-top: -2px; border-radius: 3px; background: linear-gradient(#3b2f22, #2a2118); box-shadow: 0 14px 22px -12px rgba(0,0,0,.8); }
+  .plant { text-align: center; }
+  .plant svg { width: 100%; max-width: 150px; height: auto; overflow: visible; }
+  .plant .pot { fill: #c9b79a; }
+  .plant .pot-rim { fill: #b9a585; }
+  .plant .stem { fill: none; stroke: #4fa45c; stroke-width: 2.4; stroke-linecap: round; }
+  .plant .lf { fill: #4fbf61; transform-box: fill-box; }
+  .plant .lf.l { transform-origin: 100% 100%; }
+  .plant .lf.r { transform-origin: 0% 100%; }
+  .plant .lf.alt { fill: #3a9a4b; }
+  .plant figcaption { margin-top: 12px; font-size: .875rem; color: var(--cream-soft); }
+  .plant--sick .stem { stroke: color-mix(in srgb, #4fa45c calc((1 - var(--wilt)) * 100%), var(--ochre)); }
+  .plant--sick .lf { fill: color-mix(in srgb, #4fbf61 calc((1 - var(--wilt)) * 100%), var(--ochre)); }
+  .plant--sick .lf.l { transform: rotate(calc(var(--wilt) * -38deg)) translateY(calc(var(--wilt) * 6px)); }
+  .plant--sick .lf.r { transform: rotate(calc(var(--wilt) * 38deg)) translateY(calc(var(--wilt) * 6px)); }
+  .plant--sick .stemg { transform-box: fill-box; transform-origin: 50% 100%; transform: rotate(calc(var(--wilt) * 9deg)); }
+  .note {
+    position: relative; margin: 0 0 18px 13%; width: min(340px, 80vw);
+    background: #f7f2e7; color: var(--ink); border-radius: 12px; padding: 14px 16px;
+    font-size: .875rem; line-height: 1.45;
+    box-shadow: 0 18px 36px -18px rgba(0,0,0,.75);
+  }
+  .note strong { display: block; font-size: .9375rem; }
+  .note .tended { color: var(--green-deep); font-weight: 600; margin-top: 6px; display: block; }
+  .note::after { content: ""; position: absolute; left: 34px; bottom: -7px; width: 14px; height: 14px; background: #f7f2e7; transform: rotate(45deg); border-radius: 2px; }
+  @media (max-width: 900px) { .note { margin-left: 4%; } }
+  .roadmap { margin-top: clamp(28px, 5vh, 52px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 3vw, 44px); max-width: 1180px; }
+  .roadmap div { border-top: 1px solid #2d3f33; padding-top: 14px; }
+  .roadmap b { font-family: var(--sc-font-display); font-weight: 600; font-size: 1.12rem; display: block; }
+  .roadmap span { display: block; margin-top: 4px; font-size: .875rem; color: var(--cream-soft); }
+  .roadmap .when { font-size: .75rem; letter-spacing: .02em; color: var(--green-hi); margin: 0 0 6px; }
+  .roadmap .soon { color: var(--ochre); }
+  @media (max-width: 640px) { .roadmap { grid-template-columns: 1fr; gap: 10px; } .roadmap span:not(.when) { display: none; } }
+
+  /* --------------------------------------------- colophon */
+  .colophon { padding-bottom: 48px; }
+  .colophon .wrap { max-width: 980px; }
+  .sign { font-family: var(--sc-font-display); font-style: italic; font-weight: 500; font-size: clamp(2.2rem, 4.6vw, 4rem); line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; }
+  .runon { margin-top: 30px; font-size: clamp(1.1rem, 1.5vw, 1.32rem); line-height: 1.75; max-width: 40em; }
+  .runon form { display: inline; }
+  .runon input {
+    font: inherit; color: var(--ink); background: transparent; border: 0;
+    border-bottom: 1.5px solid var(--ink); padding: 0 2px 2px; width: min(15em, 100%);
+    outline: 0; transition: border-color .2s;
+  }
+  .runon input:focus { border-bottom-color: var(--green-deep); }
+  .runon input::placeholder { color: #8c8778; }
+  .runon button {
+    font-weight: 600; color: var(--paper); background: var(--ink); border-radius: 999px;
+    padding: 6px 16px 7px; margin-left: 6px; vertical-align: 1px;
+    transition: background .2s;
+  }
+  .runon button:hover { background: var(--green-deep); }
+  .runon .ok { color: var(--green-deep); font-weight: 600; }
+  .runon .err { color: #a3361f; font-weight: 600; }
+  .foot { margin-top: clamp(80px, 14vh, 140px); padding-top: 22px; border-top: 1px solid #d6cdbb; display: grid; grid-template-columns: 1fr auto; gap: 20px 40px; font-size: .8125rem; color: var(--ink-soft); }
+  .foot nav { display: flex; gap: 18px; flex-wrap: wrap; }
+  .foot nav a { text-decoration: none; }
+  .foot nav a:hover { text-decoration: underline; }
+  @media (max-width: 720px) { .foot { grid-template-columns: 1fr; } }
+  .concept { margin-top: 10px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================== RAIL -->
+<aside class="rail" id="rail" data-ground="dark" aria-label="Chapter and sample job">
+  <a class="brand" href="#top" aria-label="Strech, back to top">
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5cc96d"/><stop offset="1" stop-color="#2f8f40"/></linearGradient></defs>
+      <rect width="40" height="40" rx="9" fill="url(#lg)"/>
+      <path d="M26.5 8.5H17l-5.2 6.4h9.6l-5.9 6.6h9.7l-6.9 9.8 12.4-11.6h-9.6l5.4-11.2z" fill="#fff"/>
+      <path d="M21.4 14.9l-5.9 6.6h4.2l5.6-6.6z" fill="#cdeccf"/>
+    </svg>
+    <span>Strech</span>
+  </a>
+  <div class="folio">
+    <p class="folio__title" id="folioTitle">The dispatch</p>
+    <div class="ticket" aria-live="polite">
+      <div class="ticket__head"><span>Sample job</span><span>Van #204</span></div>
+      <p class="ticket__job" id="ticketJob">Dishwasher · won’t drain</p>
+      <ol class="ticket__steps" id="ticketSteps">
+        <li>Requested</li>
+        <li>Matched with Sofia</li>
+        <li>Quoted $240</li>
+        <li>Approved</li>
+        <li>On the way</li>
+        <li>Done</li>
+        <li>Paid</li>
+      </ol>
+      <p class="ticket__amt" id="ticketAmt">$180–$260</p>
+    </div>
+  </div>
+  <a class="rail__cta" href="#join">Join the waitlist
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+  </a>
+</aside>
+
+<div class="vine-wrap" id="vineWrap" data-ground="dark" aria-hidden="true">
+  <svg class="vine" id="vine" viewBox="0 0 40 1000" preserveAspectRatio="none">
+    <path class="ghost" d="M20 0 C 32 80, 8 160, 20 250 S 32 420, 20 500 S 8 660, 20 750 S 32 920, 20 1000"/>
+    <path class="stem" id="stem" d="M20 0 C 32 80, 8 160, 20 250 S 32 420, 20 500 S 8 660, 20 750 S 32 920, 20 1000"/>
+  </svg>
+</div>
+
+<div class="mbar" aria-hidden="true">
+  <div class="mbar__status"><span id="mbarText">Sample job · Dishwasher</span></div>
+  <a href="#join" tabindex="-1">Join the waitlist</a>
+</div>
+
+<main id="top">
+
+<!-- ======================================================= TITLE PAGE -->
+<section class="chapter forest title" data-chapter="The dispatch" data-ground="dark" data-step="0" id="dispatch">
+  <div class="masthead">
+    <a class="brand" href="#top" aria-label="Strech">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="9" fill="#3daa4f"/><path d="M26.5 8.5H17l-5.2 6.4h9.6l-5.9 6.6h9.7l-6.9 9.8 12.4-11.6h-9.6l5.4-11.2z" fill="#fff"/></svg>
+      <span>Strech</span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="#homeowners">For homeowners</a>
+      <a href="#pros">For pros</a>
+      <a href="#next">What’s next</a>
+      <a href="#join">Join the waitlist</a>
+    </nav>
+  </div>
+
+  <div class="dispatch" id="dispatchBox" data-state="idle">
+    <h1 class="display d-xl">
+      <span class="line">My <button class="appl" id="appl" type="button" aria-label="Change appliance"><span class="appl__word" id="applWord">dishwasher</span><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg></button></span>
+      <span class="line" id="faultLine">won’t drain.</span>
+      <span class="line tapline">
+        <button class="tap" id="tap" type="button"><span class="tap__ring" aria-hidden="true"></span>Tap.</button>
+        <span class="matching" aria-hidden="true">Matching<i></i></span>
+        <span class="result" id="result" aria-hidden="true"><em id="proName">Sofia</em> is on her way.</span>
+      </span>
+    </h1>
+
+    <p class="sub">A price range up front, a fixed quote before any work, and live tracking until it’s running again.</p>
+
+    <dl class="slip" id="slip" aria-live="polite">
+      <div>
+        <dt>Your pro</dt>
+        <dd class="pro"><b id="proInit">SM</b><span><span id="proFull">Sofia M.</span> <small>· 4.9 · appliance tech</small></span></dd>
+      </div>
+      <div>
+        <dt>Arriving</dt>
+        <dd><span id="eta">9:42</span> <small class="live">· <span id="mins">12</span> min</small></dd>
+      </div>
+      <div>
+        <dt>Estimate</dt>
+        <dd id="est">$180–$260 <small>a range, never a point</small></dd>
+      </div>
+    </dl>
+    <p class="again" id="again"><span>Sample job. Strech opens city by city.</span></p>
+  </div>
+
+  <svg class="street" id="street" viewBox="0 0 980 360" aria-hidden="true">
+    <path class="road" d="M20 300 C 180 300, 210 180, 360 190 S 560 300, 700 230 S 860 90, 940 110"/>
+    <path class="route" id="route" d="M20 300 C 180 300, 210 180, 360 190 S 560 300, 700 230 S 860 90, 940 110"/>
+    <g id="home" transform="translate(940 110)">
+      <path class="home" d="M-14 6 L0 -9 L14 6 V20 H-14 Z"/>
+      <text x="-30" y="42">your place</text>
+    </g>
+    <circle class="vanhalo" id="vanHalo" r="14" cx="20" cy="300"/>
+    <circle class="van" id="van" r="5.5" cx="20" cy="300"/>
+  </svg>
+</section>
+
+<!-- ============================================ I · YOUR WORDS ARE ENOUGH -->
+<section class="chapter paper" data-chapter="Your words are enough" data-ground="paper" data-step="1" id="homeowners" data-sc-act="flow">
+  <div class="wrap spread">
+    <div class="copy" data-sc-in>
+      <h2 class="display d-lg">Your words are enough.</h2>
+      <p class="lede soft">“Won’t drain” is a perfectly good diagnosis to start with. Strech reads it, picks the right kind of visit, and shows you an honest range before you commit to anything.</p>
+      <ul class="marks">
+        <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>A price range up front, never a mystery callout fee.</span></li>
+        <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Vetted pros matched by appliance class and distance.</span></li>
+        <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Real arrival windows, not “sometime Thursday.”</span></li>
+      </ul>
+    </div>
+
+    <figure style="margin:0" data-sc-in>
+      <div class="describe">
+        <label for="fault">What’s going on?</label>
+        <div class="field"><input id="fault" type="text" autocomplete="off" placeholder="My dishwasher won’t drain" value=""></div>
+        <div class="chips" role="group" aria-label="Common faults">
+          <button class="chip" type="button" aria-pressed="false" data-fault="Dishwasher won’t drain">Won’t drain</button>
+          <button class="chip" type="button" aria-pressed="false" data-fault="Dishwasher is noisy">Noisy</button>
+          <button class="chip" type="button" aria-pressed="false" data-fault="Dishwasher leaks">Leaks</button>
+        </div>
+        <div class="readout pending" id="readout" aria-live="polite">
+          <p class="readout__label" id="rLabel">Your range appears here</p>
+          <p class="readout__value" id="rValue">$ ··· – ···</p>
+          <p class="readout__note" id="rNote">No payment at booking. You approve the final price after diagnosis.</p>
+        </div>
+      </div>
+      <figcaption class="figcap">Try it: type the fault the way you’d say it. Sample range from Strech’s booking flow.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================================ II · THE QUOTE IS THE INVOICE -->
+<section class="quote-act night" data-chapter="The quote is the invoice" data-ground="dark" data-step="3" id="quote" data-sc-act="pin" data-sc-span="2.4">
+  <div data-sc-stage>
+    <div class="quote-grid">
+      <div class="copy">
+        <h2 class="display d-lg">The quote is the invoice. <span class="it" style="color:var(--green-hi)">Full stop.</span></h2>
+        <p class="lede soft" style="margin-top:24px">After diagnosis, your pro writes one fixed, itemized quote inside the range you booked against, with the diagnostic visit credited back. Work starts on your approval, and the invoice can’t drift from the number you approved.</p>
+      </div>
+      <div class="receipt" id="receipt">
+        <div class="receipt__top"><h3>Your quote</h3><span>Fixed price · inside your range</span></div>
+        <p class="receipt__intro">Sofia checked your dishwasher. The care it needs costs $240. Shall she go ahead?</p>
+        <ul class="lines">
+          <li data-sc-cue="0.08"><span>Drain pump replacement</span><b>$95.00</b></li>
+          <li data-sc-cue="0.18"><span>Labor, 1.5 hr</span><b>$145.00</b></li>
+          <li data-sc-cue="0.28"><span>Diagnostic visit</span><b>$89.00</b></li>
+          <li class="credit" data-sc-cue="0.38"><span>Diagnostic credit</span><b>−$89.00</b></li>
+          <li class="total" data-sc-cue="0.48"><span>Total</span><b>$240.00</b></li>
+        </ul>
+        <div class="band" data-sc-cue="0.52">
+          <div class="band__track" id="bandTrack"><div class="band__fill"></div><div class="band__pin" id="bandPin"></div></div>
+          <div class="band__ends"><span>$180 booked low</span><span>$260 booked high</span></div>
+        </div>
+        <p class="warranty" data-sc-cue="0.6">90-day workmanship warranty. Decline anytime before work begins: nothing else happens until you approve.</p>
+        <div class="stamp" data-sc-cue="0.7" aria-hidden="true">Approved</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ III · KNOW WHERE THE HELP IS -->
+<section class="chapter forest2" data-chapter="Know where the help is" data-ground="dark" data-step="4" id="tracking" data-sc-act="flow">
+  <div class="wrap">
+    <div class="spread">
+      <h2 class="display d-lg" data-sc-in>Know where the help is.</h2>
+      <p class="lede soft" data-sc-in style="align-self:end">From the moment you’re matched, the visit grows along a vine: matched, on the way, on site, done. You’ll know when the van turns onto your street, and the app tells you honestly when tracking pauses.</p>
+    </div>
+    <div class="track" id="track">
+      <div class="track__eta"><strong id="trackMins">12 min</strong><span id="trackLine">Sofia M. · appliance tech · van #204 · arriving 9:42</span></div>
+      <div class="stages" id="stages">
+        <div class="stage"><b>Matched</b>Sofia accepts</div>
+        <div class="stage"><b>On the way</b>Live countdown</div>
+        <div class="stage"><b>On site</b>Diagnosis</div>
+        <div class="stage"><b>Done</b>Pay once</div>
+      </div>
+    </div>
+    <ul class="marks" style="margin-top:56px; max-width:34em">
+      <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Arrival time and a live countdown, not a four-hour window.</span></li>
+      <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Who’s coming: name, trade, and van number.</span></li>
+      <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Every stage change lands as a gentle notification.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================ IV · NO JOB TOO SMALL -->
+<section class="chapter paper" data-chapter="No job too small" data-ground="paper" data-step="5" id="small" data-sc-act="flow">
+  <div class="wrap">
+    <div data-sc-reveal="up" data-sc-reveal-at="0.05 0.32">
+      <h2 class="display d-lg">No job too small <span class="it">to tend.</span></h2>
+    </div>
+    <p class="lede soft" style="margin-top:24px" data-sc-in>Not everything is a breakdown. Sometimes you just want the bulbs swapped, the shelf finally hung, the tub re-caulked. Strech dispatches handymen for the little tasks too: same honest range, one flat visit, tracked like any other.</p>
+    <div class="tasks" role="group" aria-label="Small tasks, pick one" id="tasks">
+      <button class="task" type="button" aria-pressed="true">Swap the light bulbs</button>
+      <button class="task" type="button" aria-pressed="false">Change the fridge filter</button>
+      <button class="task" type="button" aria-pressed="false">Re-caulk the tub</button>
+      <button class="task" type="button" aria-pressed="false">Hang shelves &amp; frames</button>
+      <button class="task" type="button" aria-pressed="false">Quiet a squeaky hinge</button>
+      <button class="task" type="button" aria-pressed="false">Clean the dryer vent</button>
+      <button class="task" type="button" aria-pressed="false">Patch a wall ding</button>
+      <button class="task" type="button" aria-pressed="false">Install a smart thermostat</button>
+    </div>
+    <div class="smallq" aria-live="polite">
+      <span class="smallq__price">$45–$75</span>
+      <span><span class="smallq__what" id="smallWhat">Swap the light bulbs</span><br><span class="soft small">Handyman match · one visit, flat and final</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ V · FOR PROS -->
+<section class="chapter drench" data-chapter="For pros" data-ground="drench" data-step="6" id="pros" data-sc-act="flow">
+  <div class="wrap">
+    <div class="pros-head">
+      <h2 class="display d-lg" data-sc-in>Bring your van. <span class="it">We’ll bring the route.</span></h2>
+      <p class="lede soft" data-sc-in>Pro onboarding opens city by city alongside homeowner launch. Get in line and we’ll hold your area.</p>
+    </div>
+    <div class="ledger" data-sc-stagger="90">
+      <div data-sc-in><h3>Jobs find you</h3><p>Matched by appliance class, radius, and your calendar, not auctioned to whoever answers fastest. When you get a job, you were the right pro for it.</p></div>
+      <div data-sc-in><h3>Your price band</h3><p>You set the range for every job class you take. Homeowners book against your numbers, so the price conversation is over before the doorbell.</p></div>
+      <div data-sc-in><h3>Diagnose, then quote</h3><p>Write the fixed quote in the app: parts, labor, diagnostic credit. Work starts the moment the homeowner approves, and never before.</p></div>
+      <div data-sc-in><h3>Paid without chasing</h3><p>The invoice is the approved quote, settled in-app when the job completes. No net-30, no awkward doorstep card reader, no chasing.</p></div>
+    </div>
+    <div class="standard">
+      <div>
+        <h3 class="display d-md">Good work, made visible.</h3>
+        <a class="pill-link" href="#join" data-pro>Join the pro waitlist
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      </div>
+      <div>
+        <p style="font-size:1.06rem; max-width:34em; margin-bottom:22px">Homeowners see your name, rating, and arrival before you knock, and every completed repair carries your 90-day workmanship warranty. The platform’s job is making sure careful work is what gets rewarded.</p>
+        <ul>
+          <li>Certification checked per appliance class, once, not per job.</li>
+          <li>Ratings weigh warranty outcomes, not just star taps.</li>
+          <li>Your calendar is the boss: pause matching anytime.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ VI · THE WHOLE GARDEN -->
+<section class="garden-act night" data-chapter="Then the whole garden" data-ground="dark" data-step="7" id="next" data-sc-act="pin" data-sc-span="2.6">
+  <div data-sc-stage>
+    <div class="garden-top">
+      <h2 class="display d-lg">First the repair. <span class="it" style="color:var(--green-hi)">Then the whole garden.</span></h2>
+      <p class="lede soft" style="font-size:1.02rem">Coming next: with your consent, Strech listens to how your appliances run and turns it into health you can read at a glance. Every machine a plant on a shelf.</p>
+    </div>
+
+    <div class="shelf">
+      <div class="note" data-sc-cue="0.4" id="note">
+        <strong>Washer · drain pump wearing</strong>
+        Flagged weeks early. A pro offered while the job is still small, with a range and a calendar slot.
+        <span class="tended" data-sc-cue="0.62">Tended. Planned work, not an emergency.</span>
+      </div>
+      <div class="shelf__plants">
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 58 86, 62 64, 60 30"/><path class="lf l" d="M59 74 C 44 72, 32 62, 28 50 C 42 50, 54 58, 59 74Z"/><path class="lf r alt" d="M61 60 C 76 58, 88 48, 92 36 C 78 36, 66 44, 61 60Z"/><path class="lf l alt" d="M59 46 C 48 42, 42 32, 42 22 C 52 26, 58 34, 59 46Z"/><path class="lf r" d="M61 92 C 76 92, 86 84, 90 74 C 77 72, 66 80, 61 92Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Dishwasher</figcaption></figure>
+        <figure class="plant plant--sick" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 62 90, 56 66, 60 26"/><path class="lf l" d="M59 82 C 42 80, 30 70, 26 56 C 42 56, 54 66, 59 82Z"/><path class="lf r" d="M61 66 C 78 64, 90 52, 94 38 C 78 38, 66 50, 61 66Z"/><path class="lf l alt" d="M59 50 C 46 46, 40 34, 40 22 C 52 26, 58 38, 59 50Z"/><path class="lf r alt" d="M61 98 C 76 98, 86 90, 90 80 C 77 78, 66 86, 61 98Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Washer</figcaption></figure>
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 60 84, 58 60, 61 34"/><path class="lf l alt" d="M59 78 C 46 76, 36 68, 32 56 C 46 56, 55 66, 59 78Z"/><path class="lf r" d="M61 70 C 74 68, 84 58, 88 46 C 75 46, 66 56, 61 70Z"/><path class="lf l" d="M60 52 C 48 48, 42 38, 42 28 C 53 32, 59 40, 60 52Z"/><path class="lf r alt" d="M61 46 C 70 42, 76 34, 78 24 C 69 26, 63 34, 61 46Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Fridge</figcaption></figure>
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 58 92, 63 70, 59 40"/><path class="lf l" d="M59 86 C 44 86, 34 78, 30 66 C 44 64, 55 74, 59 86Z"/><path class="lf r alt" d="M60 72 C 74 70, 86 60, 90 48 C 76 48, 65 58, 60 72Z"/><path class="lf l alt" d="M59 58 C 47 54, 40 44, 40 34 C 51 38, 58 46, 59 58Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Oven</figcaption></figure>
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 61 88, 57 62, 60 32"/><path class="lf r" d="M61 84 C 76 84, 88 74, 92 62 C 77 62, 66 70, 61 84Z"/><path class="lf l alt" d="M59 70 C 44 68, 34 58, 30 46 C 44 46, 54 54, 59 70Z"/><path class="lf r alt" d="M61 52 C 72 48, 80 38, 82 28 C 71 30, 63 40, 61 52Z"/><path class="lf l" d="M59 98 C 47 98, 38 92, 34 84 C 45 82, 54 88, 59 98Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Dryer</figcaption></figure>
+      </div>
+      <div class="shelf__board"></div>
+    </div>
+
+    <div class="roadmap">
+      <div data-sc-cue="0.06"><p class="when">Now · in the ground</p><b>Repair distribution</b><span>Matching, fixed quotes, live tracking, and the money moment.</span></div>
+      <div data-sc-cue="0.3"><p class="when soon">Next · coming soon</p><b>Home tracking</b><span>Appliance health at a glance, phrased in plain words.</span></div>
+      <div data-sc-cue="0.56"><p class="when soon">Later · coming soon</p><b>Care before the breakdown</b><span>Early warnings that arrive as options, never alarms.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ COLOPHON -->
+<section class="chapter paper colophon" data-chapter="Your turn" data-ground="paper" data-step="8" id="join">
+  <div class="wrap">
+    <p class="sign">“Giving control back to the homeowner.”</p>
+    <div class="runon">
+      <form id="wl" novalidate>
+        Strech opens city by city. Leave an email and we’ll hold your place:
+        <label class="vh" for="email">Email address</label>
+        <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@home.com" required><button type="submit">Join the waitlist</button>
+        <span id="wlMsg" aria-live="polite"></span>
+      </form>
+      Pros, <a href="#join" id="proJoin">join the pro waitlist</a> and we’ll hold your area.
+    </div>
+
+    <footer class="foot">
+      <div>
+        <p>© 2026 Strech. Strech is in active development and training; some AI-powered features are still being built.</p>
+        <p style="margin-top:6px">hello@strech.ai · support@strech.ai · 240 905-5348 · 6107 Rosemont Circle, North Bethesda, Maryland</p>
+        <p class="concept">Concept redesign prepared for the Strech team. Sample job data is illustrative.</p>
+      </div>
+      <nav aria-label="Legal">
+        <a href="#join">Privacy Policy</a><a href="#join">SMS Consent</a><a href="#join">Terms of Service</a><a href="#join">Cookies Policy</a>
+      </nav>
+    </footer>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ============================================================================
+   scrollcraft: a scroll-driven interaction runtime
+   ----------------------------------------------------------------------------
+   Vanilla JS. Zero dependencies. Zero DOM generation.
+
+   The engine does NOT build your page. You author real, semantic HTML and mark
+   it up with data-sc-* attributes; the engine reads them and drives them from a
+   single scroll value on a single rAF loop. That is deliberate: a runtime that
+   generates its own DOM from a config object makes every site it touches look
+   identical, which is the failure mode this replaces.
+
+   ---------------------------------------------------------------------------
+   ACTS: the unit of scroll time
+   ---------------------------------------------------------------------------
+     <section data-sc-act="pin" data-sc-span="2.5"> ... </section>
+
+     data-sc-act   scrub | pin | pan | flow   (default: flow)
+     data-sc-clip-map="travel" opts a pinned act OUT of full-life clip mapping.
+                   By DEFAULT a scrub clip is mapped across the stage's entire
+                   on-screen life, not across its pinned travel, because a pinned
+                   stage is visible for a viewport BEFORE the pin begins (sliding
+                   up into view) and a viewport AFTER it ends (sliding off the
+                   top). Mapped to pinned travel, the clip sits on its first
+                   frame through the whole entry and its last frame through the
+                   whole exit: the reader watches a still photograph while the
+                   page moves. Pair it with data-sc-dwell, which moves quickly at
+                   the edges and settles in the middle, so the fast motion lands
+                   on the two slides and the settle lands inside the pin where
+                   the copy is. data-sc-runout is accepted and ignored; it named
+                   the old opt-in for the exit half of this.
+     data-sc-span  viewport-heights of scroll this act owns. Pinned devices only
+                   (scrub/pin/pan). Default 1.5. The engine sets the outer
+                   height and sticks the first .sc-stage / [data-sc-stage] child.
+
+     Every act exposes a normalized progress p (0..1):
+       pinned  p = (y - top) / (height - vh)
+       flow    p = (y + vh - top) / (height + vh)
+     and publishes it as --sc-p on the act element, so CSS can read it too.
+
+   ---------------------------------------------------------------------------
+   DEVICES: what p drives
+   ---------------------------------------------------------------------------
+     data-sc-scrub            on <video>. p scrubs currentTime. Blob-loaded, so
+                              it seeks without needing HTTP range support.
+     data-sc-sequence="a/{i}.webp:120:1"
+                              on <canvas>. p scrubs an image sequence
+                              (path template : frameCount : startIndex).
+     data-sc-pan="0.6"        on a wide rail inside data-sc-act="pan". p drives
+                              horizontal travel. Value = extra travel multiplier.
+     data-sc-parallax="-0.2"  translateY by rate * act-progress * viewport.
+                              Negative = moves up faster than scroll (recedes).
+     data-sc-cue="0.1 0.5"    opacity/rise keyed to p. One value = enter+hold.
+                              Two = enter..leave. Add a third for the hold point.
+     data-sc-kinetic="lines"  lines | words | chars. Splits the element and
+                              staggers its reveal across the cue window.
+     data-sc-reveal="up"      up | down | left | right | iris. clip-path wipe.
+     data-sc-count="0 4200"   number bloom across the cue window. Outside any
+                              act it ticks up once on entry instead, over
+                              data-sc-count-ms (default 1400).
+     data-sc-in               flow-section reveal, fires once on entry via
+                              IntersectionObserver (cheaper, and content that
+                              re-hides on scroll-up is a defect, not an effect).
+                              data-sc-stagger="60" on the parent staggers kids.
+     data-sc-drift="#07090c"  page background interpolates toward this colour
+                              while the act is on screen.
+
+   ---------------------------------------------------------------------------
+   WORLDFLIGHT: the page mode for one continuous flight
+   ---------------------------------------------------------------------------
+     <div data-sc-mode="worldflight" data-sc-seam="0.12">
+       <div data-sc-world>
+         <div data-sc-segment data-sc-w="1.4" data-sc-linger="0.3"
+              data-sc-waypoint="Approach">
+           <img class="sc-world__poster" src="p1.webp" alt="">
+           <video data-sc-src="leg1.mp4" data-sc-src-mobile="leg1-m.mp4"></video>
+         </div>
+         ... more segments, in flight order ...
+       </div>
+       <div data-sc-world-copy>
+         <div class="sc-world__scrim sc-scrim sc-scrim--band"></div>
+         <div data-sc-copy data-sc-window="hero"> ... </div>
+         <div data-sc-copy data-sc-window="0.34 0.56"> ... </div>
+         <div data-sc-copy data-sc-window="finale"> ... </div>
+       </div>
+       <div data-sc-spacer aria-hidden="true"></div>
+     </div>
+
+   Acts cut the page into pinned blocks, which is the right shape for a page of
+   chapters and the wrong shape for one continuous camera move: the reader hits
+   the end of an act, the stage unsticks, a static page slides past, and the next
+   act starts the whole thing again. Worldflight removes the seams by removing
+   the blocks. There is ONE fixed stage for the entire page. The only element in
+   document flow is a spacer, whose height the engine sets to the sum of the
+   segment weights plus one viewport so the last flight can finish. Scroll drives
+   the film timeline and the overlay opacity. Nothing else moves.
+
+     data-sc-w        viewport-heights this segment owns. Default 1.3.
+     data-sc-linger   dwell remap for this leg only (see lingerEase). Max 0.6.
+     data-sc-seam     crossfade band, in viewport-heights of scroll. Default 0.12.
+     data-sc-waypoint label published on --sc-seg / the sc:waypoint event, so a
+                      page can draw its own route rail. The engine draws none.
+     data-sc-window   on a copy block: "hero" | "finale" | "from to [in [out]]"
+                      as fractions of the WHOLE track.
+
+   Every clip stays mounted for the life of the page. Segments crossfade by
+   opacity over the seam band; nothing ever swaps a src, because a src swap is a
+   black frame and a black frame is the cut this mode exists to avoid.
+
+   ---------------------------------------------------------------------------
+   POINTER: interactivity that isn't scroll
+   ---------------------------------------------------------------------------
+     data-sc-tilt="8"         3D tilt toward the pointer, spring-damped, degrees.
+     data-sc-magnet="0.35"    element drifts toward the pointer inside its bounds.
+     data-sc-spotlight        publishes --sc-mx/--sc-my (0..1) for a light that
+                              follows the pointer across the surface.
+   All three are gated to (hover: hover) and (pointer: fine) and disabled under
+   prefers-reduced-motion. Touch never fires them.
+
+   ---------------------------------------------------------------------------
+   REDUCED MOTION
+   ---------------------------------------------------------------------------
+   Fewer and gentler, not zero. Cues still fade (comprehension survives), but
+   translation collapses, video clips are never fetched (the poster holds), and
+   pointer devices are inert. A worldflight still tells its whole story: the
+   posters cross-dissolve through the same seams and the same copy windows.
+
+   ---------------------------------------------------------------------------
+   THE PLAYHEAD
+   ---------------------------------------------------------------------------
+   Every scrub clip on the page, act or worldflight, is driven by one smoothed
+   playhead. Scroll only ever writes a TARGET; a standalone rAF loop walks the
+   current time toward it at a fixed fraction per frame (data-sc-lerp, default
+   0.18; 1.0 under reduced motion, which is no smoothing at all). Writes are
+   gated by a deadband and skipped while the decoder is still seeking. Without
+   the smoothing a trackpad flick reads as a stutter, because wheel events do
+   not arrive at a constant rate and a 1:1 write reproduces every gap in them.
+   ========================================================================== */
+
+(function (global) {
+  'use strict';
+
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var fineMQ = matchMedia('(hover: hover) and (pointer: fine)');
+  var smallMQ = matchMedia('(max-width: 860px)');
+  var coarse = matchMedia('(hover: none) and (pointer: coarse)').matches;
+  var isMobile = function () { return coarse || smallMQ.matches; };
+
+  var clamp = function (x, a, b) { return x < a ? a : x > b ? b : x; };
+  var clamp01 = function (x) { return clamp(x, 0, 1); };
+  var smooth = function (x) { x = clamp01(x); return x * x * (3 - 2 * x); };
+  var lerp = function (a, b, t) { return a + (b - a) * t; };
+
+  // Monotone dwell remap. Settles the camera mid-act (where the copy peaks) and
+  // moves quicker at the edges. f(0)=0 and f(1)=1 always, so seam frames between
+  // consecutive clips are untouched and the chain stays invisible.
+  function dwell(x, L) {
+    if (!L) return x;
+    L = clamp01(L);
+    var c = x - 0.5;
+    return (1 - L) * x + L * (4 * c * c * c + 0.5);
+  }
+
+  // Same curve, capped harder, and used per worldflight segment. Above ~0.6 the
+  // derivative at the midpoint gets low enough that the camera visibly stops
+  // dead mid-leg, which reads as a stall rather than a hold. The endpoints are
+  // fixed by construction: f(0)=0, f(1)=1, so the first and last frames of every
+  // leg are still exactly the frames the seam law matched, and the chain between
+  // legs stays invisible no matter how much dwell a leg asks for.
+  function lingerEase(x, L) {
+    if (!L) return x;
+    L = clamp(L, 0, 0.6);
+    var c = x - 0.5;
+    return (1 - L) * x + L * (4 * c * c * c + 0.5);
+  }
+
+  // The lerp is a mechanism, not a taste knob. It is exposed so a page whose
+  // clips are unusually short (where 0.18 lags behind the pointer) can tighten
+  // it, and it is never read as 0: a 0 lerp is a playhead that never moves.
+  function lerpRate(el) {
+    var v = parseFloat(el && el.getAttribute && el.getAttribute('data-sc-lerp'));
+    return isNaN(v) || v <= 0 ? 0 : clamp(v, 0.02, 1);
+  }
+
+  // ---- colour -------------------------------------------------------------
+  function parseColor(str) {
+    str = (str || '').trim();
+    var m = str.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (m) {
+      var h = m[1];
+      if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    m = str.match(/rgba?\(([^)]+)\)/i);
+    if (m) {
+      var p = m[1].split(/[,\s/]+/).filter(Boolean).map(parseFloat);
+      return [p[0], p[1], p[2]];
+    }
+    return null;
+  }
+  function mixColor(a, b, t) {
+    return 'rgb(' + Math.round(lerp(a[0], b[0], t)) + ',' +
+                    Math.round(lerp(a[1], b[1], t)) + ',' +
+                    Math.round(lerp(a[2], b[2], t)) + ')';
+  }
+
+  // ---- text splitting -----------------------------------------------------
+  // Wraps each unit in a masked span so the reveal can slide from behind a clean
+  // edge instead of just fading. Lines are measured after layout, so this must
+  // run once fonts are ready or the line boxes are wrong.
+  function splitText(el, mode) {
+    if (el.__scSplit) return el.__scSplit;
+    var text = el.textContent;
+    var units = [];
+
+    if (mode === 'chars' || mode === 'words') {
+      var parts = mode === 'chars' ? Array.from(text) : text.split(/(\s+)/);
+      el.textContent = '';
+      parts.forEach(function (t) {
+        if (/^\s+$/.test(t)) { el.appendChild(document.createTextNode(t)); return; }
+        var mask = document.createElement('span');
+        mask.className = 'sc-split';
+        var inner = document.createElement('span');
+        inner.className = 'sc-split__i';
+        inner.textContent = t;
+        mask.appendChild(inner);
+        el.appendChild(mask);
+        units.push(inner);
+      });
+    } else {
+      // lines: wrap every word, measure offsetTop, regroup words into line spans
+      var words = text.split(/\s+/).filter(Boolean);
+      el.textContent = '';
+      var probes = words.map(function (w, i) {
+        var s = document.createElement('span');
+        s.textContent = w;
+        el.appendChild(s);
+        if (i < words.length - 1) el.appendChild(document.createTextNode(' '));
+        return s;
+      });
+      var lines = [], cur = null, lastTop = null;
+      probes.forEach(function (s) {
+        var top = s.offsetTop;
+        if (lastTop === null || Math.abs(top - lastTop) > 1) { cur = []; lines.push(cur); lastTop = top; }
+        cur.push(s.textContent);
+      });
+      el.textContent = '';
+      lines.forEach(function (words, li) {
+        var mask = document.createElement('span');
+        mask.className = 'sc-split sc-split--line';
+        var inner = document.createElement('span');
+        inner.className = 'sc-split__i';
+        inner.textContent = words.join(' ');
+        mask.appendChild(inner);
+        el.appendChild(mask);
+        // Whitespace between the line spans. Without it the line boxes abut in
+        // the text layer, so selecting and copying the heading yields
+        // "even whenbreakfast" and a screen reader hears the same.
+        if (li < lines.length - 1) el.appendChild(document.createTextNode(' '));
+        units.push(inner);
+      });
+    }
+    el.classList.add('sc-is-split');
+    el.__scSplit = units;
+    return units;
+  }
+
+  // ---- number formatting --------------------------------------------------
+  function formatNum(v, template) {
+    var decimals = 0;
+    var dot = template.indexOf('.');
+    if (dot > -1) decimals = template.length - dot - 1;
+    var s = v.toFixed(decimals);
+    if (/,/.test(template) || Math.abs(v) >= 10000) {
+      var bits = s.split('.');
+      bits[0] = bits[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      s = bits.join('.');
+    }
+    return s;
+  }
+
+  // =========================================================================
+  function mount(root, opts) {
+    root = typeof root === 'string' ? document.querySelector(root) : (root || document);
+    opts = opts || {};
+
+    // Teardown for client-side routers (issue #6). mount() registers window
+    // listeners, starts two self-rescheduling rAF loops, and pushes onto
+    // ScrollCraft.instances, so without destroy() every re-mount leaves the old
+    // instance running for the life of the tab. `on` records what it registered
+    // and the two loops keep their live handle, so destroy() can undo exactly
+    // what this mount did and nothing else: its window listeners, both rAF
+    // loops, both IntersectionObservers, and every clip blob it created. A page
+    // that never calls destroy() behaves exactly as before.
+    var scListeners = [];
+    var scDead = false;
+    var scTickFrame = 0, scPointerFrame = 0;
+    function on(type, fn, o) {
+      addEventListener(type, fn, o);
+      scListeners.push([type, fn, o]);
+    }
+
+    var acts = [];
+    var worlds = [];
+    var drifts = [];
+    var playheads = [];
+    var scrollEls = [];
+    var vh = innerHeight, vw = innerWidth;
+    var y = 0, needsLayout = true;
+    var progressBar = root.querySelector('[data-sc-progress]');
+    var docEl = document.documentElement;
+
+    // One rate for the page, overridable per clip. Read from the mount root, the
+    // document element, or the option bag, in that order.
+    var LERP = lerpRate(root.nodeType === 1 ? root : null) ||
+               lerpRate(docEl) ||
+               (opts.lerp > 0 ? clamp(opts.lerp, 0.02, 1) : 0) ||
+               0.18;
+
+    // Every scrub clip on the page lives here, whatever drives it. tick() walks
+    // this one list, so an act clip and a worldflight leg get the same playhead.
+    function makeClip(v, host) {
+      var rec = {
+        el: v, host: host || v,
+        ready: false, loading: false, painted: false,
+        cur: 0, target: 0, live: false, stuckAt: 0,
+        lerp: lerpRate(v) || LERP
+      };
+      v.muted = true; v.playsInline = true; v.preload = 'none';
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      playheads.push(rec);
+      return rec;
+    }
+
+    // ---- collect acts -----------------------------------------------------
+    Array.prototype.forEach.call(root.querySelectorAll('[data-sc-act]'), function (el) {
+      var device = el.getAttribute('data-sc-act') || 'flow';
+      var pinned = device === 'scrub' || device === 'pin' || device === 'pan';
+      var act = {
+        el: el,
+        device: device,
+        pinned: pinned,
+        span: parseFloat(el.getAttribute('data-sc-span')) || (pinned ? 1.5 : 0),
+        dwell: parseFloat(el.getAttribute('data-sc-dwell')) || 0,
+        clipTravel: pinned && el.getAttribute('data-sc-clip-map') === 'travel',
+        p: 0, raw: 0, top: 0, height: 0, live: false,
+        cues: [], parallax: [], reveals: [], counts: [],
+        video: null, seq: null, rail: null
+      };
+
+      if (pinned) {
+        act.stage = el.querySelector('[data-sc-stage]') || el.querySelector('.sc-stage');
+        if (act.stage) act.stage.classList.add('sc-stage');
+        el.classList.add('sc-act--pinned');
+      }
+
+      // scrub video
+      var v = el.querySelector('video[data-sc-scrub]');
+      if (v) act.video = makeClip(v, el);
+
+      // image sequence
+      var cv = el.querySelector('canvas[data-sc-sequence]');
+      if (cv) {
+        var spec = cv.getAttribute('data-sc-sequence').split(':');
+        act.seq = {
+          el: cv, ctx: cv.getContext('2d', { alpha: false }),
+          tpl: spec[0], count: parseInt(spec[1], 10) || 1, start: parseInt(spec[2], 10) || 0,
+          frames: [], loaded: 0, drawn: -1
+        };
+      }
+
+      // horizontal rail
+      act.rail = el.querySelector('[data-sc-pan]');
+      if (act.rail) act.railExtra = parseFloat(act.rail.getAttribute('data-sc-pan')) || 0;
+
+      // cues
+      Array.prototype.forEach.call(el.querySelectorAll('[data-sc-cue]'), function (c) {
+        var nums = (c.getAttribute('data-sc-cue') || '').trim().split(/\s+/).map(parseFloat);
+        // from [to [rampIn [rampOut]]]
+        // rampIn/rampOut are fractions OF THE WINDOW, defaulting to 0.3 each.
+        // That leaves a ~40% plateau at full opacity in the middle. Without a
+        // plateau a cue is a triangle: it touches opacity 1 for a single
+        // instant, so the reader has to stop on exactly the right pixel to see
+        // the line at full strength, and every heading reads as slightly faded.
+        var cue = {
+          el: c,
+          from: isNaN(nums[0]) ? 0 : nums[0],
+          to: nums.length > 1 && !isNaN(nums[1]) ? nums[1] : null,
+          rIn: nums.length > 2 && !isNaN(nums[2]) ? clamp01(nums[2]) : 0.3,
+          rOut: nums.length > 3 && !isNaN(nums[3]) ? clamp01(nums[3]) : null,
+          rise: parseFloat(c.getAttribute('data-sc-rise')),
+          kinetic: c.getAttribute('data-sc-kinetic'),
+          units: null, state: -1
+        };
+        if (cue.rOut === null) cue.rOut = (nums.length > 2 && !isNaN(nums[2])) ? 0.3 : 0.3;
+        if (isNaN(cue.rise)) cue.rise = 1;
+        act.cues.push(cue);
+      });
+
+      // parallax
+      Array.prototype.forEach.call(el.querySelectorAll('[data-sc-parallax]'), function (c) {
+        act.parallax.push({ el: c, rate: parseFloat(c.getAttribute('data-sc-parallax')) || 0 });
+      });
+
+      // reveals
+      Array.prototype.forEach.call(el.querySelectorAll('[data-sc-reveal]'), function (c) {
+        var nums = (c.getAttribute('data-sc-reveal-at') || '0 0.5').trim().split(/\s+/).map(parseFloat);
+        act.reveals.push({ el: c, dir: c.getAttribute('data-sc-reveal') || 'up', from: nums[0] || 0, to: nums[1] || 0.5 });
+      });
+
+      // counters
+      Array.prototype.forEach.call(el.querySelectorAll('[data-sc-count]'), function (c) {
+        var nums = (c.getAttribute('data-sc-count') || '').trim().split(/\s+/);
+        var at = (c.getAttribute('data-sc-count-at') || '0.1 0.55').trim().split(/\s+/).map(parseFloat);
+        // Strip separators before parsing so the author can write the target
+        // exactly as it should render. Without this, "0 3,500" parses the target
+        // as 3 (the comma stops parseFloat) and "0 3500" renders "3500", because
+        // formatNum only adds separators above 10,000. So any real figure between
+        // 1,000 and 9,999 could not be shown the way it is written everywhere
+        // else on the page. The template still drives the formatting.
+        var num = function (s) { return parseFloat(String(s).replace(/,/g, '')) || 0; };
+        act.counts.push({
+          el: c, a: num(nums[0]), b: num(nums[1]),
+          tpl: nums[1] || '0', from: at[0], to: at[1], last: null
+        });
+      });
+
+      acts.push(act);
+
+      var d = el.getAttribute('data-sc-drift');
+      if (d) { var rgb = parseColor(d); if (rgb) drifts.push({ act: act, rgb: rgb }); }
+    });
+
+    // ---- collect worldflights --------------------------------------------
+    Array.prototype.forEach.call(root.querySelectorAll('[data-sc-mode="worldflight"]'), function (el) {
+      var W = {
+        el: el,
+        stage: el.querySelector('[data-sc-world]') || el.querySelector('.sc-world'),
+        copyLayer: el.querySelector('[data-sc-world-copy]') || el.querySelector('.sc-world__copy'),
+        spacer: el.querySelector('[data-sc-spacer]') || el.querySelector('.sc-world__spacer'),
+        seam: 0, segs: [], copies: [], total: 0, top: 0, index: -1, checked: false
+      };
+      var seam = parseFloat(el.getAttribute('data-sc-seam'));
+      // A seam wider than the shortest leg would have three clips dissolving at
+      // once and no leg ever fully present. Cap it well under that.
+      W.seam = isNaN(seam) || seam <= 0 ? 0.12 : clamp(seam, 0.02, 0.4);
+      if (W.stage) W.stage.classList.add('sc-world');
+      if (W.copyLayer) W.copyLayer.classList.add('sc-world__copy');
+      if (W.spacer) W.spacer.classList.add('sc-world__spacer');
+
+      Array.prototype.forEach.call(el.querySelectorAll('[data-sc-segment]'), function (s) {
+        var seg = {
+          el: s,
+          w: parseFloat(s.getAttribute('data-sc-w')) || 1.3,
+          linger: clamp(parseFloat(s.getAttribute('data-sc-linger')) || 0, 0, 0.6),
+          label: s.getAttribute('data-sc-waypoint') || '',
+          poster: s.querySelector('[data-sc-poster]') || s.querySelector('.sc-world__poster') || s.querySelector('img'),
+          c0: 0, c1: 0, local: 0, op: -1, z: -1, clip: null
+        };
+        s.classList.add('sc-world__seg');
+        if (seg.poster) seg.poster.classList.add('sc-world__poster');
+        var v = s.querySelector('video');
+        if (v) {
+          // Mark it as a scrub clip whether or not the author did. Everything
+          // downstream, the stylesheet and the verification harness included,
+          // finds scrub media by this attribute.
+          v.setAttribute('data-sc-scrub', '');
+          seg.clip = makeClip(v, s);
+        }
+        W.segs.push(seg);
+      });
+
+      var run = 0;
+      W.segs.forEach(function (s) { s.c0 = run; run += Math.max(s.w, 0.1); s.c1 = run; });
+      W.total = Math.max(run, 0.001);
+
+      Array.prototype.forEach.call(el.querySelectorAll('[data-sc-copy]'), function (cEl) {
+        var spec = (cEl.getAttribute('data-sc-window') || '').trim();
+        var q = { el: cEl, from: 0, to: 1, rIn: 0.3, rOut: 0.3, state: -1 };
+        var first = W.segs[0], last = W.segs[W.segs.length - 1];
+        if (spec === 'hero') {
+          // Present the instant the reader lands. A hero that fades IN has to
+          // fade in from nothing over an empty first screen, which is the one
+          // moment on the page where there is nothing else to look at.
+          q.from = 0;
+          q.to = first ? (0.62 * first.w) / W.total : 0.3;
+          q.rIn = 0; q.rOut = 0.65;
+        } else if (spec === 'finale') {
+          q.from = last ? (last.c0 + 0.4 * last.w) / W.total : 0.7;
+          q.to = 1; q.rIn = 0.55; q.rOut = 0;
+        } else {
+          var n = spec.split(/\s+/).map(parseFloat);
+          q.from = isNaN(n[0]) ? 0 : clamp01(n[0]);
+          q.to = (n.length > 1 && !isNaN(n[1])) ? clamp01(n[1]) : clamp01(q.from + 0.18);
+          if (n.length > 2 && !isNaN(n[2])) q.rIn = clamp01(n[2]);
+          if (n.length > 3 && !isNaN(n[3])) q.rOut = clamp01(n[3]);
+        }
+        if (q.to <= q.from) q.to = clamp01(q.from + 0.05);
+        W.copies.push(q);
+      });
+
+      worlds.push(W);
+    });
+
+    // ---- flow reveals (fire once) ----------------------------------------
+    // `cio` is assigned inside the counters IIFE below; it is declared here so
+    // destroy() can disconnect it. An IntersectionObserver holds a strong ref to
+    // every observed target, and unobserve only runs on first intersection, so a
+    // never-revealed element in a removed subtree is retained for the life of the
+    // tab, once per re-mount.
+    var io = null, cio = null;
+    if ('IntersectionObserver' in window) {
+      io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          var el = e.target;
+          el.classList.add('sc-in');
+          var stagger = parseFloat(el.getAttribute('data-sc-stagger'));
+          if (!isNaN(stagger)) {
+            Array.prototype.forEach.call(el.children, function (kid, i) {
+              kid.style.transitionDelay = (i * stagger) + 'ms';
+              kid.classList.add('sc-in');
+            });
+          }
+          io.unobserve(el);
+        });
+      }, { rootMargin: '0px 0px -12% 0px', threshold: 0.01 });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-sc-in]'), function (el) { io.observe(el); });
+    } else {
+      Array.prototype.forEach.call(root.querySelectorAll('[data-sc-in]'), function (el) { el.classList.add('sc-in'); });
+    }
+
+    // ---- entry counters (fire once) --------------------------------------
+    // A [data-sc-count] outside any pinned act is not scrubbed by scroll; it
+    // ticks up once when it enters view, over data-sc-count-ms (default 1400).
+    // Same formatting rules as the act counter: write the target as it should
+    // render. Reduced motion writes the final value and never animates.
+    (function () {
+      var ease = function (t) { return 1 - Math.pow(1 - t, 3); };
+      var num = function (s) { return parseFloat(String(s).replace(/,/g, '')) || 0; };
+      var spec = function (c) { return (c.getAttribute('data-sc-count') || '').trim().split(/\s+/); };
+      var els = Array.prototype.filter.call(root.querySelectorAll('[data-sc-count]'), function (c) {
+        return !c.closest('[data-sc-act]');
+      });
+      if (!els.length) return;
+      function run(c) {
+        var nums = spec(c);
+        var a = num(nums[0]), b = num(nums[1]), tpl = nums[1] || '0';
+        var ms = parseFloat(c.getAttribute('data-sc-count-ms')) || 1400;
+        if (reduce || ms <= 0) { c.textContent = formatNum(b, tpl); return; }
+        var t0 = null, last = null;
+        function frame(now) {
+          if (scDead) return;
+          if (t0 === null) t0 = now;
+          var t = Math.min((now - t0) / ms, 1);
+          var out = formatNum(a + (b - a) * ease(t), tpl);
+          if (out !== last) { c.textContent = out; last = out; }
+          if (t < 1) requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }
+      els.forEach(function (c) { var n = spec(c); c.textContent = formatNum(num(n[0]), n[1] || '0'); });
+      if ('IntersectionObserver' in window) {
+        cio = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (!e.isIntersecting) return;
+            run(e.target); cio.unobserve(e.target);
+          });
+        }, { rootMargin: '0px 0px -10% 0px', threshold: 0.5 });
+        els.forEach(function (c) { cio.observe(c); });
+      } else {
+        els.forEach(run);
+      }
+    })();
+
+    // ---- layout -----------------------------------------------------------
+    function layout() {
+      // layout() and read() are both on the returned api, so a framework's
+      // updated() arriving after destroyed() enters them directly.
+      if (scDead) return;
+      vh = innerHeight; vw = innerWidth;
+      acts.forEach(function (a) {
+        if (a.pinned) a.el.style.height = (a.span * 100) + 'vh';
+      });
+      // The spacer is the whole document flow of a worldflight. Its height is
+      // the sum of the leg weights plus one viewport: without that extra screen
+      // the track runs out at the moment the last leg reaches p=1, so the last
+      // leg's final second is a place the reader can never actually stop.
+      // Set in pixels, not vh, because .sc-world is sized in svh on phones and a
+      // vh/svh mismatch would put the track and the stage on different rulers.
+      worlds.forEach(function (W) {
+        if (W.spacer) W.spacer.style.height = Math.round((W.total + 1) * vh) + 'px';
+      });
+      acts.forEach(function (a) {
+        var r = a.el.getBoundingClientRect();
+        a.top = r.top + scrollY;
+        a.height = r.height;
+      });
+      if (acts.length) {
+        acts.forEach(function (a) {
+          if (a.seq && a.seq.el) {
+            var box = a.seq.el.getBoundingClientRect();
+            var dpr = Math.min(devicePixelRatio || 1, 2);
+            a.seq.el.width = Math.round(box.width * dpr);
+            a.seq.el.height = Math.round(box.height * dpr);
+            a.seq.drawn = -1;
+          }
+        });
+      }
+      // A pinned act whose stage is not actually sticky fails silently: the
+      // stage just scrolls by, the copy cues correctly against a frame nobody
+      // can see, and every automated check passes. Any author rule that sets
+      // `position` on the stage causes it. Say so.
+      acts.forEach(function (a) {
+        if (!a.pinned || !a.stage || a.stageChecked) return;
+        a.stageChecked = true;
+        var pos = getComputedStyle(a.stage).position;
+        if (pos !== 'sticky' && pos !== '-webkit-sticky') {
+          console.warn('[scrollcraft] act "' + (a.el.id || a.device) + '" will not pin: its stage computes ' +
+            'position:' + pos + ', not sticky. Something is overriding .sc-stage.', a.stage);
+        }
+      });
+
+      worlds.forEach(function (W) {
+        W.top = W.el.getBoundingClientRect().top + scrollY;
+        if (W.checked) return;
+        W.checked = true;
+        if (!W.stage) {
+          console.warn('[scrollcraft] worldflight has no [data-sc-world] stage; nothing will fly.', W.el);
+          return;
+        }
+        if (!W.spacer) {
+          console.warn('[scrollcraft] worldflight has no [data-sc-spacer]; the page has no scroll track.', W.el);
+        }
+        // The same silent failure as an unpinned act, one level worse: a stage
+        // that is not fixed scrolls away and takes the whole page with it, while
+        // every progress number still reads correctly.
+        var wp = getComputedStyle(W.stage).position;
+        if (wp !== 'fixed') {
+          console.warn('[scrollcraft] worldflight stage computes position:' + wp + ', not fixed. ' +
+            'Something is overriding .sc-world, and the flight will scroll off screen.', W.stage);
+        }
+      });
+
+      needsLayout = false;
+      read();
+    }
+
+    // ---- video ------------------------------------------------------------
+    function loadVideo(a) { loadClip(a.video); }
+    function loadClip(V) {
+      // Under reduced motion the clip is never fetched. The poster holds the
+      // frame and the copy still cues, so the page reads without the decode.
+      if (reduce || !V || V.loading) return;
+      var src = V.el.getAttribute('data-sc-src') ||
+                (isMobile() && V.el.getAttribute('data-sc-src-mobile')) ||
+                V.el.currentSrc || V.el.src;
+      if (isMobile() && V.el.getAttribute('data-sc-src-mobile')) src = V.el.getAttribute('data-sc-src-mobile');
+      if (!src) return;
+      V.loading = true;
+      fetch(src).then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
+        .then(function (blob) {
+          // A fetch in flight when destroy() ran resolves anyway. Without this
+          // it attaches loadedmetadata/seeked to a detached element, calls
+          // read(), arms primeClip's 2s timer and assigns a blob URL nothing
+          // will ever revoke, all after teardown reported success.
+          if (scDead) return;   // the Blob is unreferenced from here and is collected
+          // Listeners and preload BEFORE src. Assigning src starts the load, so
+          // attaching afterwards and then calling load() restarts it and aborts
+          // the first request (visible as ERR_ABORTED on the blob URL).
+          V.el.addEventListener('loadedmetadata', function () {
+            V.ready = true;
+            // Force one seek even when the target is already 0. The reveal is
+            // gated on a 'seeked' event, and the raf loop only seeks when the
+            // time actually needs to change, so a clip sitting at the very top
+            // of its act would never seek, never fire 'seeked', and never
+            // replace its poster until the reader scrolled it off zero.
+            try { V.el.currentTime = Math.max(V.target * (V.el.duration || 1), 0.001); } catch (e) {}
+            read();
+            // Prime the decoder the moment the clip can be primed, without
+            // waiting for a gesture. A muted inline play() is allowed with no
+            // user activation on every platform except a restricted one (Low
+            // Power Mode, data saver), and there the rejection is harmless: the
+            // gesture listeners below retry on the next real touch.
+            primeClip(V);
+          });
+          // Reveal only once a real frame has painted. iOS keeps a seeked-but-
+          // never-played muted video blank, so hiding the poster on metadata
+          // alone flashes an empty stage.
+          var reveal = function () {
+            if (V.painted) return;
+            V.painted = true;
+            V.host.classList.add('sc-has-clip');
+            V.el.classList.add('sc-has-clip');
+          };
+          V.el.addEventListener('seeked', reveal, { once: true });
+          // Never let visibility depend only on an event that may not arrive.
+          // On iOS a clip that has not been played can accept a seek and never
+          // fire 'seeked', which leaves the element at opacity 0 for the life of
+          // the page: the poster stays up, the act looks frozen, and every later
+          // act is fine because by then the reader has touched the screen and
+          // the decoder is live. Reveal on a timer as well. A stage that is
+          // briefly blank is a smaller fault than one that never shows its clip.
+          setTimeout(reveal, 2500);
+          V.el.preload = 'auto';
+          V.el.muted = true;            // as a property, not only an attribute
+          V.el.playsInline = true;
+          V.objectURL = URL.createObjectURL(blob);
+          V.el.src = V.objectURL;
+        })
+        .catch(function () { V.loading = false; });
+    }
+
+    // ---- image sequence ---------------------------------------------------
+    function loadSeq(a) {
+      var S = a.seq;
+      if (!S || S.frames.length) return;
+      for (var i = 0; i < S.count; i++) {
+        (function (i) {
+          var img = new Image();
+          img.decoding = 'async';
+          img.src = S.tpl.replace('{i}', String(S.start + i))
+                         .replace('{ii}', String(S.start + i).padStart(2, '0'))
+                         .replace('{iii}', String(S.start + i).padStart(3, '0'))
+                         .replace('{iiii}', String(S.start + i).padStart(4, '0'));
+          img.onload = function () { S.loaded++; if (S.loaded === 1) S.drawn = -1; };
+          S.frames[i] = img;
+        })(i);
+      }
+    }
+    function drawSeq(a) {
+      var S = a.seq;
+      if (!S || !S.frames.length) return;
+      var idx = clamp(Math.round(a.p * (S.count - 1)), 0, S.count - 1);
+      if (idx === S.drawn) return;
+      var img = S.frames[idx];
+      if (!img || !img.complete || !img.naturalWidth) return;
+      var cw = S.el.width, ch = S.el.height;
+      // cover fit
+      var scale = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
+      var w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+      S.ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+      S.drawn = idx;
+    }
+
+    // ---- worldflight ------------------------------------------------------
+    // t is the position along the flight, measured in viewport-heights of
+    // scroll, so every number here is in the same unit the author wrote the
+    // weights in. There is no per-segment geometry to read: the stage never
+    // moves, so nothing needs measuring on scroll.
+    function readWorld(W) {
+      if (!W.segs.length) return;
+      var S = W.seam;
+      var t = clamp((y - W.top) / Math.max(vh, 1), 0, W.total);
+      var pr = t / W.total;
+      var i, s;
+
+      // The current leg is the last one whose crossfade has begun.
+      var k = 0;
+      for (i = 0; i < W.segs.length; i++) if (t >= W.segs[i].c0 - S / 2) k = i;
+
+      for (i = 0; i < W.segs.length; i++) {
+        s = W.segs[i];
+        var local = clamp01((t - s.c0) / Math.max(s.w, 0.001));
+        s.local = local;
+
+        // Fetch a leg only while it is within reach. Loading the whole flight up
+        // front is tens of megabytes before the first frame paints; loading it
+        // on arrival means arriving at a poster.
+        if (s.clip && t > s.c0 - 1.6 && t < s.c1 + 1.6) loadClip(s.clip);
+
+        // Opacity. The incoming leg fades UP over the outgoing one, which holds
+        // at full strength underneath until it is completely covered. Fading
+        // both halves of a crossfade is what puts the page ground through the
+        // middle of the seam and reads as a flash.
+        var op;
+        if (i > k) op = 0;
+        else if (i === k) op = i === 0 ? 1 : smooth((t - (s.c0 - S / 2)) / S);
+        else op = t < s.c1 + S / 2 ? 1 : 0;
+
+        var z = i === k ? 120 : Math.round(100 + op * 10);
+        if (op !== s.op) {
+          s.el.style.opacity = op.toFixed(3);
+          // A leg at zero must stop compositing entirely. Six full-bleed video
+          // layers all painting at opacity 0 costs the same as painting them.
+          s.el.style.visibility = op > 0.002 ? 'visible' : 'hidden';
+          s.op = op;
+        }
+        if (z !== s.z) { s.el.style.zIndex = String(z); s.z = z; }
+
+        if (s.clip) {
+          s.clip.live = op > 0.002;
+          s.clip.target = lingerEase(local, s.linger);
+        }
+        // Until a real frame has painted, the poster carries the move. A still
+        // that sits perfectly still while the page scrolls announces itself as a
+        // placeholder; a slow push in reads as the camera already flying.
+        if (s.poster && !reduce && !(s.clip && s.clip.painted) && op > 0.002) {
+          s.poster.style.transform = 'scale(' + (1.03 + local * 0.14).toFixed(4) + ')';
+        }
+      }
+
+      for (var c = 0; c < W.copies.length; c++) {
+        var q = W.copies[c];
+        var win = Math.max(q.to - q.from, 0.001);
+        var inEnd = q.from + win * q.rIn;
+        var outStart = q.to - win * q.rOut;
+        var vis;
+        // A hero declares rIn 0, so inEnd sits exactly on `from` and the ramp
+        // branch is skipped: the block is simply present from the first pixel.
+        if (pr < q.from) vis = 0;
+        else if (pr < inEnd) vis = smooth((pr - q.from) / Math.max(inEnd - q.from, 0.001));
+        else if (pr <= outStart) vis = 1;
+        else vis = smooth(1 - (pr - outStart) / Math.max(q.to - outStart, 0.001));
+        vis = clamp01(vis);
+
+        // The ONLY transform on the copy side, and it is capped at 4vh across
+        // the whole window. Anything larger stops reading as a parallax layer
+        // over a moving world and starts reading as a second page scrolling at a
+        // different speed, which is the exact cheapness this mode replaces.
+        var wp = clamp01((pr - q.from) / win);
+        q.el.style.opacity = vis.toFixed(3);
+        q.el.style.transform = reduce ? 'none'
+          : 'translate3d(0,' + ((0.5 - wp) * 4).toFixed(2) + 'vh,0)';
+        var on = vis > 0.5;
+        if (on !== (q.state === 1)) { q.state = on ? 1 : 0; q.el.style.pointerEvents = on ? 'auto' : 'none'; }
+      }
+
+      // Publish the route, draw none of it. A gauge, a map, a leg counter and a
+      // set of chapter dots are all the same two numbers, and a runtime that
+      // ships one of them ships it to every page that uses this mode.
+      var cur = W.segs[k];
+      W.el.style.setProperty('--sc-seg', String(k));
+      W.el.style.setProperty('--sc-segp', cur.local.toFixed(4));
+      docEl.style.setProperty('--sc-seg', String(k));
+      docEl.style.setProperty('--sc-segp', cur.local.toFixed(4));
+      if (k !== W.index) {
+        W.index = k;
+        try {
+          W.el.dispatchEvent(new CustomEvent('sc:waypoint', {
+            bubbles: true,
+            detail: { index: k, count: W.segs.length, label: cur.label, el: cur.el, progress: pr }
+          }));
+        } catch (e) {}
+      }
+    }
+
+    // ---- per-frame scroll read -------------------------------------------
+    function read() {
+      if (scDead) return;
+      y = scrollY || pageYOffset;
+      var driftA = null, driftB = null, driftT = 0;
+      var maxY = Math.max((document.documentElement.scrollHeight || 0) - vh, 1);
+
+      for (var i = 0; i < acts.length; i++) {
+        var a = acts[i];
+        var raw;
+        if (a.pinned) {
+          var travel = Math.max(a.height - vh, 1);
+          raw = clamp01((y - a.top) / travel);
+        } else {
+          raw = clamp01((y + vh - a.top) / (a.height + vh));
+        }
+        a.raw = raw;
+        a.p = a.dwell ? dwell(raw, a.dwell) : raw;
+
+        // Clip time is NOT cue time. Cues belong to the pin, so they keep using
+        // `p`. The clip belongs to the stage, and the stage is on screen for one
+        // viewport before the pin starts and one after it ends. Driving the clip
+        // from `p` therefore parks it on frame one for the whole entry slide and
+        // on its last frame for the whole exit slide, which is a still
+        // photograph moving up the screen under the reader's hand.
+        //
+        // So map the clip across the stage's entire visible life instead. Both
+        // ends are clamped to scroll that actually exists: an act at the top of
+        // the document has no entry slide and must still start on frame one, and
+        // an act near the bottom must still reach its last frame while the page
+        // can still scroll.
+        a.vp = a.p;
+        if (a.pinned && !a.clipTravel) {
+          var startY = a.top - Math.min(vh, a.top);
+          var endY = Math.min(a.top + a.height, maxY);
+          var vraw = clamp01((y - startY) / Math.max(endY - startY, 1));
+          a.vp = a.dwell ? dwell(vraw, a.dwell) : vraw;
+        }
+        a.live = (y > a.top - vh * 1.25) && (y < a.top + a.height + vh * 1.25);
+        a.el.style.setProperty('--sc-p', a.p.toFixed(4));
+
+        // Fetch earlier than we drive. A 1080p clip is megabytes, and a reader
+        // who scrolls briskly will otherwise arrive at a stage that is still
+        // downloading and see a poster where the camera move should be.
+        var warm = (y > a.top - vh * 3) && (y < a.top + a.height + vh * 1.5);
+        if (warm) {
+          if (a.video) loadVideo(a);
+          if (a.seq) loadSeq(a);
+        }
+        if (a.live && a.seq) drawSeq(a);
+        if (a.video) { a.video.live = a.live; if (a.video.ready) a.video.target = a.vp; }
+
+        // horizontal rail
+        if (a.rail) {
+          var over = a.rail.scrollWidth - vw;
+          if (over > 0) {
+            var extra = over * (a.railExtra || 0);
+            a.rail.style.transform = 'translate3d(' + (-(over + extra) * a.p).toFixed(2) + 'px,0,0)';
+          }
+        }
+
+        if (!a.live) {
+          // An act that scrolls out of range must release its cues rather than
+          // freezing them at whatever they last were. A "hold" cue left at
+          // opacity 1 keeps its element hit-testable and paintable long after
+          // its act is gone, which shows up as a stray headline over a later
+          // section. Zero once, then leave it alone.
+          if (a.parked !== true) {
+            for (var z = 0; z < a.cues.length; z++) {
+              var pq = a.cues[z];
+              pq.el.style.opacity = '0';
+              pq.el.style.pointerEvents = 'none';
+              pq.state = 0;
+              if (pq.units) for (var zu = 0; zu < pq.units.length; zu++) pq.units[zu].style.opacity = '0';
+            }
+            a.parked = true;
+          }
+          continue;
+        }
+        a.parked = false;
+
+        // cues
+        for (var c = 0; c < a.cues.length; c++) {
+          var q = a.cues[c];
+          var vis;
+          if (q.to === null) {
+            vis = smooth((a.p - q.from) / 0.18);
+          } else {
+            var win = Math.max(q.to - q.from, 0.001);
+            var inEnd = q.from + win * q.rIn;        // full opacity from here
+            var outStart = q.to - win * q.rOut;      // starts leaving here
+            if (a.p < inEnd) vis = smooth((a.p - q.from) / Math.max(inEnd - q.from, 0.001));
+            else if (a.p <= outStart) vis = 1;       // the plateau
+            else vis = smooth(1 - (a.p - outStart) / Math.max(q.to - outStart, 0.001));
+          }
+          vis = clamp01(vis);
+
+          if (q.kinetic) {
+            if (!q.units) q.units = splitText(q.el, q.kinetic);
+            var n = q.units.length;
+            // Stagger across the reveal window. 0.62 spread leaves the tail of
+            // the window for the last unit to finish, so the line lands together
+            // rather than trickling.
+            for (var u = 0; u < n; u++) {
+              var uStart = (u / Math.max(n, 1)) * 0.62;
+              var uv = clamp01((vis - uStart) / (1 - 0.62 + 0.001));
+              uv = smooth(uv);
+              q.units[u].style.opacity = uv.toFixed(3);
+              q.units[u].style.transform = reduce ? 'none'
+                : 'translate3d(0,' + ((1 - uv) * 100).toFixed(2) + '%,0)';
+            }
+            q.el.style.opacity = '1';
+          } else {
+            q.el.style.opacity = vis.toFixed(3);
+            q.el.style.transform = reduce ? 'none'
+              : 'translate3d(0,' + ((1 - vis) * 2.4 * q.rise).toFixed(2) + 'vh,0)';
+          }
+          var on = vis > 0.5;
+          if (on !== (q.state === 1)) { q.state = on ? 1 : 0; q.el.style.pointerEvents = on ? 'auto' : 'none'; }
+        }
+
+        // parallax
+        if (!reduce) {
+          for (var pz = 0; pz < a.parallax.length; pz++) {
+            var pp = a.parallax[pz];
+            pp.el.style.transform = 'translate3d(0,' + (pp.rate * (a.p - 0.5) * 100).toFixed(2) + 'px,0)';
+          }
+        }
+
+        // reveals
+        for (var rv = 0; rv < a.reveals.length; rv++) {
+          var R = a.reveals[rv];
+          var t = smooth((a.p - R.from) / Math.max(R.to - R.from, 0.001));
+          var pct = ((1 - t) * 100).toFixed(2);
+          R.el.style.clipPath =
+            R.dir === 'down' ? 'inset(' + pct + '% 0 0 0)' :
+            R.dir === 'left' ? 'inset(0 ' + pct + '% 0 0)' :
+            R.dir === 'right' ? 'inset(0 0 0 ' + pct + '%)' :
+            R.dir === 'iris' ? 'circle(' + (t * 78).toFixed(2) + '% at 50% 50%)' :
+                               'inset(0 0 ' + pct + '% 0)';
+        }
+
+        // counters
+        for (var ct = 0; ct < a.counts.length; ct++) {
+          var K = a.counts[ct];
+          var kt = smooth((a.p - K.from) / Math.max(K.to - K.from, 0.001));
+          var val = lerp(K.a, K.b, kt);
+          var out = formatNum(val, K.tpl);
+          if (out !== K.last) { K.el.textContent = out; K.last = out; }
+        }
+      }
+
+      for (var w = 0; w < worlds.length; w++) readWorld(worlds[w]);
+
+      // background drift
+      for (var d = 0; d < drifts.length; d++) {
+        var D = drifts[d];
+        if (D.act.raw > 0 && D.act.raw < 1) {
+          driftA = D; driftT = smooth(D.act.raw / 0.35);
+          driftB = drifts[d - 1] || D;
+          break;
+        }
+        if (D.act.raw >= 1) { driftA = D; driftB = D; driftT = 1; }
+      }
+      if (driftA) {
+        docEl.style.setProperty('--sc-canvas', mixColor(driftB.rgb, driftA.rgb, driftT));
+      }
+
+      if (progressBar) {
+        var max = Math.max(document.body.scrollHeight - vh, 1);
+        progressBar.style.transform = 'scaleX(' + clamp01(y / max).toFixed(4) + ')';
+      }
+    }
+
+    // ---- video seek loop --------------------------------------------------
+    // Split from read() on purpose: seeking is asynchronous and rate-limited by
+    // the decoder, while read() must stay cheap enough to run on every scroll
+    // event. The lerp here is also what turns a jittery wheel into a glide.
+    function tick() {
+      if (scDead) return;
+      // Deadband. A phone decoder cannot service a seek every frame, so asking
+      // for one costs more than it shows; 20ms of clip is under a frame of
+      // footage anyway.
+      var eps = isMobile() ? 0.02 : 0.008;
+      for (var i = 0; i < playheads.length; i++) {
+        var V = playheads[i];
+        if (!V.ready) continue;
+        // Never queue a seek while the decoder is still resolving the last one.
+        // On a phone a fast flick otherwise piles seeks up and freezes the clip.
+        // But a seek that never completes would freeze the clip for the life of
+        // the page through this very guard, so a seek stuck past 700ms is
+        // re-issued rather than waited on forever.
+        if (V.el.seeking) {
+          var nw = performance.now();
+          if (!V.stuckAt) V.stuckAt = nw;
+          else if (nw - V.stuckAt > 700) {
+            V.stuckAt = nw;
+            try { V.el.currentTime = V.el.currentTime + 0.001; } catch (e) {}
+          }
+          continue;
+        }
+        V.stuckAt = 0;
+        // An offscreen clip that has already arrived stops costing anything.
+        if (!V.live && Math.abs(V.cur - V.target) < 0.002) continue;
+        V.cur += (V.target - V.cur) * (reduce ? 1 : V.lerp);
+        var dur = V.el.duration || 1;
+        var t = clamp(V.cur, 0, 0.999) * dur;
+        if (Math.abs(V.el.currentTime - t) > eps) { try { V.el.currentTime = t; } catch (e) {} }
+      }
+      scTickFrame = requestAnimationFrame(tick);
+    }
+
+    // iOS will not paint a muted video that has never been handed a user
+    // gesture, so a clip can be loaded, seeked and still show nothing.
+    //
+    // This used to fire once, on the first touch, across every playhead. That
+    // loses a race it cannot win. The first act's clip is still being fetched
+    // when the reader's first touch arrives (they touch the screen in order to
+    // scroll, and the clip is megabytes) so play() is called on a video with
+    // no source, does nothing, and the one shot is spent. Every later act loads
+    // long after that touch, with user activation already granted, and works
+    // without ever needing this. That is the exact shape of the bug: the hero
+    // frozen, everything below it fine.
+    //
+    // So: keep listening, prime each clip once it actually has a source, and
+    // stop only when they are all done. And force a seek afterwards, because a
+    // primed decoder still shows the stale frame until something asks it for a
+    // different time, and the deadband in tick() will not ask if the playhead is
+    // already where it should be.
+    var primedCount = 0;
+    function primeClip(V) {
+      // priming guards the retry: play() is a promise, and calling it again
+      // while the last one is unsettled produces "interrupted by pause" and can
+      // leave the element playing.
+      if (V.primed || V.priming || !V.el.src) return;
+      V.priming = true;
+      var done = function () {
+        V.priming = false;
+        if (!V.primed) { V.primed = true; primedCount++; }
+        try { V.el.pause(); } catch (e) {}
+        // repaint: nudge past the deadband so the next tick writes for real
+        try {
+          var dur = V.el.duration || 1;
+          V.cur = clamp(V.cur, 0, 0.999);
+          V.el.currentTime = clamp(V.cur * dur + 0.05, 0, dur * 0.999);
+        } catch (e) {}
+      };
+      var fail = function () { V.priming = false; };
+      // A play() promise is allowed to stay pending forever (iOS does this to a
+      // video it has decided not to start). If that happened here, `priming`
+      // would jam and no gesture could ever retry, so the flag is released on a
+      // timer as well. A late resolution after the release still lands in
+      // done(), which is idempotent.
+      setTimeout(function () { if (V.priming) fail(); }, 2000);
+      var pr;
+      try { pr = V.el.play(); } catch (e) { fail(); return; }
+      if (pr && pr.then) pr.then(done, fail);
+      else done();
+    }
+    function prime() {
+      for (var i = 0; i < playheads.length; i++) primeClip(playheads[i]);
+      if (playheads.length && primedCount >= playheads.length) {
+        removeEventListener('touchstart', prime);
+        removeEventListener('touchend', prime);
+        removeEventListener('pointerdown', prime);
+        removeEventListener('click', prime);
+        removeEventListener('scroll', prime);
+      }
+    }
+    // touchend and click are here because the HTML spec's list of activation-
+    // triggering events includes touchend but NOT touchstart. A restricted
+    // device (Low Power Mode) that rejects the touchstart prime for lacking
+    // activation gets a second, valid chance the moment the finger lifts.
+    on('touchstart', prime, { passive: true });
+    on('touchend', prime, { passive: true });
+    on('pointerdown', prime, { passive: true });
+    on('click', prime, { passive: true });
+    on('scroll', prime, { passive: true });
+
+    // ---- pointer devices --------------------------------------------------
+    var tilts = [], magnets = [], spots = [];
+    function initPointer() {
+      if (reduce || !fineMQ.matches) return;
+      Array.prototype.forEach.call(root.querySelectorAll('[data-sc-tilt]'), function (el) {
+        tilts.push({ el: el, max: parseFloat(el.getAttribute('data-sc-tilt')) || 6, x: 0, ty: 0, tx: 0, y: 0 });
+      });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-sc-magnet]'), function (el) {
+        magnets.push({ el: el, k: parseFloat(el.getAttribute('data-sc-magnet')) || 0.3, x: 0, y: 0, tx: 0, ty: 0 });
+      });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-sc-spotlight]'), function (el) {
+        spots.push(el);
+      });
+      if (!tilts.length && !magnets.length && !spots.length) return;
+
+      on('pointermove', function (e) {
+        if (e.pointerType !== 'mouse') return;
+        for (var i = 0; i < tilts.length; i++) {
+          var T = tilts[i], r = T.el.getBoundingClientRect();
+          if (r.bottom < -200 || r.top > vh + 200) { T.tx = 0; T.ty = 0; continue; }
+          var nx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
+          var ny = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+          var inside = Math.abs(nx) < 1.6 && Math.abs(ny) < 1.6;
+          T.tx = inside ? clamp(ny, -1, 1) * -T.max : 0;
+          T.ty = inside ? clamp(nx, -1, 1) * T.max : 0;
+        }
+        for (var m = 0; m < magnets.length; m++) {
+          var M = magnets[m], mr = M.el.getBoundingClientRect();
+          var dx = e.clientX - (mr.left + mr.width / 2);
+          var dy = e.clientY - (mr.top + mr.height / 2);
+          var near = Math.abs(dx) < mr.width && Math.abs(dy) < mr.height * 2.5;
+          M.tx = near ? dx * M.k : 0;
+          M.ty = near ? dy * M.k : 0;
+        }
+        for (var s = 0; s < spots.length; s++) {
+          var sr = spots[s].getBoundingClientRect();
+          spots[s].style.setProperty('--sc-mx', clamp01((e.clientX - sr.left) / sr.width).toFixed(3));
+          spots[s].style.setProperty('--sc-my', clamp01((e.clientY - sr.top) / sr.height).toFixed(3));
+        }
+      }, { passive: true });
+
+      (function pointerTick() {
+        if (scDead) return;
+        // Interpolate toward the target rather than tracking the pointer
+        // directly. Direct tracking reads as artificial because it carries no
+        // momentum; the lerp gives it weight.
+        for (var i = 0; i < tilts.length; i++) {
+          var T = tilts[i];
+          T.x += (T.tx - T.x) * 0.09; T.y += (T.ty - T.y) * 0.09;
+          if (Math.abs(T.x) > 0.001 || Math.abs(T.y) > 0.001) {
+            T.el.style.transform = 'perspective(1100px) rotateX(' + T.x.toFixed(3) + 'deg) rotateY(' + T.y.toFixed(3) + 'deg)';
+          }
+        }
+        for (var m = 0; m < magnets.length; m++) {
+          var M = magnets[m];
+          M.x += (M.tx - M.x) * 0.12; M.y += (M.ty - M.y) * 0.12;
+          M.el.style.transform = 'translate3d(' + M.x.toFixed(2) + 'px,' + M.y.toFixed(2) + 'px,0)';
+        }
+        scPointerFrame = requestAnimationFrame(pointerTick);
+      })();
+    }
+
+    // ---- wiring -----------------------------------------------------------
+    var ticking = false;
+    on('scroll', function () {
+      if (scDead) return;
+      if (!ticking) { ticking = true; requestAnimationFrame(function () { if (!scDead) read(); ticking = false; }); }
+    }, { passive: true });
+
+    // Keyboard focus on a pinned or panning act. The browser's own
+    // scroll-into-view parks the focused element barely on screen, which is
+    // exactly the scroll position at which its cue has not opened yet, so focus
+    // lands on a control nobody can see and every automated opacity check still
+    // passes. Centring the act instead is a position where the cue is lit by
+    // definition. behavior:'instant' on purpose: scrollcraft.css sets
+    // scroll-behavior:smooth, so the default animates the jump and focus sits
+    // off screen for the whole of a multi-screen glide.
+    on('focusin', function (e) {
+      var el = e.target;
+      if (!el || !el.closest) return;
+      var act = el.closest('[data-sc-act]');
+      if (!act || !root.contains(act)) return;
+      var cue = el.closest('[data-sc-cue]');
+      if (!cue) return;
+      if (parseFloat(getComputedStyle(cue).opacity || '1') > 0.85) return;
+      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+    });
+
+    var lastW = innerWidth;
+    on('resize', function () {
+      // Ignore URL-bar-only height changes on phones. Relaying out on those
+      // makes the page jump under the reader's thumb for no reason.
+      if (scDead) return;
+      if (innerWidth === lastW && isMobile()) { vh = innerHeight; return; }
+      lastW = innerWidth;
+      layout();
+    }, { passive: true });
+
+    if (document.fonts && document.fonts.ready) {
+      // Line splitting measures line boxes, so it has to wait for the real face.
+      document.fonts.ready.then(function () {
+        if (scDead) return;
+        acts.forEach(function (a) { a.cues.forEach(function (q) { if (q.kinetic && q.units) { q.el.__scSplit = null; q.units = null; } }); });
+        layout();
+      });
+    }
+
+    layout();
+    initPointer();
+    scTickFrame = requestAnimationFrame(tick);
+    document.documentElement.classList.add('sc-ready');
+
+    var api = { layout: layout, read: read, acts: acts, worlds: worlds, clips: playheads, lerp: LERP };
+    // Idempotent: a second call is a no-op, because a framework's teardown hook
+    // can run after the element is already gone.
+    api.destroy = function () {
+      if (scDead) return;
+      scDead = true;
+      for (var i = 0; i < scListeners.length; i++) {
+        removeEventListener(scListeners[i][0], scListeners[i][1], scListeners[i][2]);
+      }
+      scListeners.length = 0;
+      if (scTickFrame) { cancelAnimationFrame(scTickFrame); scTickFrame = 0; }
+      if (scPointerFrame) { cancelAnimationFrame(scPointerFrame); scPointerFrame = 0; }
+      // Both observers, or every element they still watch stays reachable.
+      if (io) { io.disconnect(); io = null; }
+      if (cio) { cio.disconnect(); cio = null; }
+      // A blob URL is a document-lifetime reference to a whole decoded clip, so
+      // an unreleased one is the largest thing a re-mount can leak. Detaching
+      // the source needs the removeAttribute + load() pair: revoking alone
+      // leaves the element holding the resource.
+      for (var v = 0; v < playheads.length; v++) {
+        var V = playheads[v];
+        try { V.el.pause(); } catch (e) {}
+        if (V.objectURL) {
+          try { V.el.removeAttribute('src'); V.el.load(); } catch (e) {}
+          URL.revokeObjectURL(V.objectURL);
+          V.objectURL = null;
+        }
+      }
+      var at = global.ScrollCraft.instances.indexOf(api);
+      if (at !== -1) global.ScrollCraft.instances.splice(at, 1);
+      // Document-global, while the instance is not: only the last one out drops
+      // it, or a second stage on the page loses its no-transition guard.
+      if (!global.ScrollCraft.instances.length) {
+        document.documentElement.classList.remove('sc-ready');
+      }
+    };
+    global.ScrollCraft.instances.push(api);
+    return api;
+  }
+
+  // The instance list is not an API for the page. It is how the verification
+  // harness reads the real playhead records: a screenshot taken mid-lerp is a
+  // frame the page never actually holds, so the harness has to be able to ask
+  // whether the playhead has arrived rather than guess with a timeout.
+  global.ScrollCraft = { mount: mount, reduce: reduce, instances: [] };
+})(window);
+
+</script>
+<script>
+(function () {
+  ScrollCraft.mount(document.body);
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ------------------------------------------------ the dispatch sentence */
+  var APPL = [
+    { a: 'dishwasher', f: 'won’t drain.',     pro: 'Sofia',  full: 'Sofia M.',  init: 'SM', her: 'her', est: '$180–$260 <small>a range, never a point</small>' },
+    { a: 'washer',     f: 'won’t spin.',      pro: 'Rosa',   full: 'Rosa D.',   init: 'RD', her: 'her', est: 'Range first <small>shown before you book</small>' },
+    { a: 'fridge',     f: 'isn’t cooling.',   pro: 'Marcus', full: 'Marcus T.', init: 'MT', her: 'his', est: 'Range first <small>shown before you book</small>' },
+    { a: 'oven',       f: 'won’t heat.',      pro: 'Priya',  full: 'Priya K.',  init: 'PK', her: 'her', est: 'Range first <small>shown before you book</small>' },
+    { a: 'dryer',      f: 'runs cold.',       pro: 'Dev',    full: 'Dev A.',    init: 'DA', her: 'his', est: 'Range first <small>shown before you book</small>' }
+  ];
+  var ai = 0, box = $('dispatchBox'), timers = [], countdown;
+
+  function clearT() { timers.forEach(clearTimeout); timers = []; clearInterval(countdown); }
+  function setAppliance(i) {
+    ai = i; var d = APPL[i], w = $('applWord');
+    w.textContent = d.a; w.classList.remove('swap'); void w.offsetWidth; w.classList.add('swap');
+    $('faultLine').textContent = d.f;
+    $('ticketJob').textContent = d.a.charAt(0).toUpperCase() + d.a.slice(1) + ' · ' + d.f.replace('.', '');
+  }
+  function reset() {
+    clearT(); box.dataset.state = 'idle'; resetRoute();
+    $('again').innerHTML = '<span>Sample job. Strech opens city by city.</span>';
+    setStep(0);
+  }
+  $('appl').addEventListener('click', function () {
+    var was = box.dataset.state; reset(); setAppliance((ai + 1) % APPL.length);
+    if (was === 'done') $('tap').focus();
+  });
+  $('tap').addEventListener('click', function () {
+    var d = APPL[ai]; clearT();
+    $('proName').textContent = d.pro;
+    $('result').innerHTML = '<em>' + d.pro + '</em> is on ' + d.her + ' way.';
+    $('proFull').textContent = d.full; $('proInit').textContent = d.init; $('est').innerHTML = d.est;
+    $('mins').textContent = '12'; $('eta').textContent = '9:42';
+    box.dataset.state = 'matching';
+    timers.push(setTimeout(function () {
+      box.dataset.state = 'done';
+      $('result').removeAttribute('aria-hidden');
+      setStep(1); driveRoute();
+      $('again').innerHTML = '<span>Sample job.</span><button type="button" id="againBtn">Try another appliance</button><a href="#homeowners">See how it works</a>';
+      $('againBtn').addEventListener('click', function () { reset(); setAppliance((ai + 1) % APPL.length); $('tap').focus(); });
+    }, reduce ? 50 : 900));
+  });
+
+  /* the route draws, the van travels, the minutes fall */
+  var route = $('route'), van = $('van'), halo = $('vanHalo'), L = route.getTotalLength();
+  function resetRoute() {
+    route.style.transition = 'none'; route.style.strokeDasharray = L; route.style.strokeDashoffset = L;
+    var p0 = route.getPointAtLength(0); van.setAttribute('cx', p0.x); van.setAttribute('cy', p0.y); halo.setAttribute('cx', p0.x); halo.setAttribute('cy', p0.y);
+  }
+  function driveRoute() {
+    var dur = reduce ? 0 : 1700, t0 = performance.now(), m = 12;
+    (function frame(now) {
+      var t = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - t, 3);
+      route.style.strokeDashoffset = L * (1 - e);
+      var p = route.getPointAtLength(L * e * 0.86);
+      van.setAttribute('cx', p.x); van.setAttribute('cy', p.y); halo.setAttribute('cx', p.x); halo.setAttribute('cy', p.y);
+      if (t < 1 && box.dataset.state === 'done') requestAnimationFrame(frame);
+    })(t0);
+    countdown = setInterval(function () { if (m > 9) { m--; $('mins').textContent = m; } else clearInterval(countdown); }, 2600);
+  }
+  resetRoute();
+
+  /* ------------------------------------------------ describe the fault */
+  var fault = $('fault'), chips = document.querySelectorAll('.chip');
+  var KEYS = [['dishwasher', 'Dishwasher repair visit', '$180–$260'], ['washer', 'Washer repair visit', null], ['washing', 'Washer repair visit', null],
+              ['fridge', 'Refrigerator repair visit', null], ['refrigerator', 'Refrigerator repair visit', null], ['oven', 'Oven repair visit', null],
+              ['stove', 'Range repair visit', null], ['dryer', 'Dryer repair visit', null], ['microwave', 'Microwave repair visit', null]];
+  function read(v) {
+    var s = v.toLowerCase().trim(), r = $('readout');
+    if (!s) { r.classList.add('pending'); $('rLabel').textContent = 'Your range appears here'; $('rValue').textContent = '$ ··· – ···'; return; }
+    var hit = null; for (var i = 0; i < KEYS.length; i++) if (s.indexOf(KEYS[i][0]) > -1) { hit = KEYS[i]; break; }
+    r.classList.remove('pending');
+    if (!hit) { $('rLabel').textContent = 'Which appliance is it?'; $('rValue').textContent = 'Tell us the machine'; return; }
+    $('rLabel').textContent = hit[1] + ' · vetted pro, matched by appliance class';
+    $('rValue').textContent = hit[2] || 'Range shown in the app';
+  }
+  fault.addEventListener('input', function () { chips.forEach(function (c) { c.setAttribute('aria-pressed', c.dataset.fault === fault.value ? 'true' : 'false'); }); read(fault.value); });
+  chips.forEach(function (c) { c.addEventListener('click', function () { fault.value = c.dataset.fault; chips.forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); }); read(fault.value); }); });
+
+  /* ------------------------------------------------ small tasks */
+  document.querySelectorAll('.task').forEach(function (t, _, all) {
+    t.addEventListener('click', function () { all.forEach(function (x) { x.setAttribute('aria-pressed', x === t ? 'true' : 'false'); }); $('smallWhat').textContent = t.textContent; });
+  });
+
+  /* ------------------------------------------------ waitlist (demo only) */
+  var pro = false;
+  document.querySelectorAll('[data-pro], #proJoin').forEach(function (a) { a.addEventListener('click', function () { pro = true; setTimeout(function () { $('email').focus({ preventScroll: true }); }, 600); }); });
+  $('wl').addEventListener('submit', function (e) {
+    e.preventDefault(); var v = $('email').value.trim(), m = $('wlMsg');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { m.className = 'err'; m.textContent = ' Check the email address and try again.'; $('email').focus(); return; }
+    m.className = 'ok'; m.textContent = pro ? ' You’re on the pro list. We’ll hold your area. (Demo: nothing was sent.)' : ' You’re on the list. We’ll write when Strech opens near you. (Demo: nothing was sent.)';
+  });
+
+  /* ------------------------------------------------ folio, ticket, vine */
+  var chapters = Array.prototype.slice.call(document.querySelectorAll('[data-chapter]'));
+  var steps = Array.prototype.slice.call(document.querySelectorAll('#ticketSteps li'));
+  var amt = $('ticketAmt'), rail = $('rail'), vw = $('vineWrap'), stem = $('stem'), SL = stem.getTotalLength();
+  var AMT = ['$180–$260', '$180–$260', '$180–$260', '$240 approved', '$240 · 9:42', '$240 · done', 'Paid $240', 'Paid $240', 'Your turn'];
+  var MBAR = ['Sample job · tap the headline', 'Range $180–$260', 'Matched with Sofia', 'Quote $240 · approved', 'Sofia on the way · 9:42', 'Done · warranty 90 days', 'Paid $240 · in-app', 'Tended early', 'Your turn'];
+  // step index on ticket for each chapter step
+  var STEP = [0, 1, 1, 3, 4, 5, 6, 6, 6];
+  var manualStep = 0, cur = -1;
+  function setStep(n) { manualStep = n; paintTicket(Math.max(n, STEP[cur] || 0)); }
+  function paintTicket(k) {
+    steps.forEach(function (li, i) { li.className = i < k ? 'done' : (i === k ? 'now' : ''); });
+  }
+  stem.style.strokeDasharray = SL; stem.style.strokeDashoffset = SL;
+
+  // leaves at chapter marks
+  var svgNS = 'http://www.w3.org/2000/svg', vineSvg = $('vine'), leaves = [];
+  [0.12, 0.26, 0.4, 0.54, 0.68, 0.82].forEach(function (f, i) {
+    var p = stem.getPointAtLength(SL * f), leaf = document.createElementNS(svgNS, 'path');
+    var dir = i % 2 ? -1 : 1;
+    leaf.setAttribute('d', 'M' + p.x + ' ' + p.y + ' c ' + (6 * dir) + ' -10, ' + (16 * dir) + ' -10, ' + (18 * dir) + ' -2 c ' + (-6 * dir) + ' 6, ' + (-12 * dir) + ' 6, ' + (-18 * dir) + ' 2z');
+    leaf.setAttribute('class', 'leaf'); vineSvg.appendChild(leaf); leaves.push([f, leaf]);
+  });
+  var bp = stem.getPointAtLength(SL * 0.985), bud = document.createElementNS(svgNS, 'path');
+  bud.setAttribute('d', 'M' + bp.x + ' ' + bp.y + ' c -7 -4, -6 -16, 0 -20 c 6 4, 7 16, 0 20z'); bud.setAttribute('class', 'bud'); vineSvg.appendChild(bud);
+
+  var ticking = false;
+  function onScroll() {
+    ticking = false;
+    var y = window.scrollY, vh = innerHeight, max = document.documentElement.scrollHeight - vh;
+    var f = max > 0 ? Math.min(1, y / max) : 0;
+    stem.style.strokeDashoffset = SL * (1 - f);
+    leaves.forEach(function (l) { l[1].classList.toggle('on', f >= l[0]); });
+    bud.classList.toggle('on', f > 0.97);
+
+    // which chapter owns the folio line (40% down the viewport)
+    var line = vh * 0.4, idx = 0;
+    for (var i = 0; i < chapters.length; i++) if (chapters[i].getBoundingClientRect().top <= line) idx = i;
+    var ch = chapters[idx];
+    if (idx !== cur) {
+      cur = idx;
+      $('folioTitle').textContent = ch.dataset.chapter;
+      rail.dataset.ground = ch.dataset.ground; vw.dataset.ground = ch.dataset.ground;
+      var s = +ch.dataset.step;
+      paintTicket(Math.max(STEP[s], s === 0 ? manualStep : 0));
+      amt.textContent = AMT[s];
+      $('mbarText').textContent = MBAR[s];
+    }
+    // the rail's ground follows whatever sits under the rail itself (top 30%)
+    var under = 0; for (var j = 0; j < chapters.length; j++) if (chapters[j].getBoundingClientRect().top <= vh * 0.12) under = j;
+    rail.dataset.ground = chapters[under].dataset.ground;
+
+    // quote band pin
+    var q = $('quote'), qp = parseFloat(getComputedStyle(q).getPropertyValue('--sc-p')) || 0;
+    var track = $('bandTrack'), w = track.clientWidth, target = 0.75 * w, k = Math.min(1, Math.max(0, (qp - 0.52) / 0.16));
+    $('bandPin').style.setProperty('--band', (target * (1 - Math.pow(1 - k, 3))).toFixed(1));
+
+    // tracking: stages + minutes from the chapter's own progress
+    var t = $('tracking'), tp = parseFloat(getComputedStyle(t).getPropertyValue('--sc-p')) || 0;
+    var trk = Math.min(1, Math.max(0, (tp - 0.3) / 0.38));
+    $('stages').style.setProperty('--trk', trk.toFixed(3));
+    var on = trk < 0.01 ? 1 : Math.min(4, 1 + Math.floor(trk * 3 + 0.001));
+    document.querySelectorAll('.stage').forEach(function (s2, i2) { s2.classList.toggle('on', i2 < on); });
+    var mins = Math.round(12 * (1 - Math.min(1, trk * 1.5)));
+    $('trackMins').textContent = trk >= 0.99 ? 'Done' : (mins <= 0 ? 'On site' : mins + ' min');
+  }
+  addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
+  addEventListener('resize', onScroll);
+  onScroll();
+})();
+</script>
+</body>
+</html>

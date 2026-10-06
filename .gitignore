@@ -1,0 +1,17 @@
+# Secrets. Never commit a real one.
+.env
+.env.local
+
+# scroll-craft raw generations and screenshot labs (large)
+scrollcraft/lab/
+out/
+
+# Impeccable per-developer config
+.impeccable/config.local.json
+
+node_modules/
+.DS_Store
+
+# scroll-craft verification tooling
+scrollcraft/builds/*/package.json
+scrollcraft/builds/*/package-lock.json
