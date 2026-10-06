@@ -18,7 +18,19 @@ For any website, landing page, UI, component, or visual design task:
    - `/brutalist-skill`: raw, grid-heavy, terminal aesthetic
    - `/redesign-skill`: upgrading something that already exists
    - `/output-skill`: no truncated or placeholder code
-3. Anthropic's `frontend-design` skill is the fallback when neither applies.
+3. **Scroll-craft** (`/scroll-craft`) is the build method for scroll-driven,
+   cinematic landing pages (scrollytelling, layered parallax heroes, video that
+   plays as you scroll). When the site is that kind of experience, follow its
+   interview, grammar, and verification steps, with Impeccable and Taste still
+   setting the quality bar.
+   - Image/video generation goes through kie.ai and needs `KIE_AI_API_KEY` in a
+     git-ignored `.env`. Without a key, build from the user's own assets or
+     Higgsfield-generated ones instead.
+   - In cloud sessions, point its screenshot scripts at the preinstalled
+     Chromium: `SCROLLCRAFT_CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
+   - Builds live in `scrollcraft/builds/<name>/`. Keep raw generations out of
+     git (`out/` and `scrollcraft/lab/` are ignored).
+4. Anthropic's `frontend-design` skill is the fallback when none of these apply.
 
 Hosting: deploy finished sites with the Netlify connector. Generate imagery with
 the Higgsfield connector.
