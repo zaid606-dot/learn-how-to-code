@@ -1,0 +1,990 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Strech · Appliance repair, tended</title>
+<meta name="description" content="Describe the fault, see a price range, approve one fixed quote, and watch your pro arrive. Strech is opening city by city.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%233daa4f'/><path d='M27 9H17l-5 6h10l-6 7h10l-7 9 13-11H22l5-11z' fill='%23fff'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Brygada+1918:ital,wght@0,400..700;1,400..700&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="scrollcraft.css">
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  :root {
+    --forest:   #16211a;
+    --forest-2: #1b2a20;
+    --night:    #0e1611;
+    --paper:    #f4efe5;
+    --paper-2:  #ebe4d6;
+    --ink:      #17201a;
+    --ink-soft: #566257;
+    --cream:    #f1ece1;
+    --cream-soft: #aebaad;
+    --green:    #3daa4f;
+    --green-hi: #5cc96d;
+    --green-deep: #2f8f40;
+    --drench:   #3aa64c;
+    --drench-ink: #0d1a10;
+    --ochre:    #c99a3c;
+
+    --sc-canvas: var(--forest);
+    --sc-surface: var(--forest-2);
+    --sc-ink: var(--cream);
+    --sc-ink-soft: var(--cream-soft);
+    --sc-accent: var(--green);
+    --sc-accent-ink: var(--drench-ink);
+    --sc-font-display: "Brygada 1918", Georgia, serif;
+    --sc-font-text: "Hanken Grotesk", system-ui, sans-serif;
+
+    --rail: 232px;
+    --gut: clamp(20px, 4vw, 64px);
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
+  }
+
+  /* ------------------------------------------------------- browser surfaces */
+  html { scroll-behavior: smooth; background: var(--forest); }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    font-family: var(--sc-font-text);
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--cream);
+    background: var(--forest);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection { background: var(--green-hi); color: var(--drench-ink); }
+  * { box-sizing: border-box; }
+  input { caret-color: var(--green-deep); }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--night); }
+  ::-webkit-scrollbar-thumb { background: #2c3d31; border-radius: 10px; border: 2px solid var(--night); }
+  html { scrollbar-color: #2c3d31 var(--night); }
+  a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px; }
+  :focus-visible { outline: 2px solid var(--green-hi); outline-offset: 3px; border-radius: 4px; }
+  .paper :focus-visible, .drench :focus-visible { outline-color: var(--ink); }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  h1, h2, h3, p { margin: 0; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ------------------------------------------------------------ type scale */
+  .display {
+    font-family: var(--sc-font-display);
+    font-weight: 600;
+    letter-spacing: -0.022em;
+    line-height: 1.02;
+    text-wrap: balance;
+  }
+  .d-xl { font-size: clamp(2.2rem, 9.4vw, 6rem); }
+  @media (min-width: 721px) { .d-xl { font-size: clamp(3rem, 7.4vw, 6rem); } }
+  .d-lg { font-size: clamp(2.4rem, 5vw, 4.5rem); line-height: 1.04; }
+  .d-md { font-size: clamp(1.8rem, 3vw, 2.6rem); line-height: 1.1; }
+  .d-sm { font-size: clamp(1.25rem, 1.6vw, 1.5rem); line-height: 1.2; letter-spacing: -0.01em; }
+  .it { font-style: italic; font-weight: 500; }
+  .lede { font-size: clamp(1.08rem, 1.3vw, 1.24rem); line-height: 1.6; max-width: 34em; }
+  .small { font-size: .875rem; line-height: 1.5; }
+  .soft { color: var(--cream-soft); }
+  .paper .soft { color: var(--ink-soft); }
+  .drench .soft { color: #143a1c; }
+
+  /* --------------------------------------------------------------- layout */
+  .chapter {
+    position: relative;
+    padding: clamp(96px, 14vh, 168px) var(--gut) clamp(96px, 14vh, 168px) calc(var(--rail) + var(--gut));
+  }
+  .wrap { max-width: 1180px; }
+  .paper  { background: var(--paper); color: var(--ink); }
+  .night  { background: var(--night); }
+  .forest { background: var(--forest); }
+  .forest2{ background: var(--forest-2); }
+  .drench { background: var(--drench); color: var(--drench-ink); }
+
+  @media (max-width: 1099px) {
+    :root { --rail: 0px; }
+    .chapter { padding-bottom: clamp(112px, 16vh, 168px); }
+  }
+
+  /* ---------------------------------------------------- folio + job ticket */
+  .rail {
+    position: fixed; z-index: 40; inset: 0 auto 0 0; width: var(--rail);
+    padding: 28px 22px 26px 28px;
+    display: flex; flex-direction: column;
+    color: var(--cream);
+    transition: color .5s var(--ease-out);
+    pointer-events: none;
+  }
+  .rail > * { pointer-events: auto; }
+  .rail[data-ground="paper"] { color: var(--ink); }
+  .rail[data-ground="drench"] { color: var(--drench-ink); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .brand span { font-family: var(--sc-font-display); font-weight: 600; font-size: 1.3rem; letter-spacing: -0.01em; }
+  .folio { margin-top: 44px; }
+  .folio__title {
+    font-family: var(--sc-font-display); font-style: italic; font-size: 1.05rem; line-height: 1.3;
+    min-height: 2.6em;
+  }
+  .ticket {
+    margin-top: 22px; padding: 16px 0 0;
+    border-top: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    font-size: .8125rem; line-height: 1.45;
+  }
+  .ticket__head { display: flex; justify-content: space-between; gap: 8px; opacity: .72; }
+  .ticket__job { margin-top: 6px; font-weight: 600; font-size: .9375rem; }
+  .ticket__steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; }
+  .ticket__steps li { display: flex; align-items: center; gap: 10px; opacity: .38; transition: opacity .4s var(--ease-out); }
+  .ticket__steps li::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none;
+    border: 1.5px solid currentColor; transition: background .4s var(--ease-out), border-color .4s;
+  }
+  .ticket__steps li.done { opacity: .78; }
+  .ticket__steps li.done::before { background: currentColor; }
+  .ticket__steps li.now { opacity: 1; font-weight: 600; }
+  .ticket__steps li.now::before { background: var(--green-hi); border-color: var(--green-hi); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green-hi) 25%, transparent); }
+  .rail[data-ground="drench"] .ticket__steps li.now::before { background: var(--drench-ink); border-color: var(--drench-ink); box-shadow: none; }
+  .ticket__amt { margin-top: 14px; font-family: var(--sc-font-display); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
+  .rail__cta {
+    margin-top: auto; font-weight: 600; font-size: .9375rem; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .rail__cta svg { width: 16px; height: 16px; transition: transform .3s var(--ease-out); }
+  .rail__cta:hover svg { transform: translateX(3px); }
+  .rail__cta:hover { text-decoration: underline; }
+
+  /* the vine: grows with the page, sits on the rail's right edge */
+  .vine { position: fixed; z-index: 39; left: calc(var(--rail) - 26px); top: 0; height: 100vh; width: 40px; pointer-events: none; }
+  .vine path.stem { fill: none; stroke: var(--green); stroke-width: 1.5; stroke-linecap: round; }
+  .vine path.ghost { fill: none; stroke: currentColor; stroke-opacity: .12; stroke-width: 1; }
+  .vine .leaf { fill: var(--green); transform-box: fill-box; transform-origin: 0% 50%; transform: scale(0); transition: transform .7s var(--ease-out); }
+  .vine .leaf.on { transform: scale(1); }
+  .vine .bud { fill: var(--green-hi); transform-box: fill-box; transform-origin: 50% 100%; transform: scale(0); transition: transform .9s var(--ease-out); }
+  .vine .bud.on { transform: scale(1); }
+  .vine-wrap { color: var(--cream); transition: color .5s; }
+  .vine-wrap[data-ground="paper"] { color: var(--ink); }
+  .vine-wrap[data-ground="drench"] { color: var(--drench-ink); }
+  .vine-wrap[data-ground="drench"] path.stem, .vine-wrap[data-ground="drench"] .leaf { stroke: var(--drench-ink); }
+  .vine-wrap[data-ground="drench"] .leaf { fill: var(--drench-ink); }
+
+  /* mobile ticket: a slim bar at the bottom */
+  .mbar { display: none; }
+  @media (max-width: 1099px) {
+    .rail, .vine-wrap { display: none; }
+    .mbar {
+      display: flex; position: fixed; z-index: 40; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom));
+      align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 10px 10px 16px; border-radius: 999px;
+      background: color-mix(in srgb, var(--night) 92%, transparent);
+      color: var(--cream); font-size: .8125rem;
+      box-shadow: 0 10px 30px -12px rgba(0,0,0,.55);
+    }
+    .mbar__status { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .mbar__status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green-hi); flex: none; }
+    .mbar__status span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mbar a { flex: none; background: var(--green); color: var(--drench-ink); text-decoration: none; font-weight: 600; padding: 9px 16px; border-radius: 999px; }
+  }
+
+  /* ------------------------------------------------- title page: dispatch */
+  .title {
+    min-height: 100svh; display: flex; flex-direction: column;
+    padding-top: 28px; padding-bottom: 40px;
+    overflow: hidden;
+  }
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .masthead .brand { visibility: hidden; }
+  @media (max-width: 1099px) { .masthead .brand { visibility: visible; } }
+  .masthead nav { display: flex; gap: clamp(16px, 2.4vw, 34px); font-size: .9375rem; }
+  .masthead nav a { text-decoration: none; opacity: .8; }
+  .masthead nav a:hover { opacity: 1; text-decoration: underline; }
+  @media (max-width: 720px) { .masthead nav a:not(:last-child) { display: none; } }
+
+  .dispatch { margin-top: auto; margin-bottom: auto; padding: 6vh 0 2vh; position: relative; z-index: 2; max-width: 1080px; }
+  .dispatch h1 { position: relative; }
+  .dispatch h1 .line { display: block; }
+  .appl {
+    font: inherit; letter-spacing: inherit; color: var(--green-hi);
+    border-bottom: 2px dotted color-mix(in srgb, var(--green-hi) 60%, transparent);
+    display: inline-flex; align-items: baseline; gap: .14em; line-height: 1.02;
+    transition: color .2s, border-color .2s;
+  }
+  .appl:hover { border-bottom-style: solid; }
+  .appl svg { width: .34em; height: .34em; align-self: center; margin-top: .08em; opacity: .7; }
+  .appl__word { display: inline-block; }
+  .appl__word.swap { animation: swap .42s var(--ease-out); }
+  @keyframes swap { from { opacity: 0; transform: translateY(.18em); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+  .tapline { position: relative; display: block; height: 1.04em; }
+  .tapline > * { position: absolute; left: 0; top: 0; white-space: nowrap; }
+  .tap {
+    font: inherit; letter-spacing: inherit;
+    display: inline-flex; align-items: center; gap: .22em;
+    color: var(--cream);
+    transition: transform .25s var(--ease-out);
+  }
+  .tap__ring {
+    width: .62em; height: .62em; border-radius: 50%; position: relative; flex: none;
+    background: var(--green); box-shadow: 0 .06em .2em -.04em rgba(0,0,0,.4);
+  }
+  .tap__ring::after {
+    content: ""; position: absolute; inset: -.14em; border-radius: 50%;
+    border: 2px solid var(--green-hi); opacity: 0;
+    animation: ping 2.2s var(--ease-out) infinite 1.2s;
+  }
+  @keyframes ping { 0% { transform: scale(.7); opacity: .9; } 70%,100% { transform: scale(1.6); opacity: 0; } }
+  .tap:hover { transform: translateX(.04em); }
+  .tap:hover .tap__ring { background: var(--green-hi); }
+  .tap:active { transform: scale(.98); }
+  .matching { opacity: 0; display: inline-flex; align-items: baseline; gap: .3em; color: var(--cream-soft); font-style: italic; font-weight: 500; }
+  .matching i { display: inline-block; width: 1.4em; height: 2px; background: var(--green-hi); transform-origin: left; transform: scaleX(0); align-self: center; }
+  .result { opacity: 0; color: var(--cream); }
+  .matching, .result { pointer-events: none; }
+  .tap { z-index: 1; }
+  .result em { color: var(--green-hi); font-weight: 500; }
+
+  [data-state="matching"] .tap { opacity: 0; pointer-events: none; transform: translateY(-.2em); transition: opacity .2s, transform .3s var(--ease-out); }
+  [data-state="matching"] .matching { opacity: 1; transition: opacity .25s .1s; }
+  [data-state="matching"] .matching i { transform: scaleX(1); transition: transform .7s var(--ease-out) .15s; }
+  [data-state="done"] .tap, [data-state="done"] .matching { opacity: 0; pointer-events: none; }
+  [data-state="done"] .result { opacity: 1; }
+
+  .sub { margin-top: clamp(22px, 3.4vh, 36px); max-width: 30em; color: var(--cream-soft); font-size: clamp(1.02rem, 1.25vw, 1.18rem); }
+
+  .slip {
+    margin-top: clamp(24px, 3.6vh, 40px);
+    display: grid; grid-template-columns: auto auto auto; gap: 0;
+    width: max-content; max-width: 100%;
+    border-top: 1px solid color-mix(in srgb, var(--cream) 18%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--cream) 18%, transparent);
+    opacity: 0; transform: translateY(10px);
+    transition: opacity .6s var(--ease-out) .25s, transform .7s var(--ease-out) .25s;
+  }
+  [data-state="done"] .slip { opacity: 1; transform: none; }
+  .slip > div { padding: 14px 28px 14px 0; }
+  .slip > div + div { padding-left: 28px; border-left: 1px solid color-mix(in srgb, var(--cream) 14%, transparent); }
+  .slip dt { font-size: .75rem; letter-spacing: .02em; color: var(--cream-soft); }
+  .slip dd { margin: 3px 0 0; font-size: 1.02rem; font-weight: 600; white-space: nowrap; }
+  .slip dd small { font-weight: 400; color: var(--cream-soft); font-size: .85rem; }
+  .pro { display: flex; align-items: center; gap: 10px; }
+  .pro b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--green); color: var(--drench-ink); font-size: .72rem; font-weight: 700; }
+  .slip .live { color: var(--green-hi); }
+  @media (max-width: 720px) {
+    .slip { grid-template-columns: 1fr 1fr; width: 100%; }
+    .slip > div:first-child { grid-column: 1 / -1; border-bottom: 1px solid color-mix(in srgb, var(--cream) 14%, transparent); }
+    .slip > div + div { border-left: 0; padding-left: 0; }
+    .slip > div:last-child { padding-left: 20px; border-left: 1px solid color-mix(in srgb, var(--cream) 14%, transparent); }
+    .slip dd { white-space: normal; }
+    .slip dd small { display: block; }
+    .colophon { padding-bottom: 120px; }
+  }
+  .again { margin-top: 18px; font-size: .875rem; color: var(--cream-soft); display: flex; gap: 16px; flex-wrap: wrap; align-items: center; min-height: 1.5em; }
+  .again button { text-decoration: underline; text-underline-offset: .22em; color: var(--cream); }
+  .again button:hover { color: var(--green-hi); }
+
+  /* the street: a hairline route that draws itself after a tap */
+  .street { position: absolute; z-index: 1; right: 3vw; bottom: 4vh; width: min(56vw, 880px); height: auto; pointer-events: none; }
+  .street .road { fill: none; stroke: var(--cream); stroke-opacity: .16; stroke-width: 1; stroke-dasharray: 2 7; }
+  .street .route { fill: none; stroke: var(--green); stroke-width: 2; stroke-linecap: round; }
+  .street .home { fill: var(--forest); stroke: var(--cream); stroke-opacity: .55; stroke-width: 1.2; }
+  .street .van { fill: var(--green-hi); }
+  .street .vanhalo { fill: var(--green-hi); opacity: .18; }
+  .street text { fill: var(--cream-soft); font: 500 12px var(--sc-font-text); letter-spacing: .02em; }
+  @media (max-width: 720px) { .street { width: 130vw; right: -40vw; bottom: 22vh; opacity: .7; } }
+
+  /* --------------------------------------------- ch I: your words are enough */
+  .spread { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: clamp(40px, 7vw, 120px); align-items: start; }
+  @media (max-width: 900px) { .spread { grid-template-columns: 1fr; } }
+  .spread .copy > * + * { margin-top: 22px; }
+  .marks { list-style: none; padding: 0; margin: 34px 0 0; display: grid; gap: 14px; }
+  .marks li { display: grid; grid-template-columns: 18px 1fr; gap: 14px; align-items: start; }
+  .marks svg { width: 18px; height: 18px; margin-top: 4px; color: var(--green-deep); }
+  .forest .marks svg, .night .marks svg, .forest2 .marks svg { color: var(--green-hi); }
+
+  .describe {
+    background: #fffdf8; color: var(--ink);
+    border-radius: 18px; padding: 26px clamp(20px, 2.6vw, 32px) 24px;
+    box-shadow: 0 1px 0 rgba(23,32,26,.06), 0 24px 48px -28px rgba(23,32,26,.35);
+  }
+  .describe label { font-weight: 600; font-size: .9375rem; display: block; }
+  .describe .field {
+    margin-top: 12px; display: flex; align-items: center; gap: 10px;
+    border: 1px solid #d9d2c3; border-radius: 12px; padding: 4px 4px 4px 16px;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .describe .field:focus-within { border-color: var(--green-deep); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent); }
+  .describe input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 1.02rem; padding: 10px 0; color: var(--ink); }
+  .describe input::placeholder { color: #8a917f; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip { font-size: .875rem; padding: 7px 13px; border-radius: 999px; border: 1px solid #d9d2c3; transition: background .2s, border-color .2s, color .2s; }
+  .chip:hover { border-color: var(--green-deep); }
+  .chip[aria-pressed="true"] { background: #e3f1e3; border-color: var(--green-deep); color: #1e5c29; font-weight: 600; }
+  .readout { margin-top: 22px; padding-top: 18px; border-top: 1px solid #ebe4d6; min-height: 92px; }
+  .readout__label { font-size: .8125rem; color: var(--ink-soft); }
+  .readout__value { font-family: var(--sc-font-display); font-weight: 600; font-size: 2rem; letter-spacing: -0.015em; margin-top: 2px; }
+  .readout__note { font-size: .875rem; color: var(--ink-soft); }
+  .readout.pending .readout__value { color: #b6ae9f; }
+  .figcap { margin-top: 14px; font-size: .8125rem; color: var(--ink-soft); font-style: italic; font-family: var(--sc-font-display); }
+
+  /* --------------------------------------------- ch II: the quote, pinned */
+  .quote-act { padding: 0; }
+  .quote-act [data-sc-stage] {
+    height: 100svh; display: grid; align-items: center;
+    padding: 0 var(--gut) 0 calc(var(--rail) + var(--gut));
+  }
+  .quote-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 470px); gap: clamp(40px, 7vw, 120px); align-items: center; max-width: 1180px; width: 100%; }
+  @media (max-width: 900px) {
+    .quote-grid { grid-template-columns: 1fr; gap: 28px; }
+    .quote-act [data-sc-stage] { align-items: start; padding-top: 10vh; }
+    .quote-grid .copy p, .receipt__intro, .warranty { display: none; }
+    .receipt { padding: 20px 20px 18px; }
+    .lines li { padding: 8px 0; font-size: .875rem; }
+    .stamp { right: -6px; top: -18px; font-size: 1.3rem; }
+  }
+  .receipt {
+    position: relative; background: #fbf8f1; color: var(--ink);
+    padding: 28px 30px 26px; border-radius: 4px;
+    box-shadow: 0 2px 0 rgba(0,0,0,.25), 0 40px 70px -30px rgba(0,0,0,.7);
+    transform: rotate(-1.2deg);
+  }
+  .receipt::after { /* torn bottom edge */
+    content: ""; position: absolute; left: 0; right: 0; bottom: -9px; height: 10px;
+    background: radial-gradient(circle at 6px -1px, transparent 6px, #fbf8f1 6.5px) 0 0 / 12px 10px repeat-x;
+  }
+  .receipt__top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .receipt__top h3 { font-family: var(--sc-font-display); font-size: 1.35rem; font-weight: 600; }
+  .receipt__top span { font-size: .8125rem; color: var(--ink-soft); }
+  .receipt__intro { margin-top: 8px; font-size: .9375rem; color: var(--ink-soft); }
+  .lines { margin: 18px 0 0; padding: 0; list-style: none; border-top: 1px solid #e6dfd0; }
+  .lines li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed #e0d8c8; font-size: .9375rem; }
+  .lines li.credit { color: var(--green-deep); }
+  .lines li.total { border-bottom: 0; padding-top: 14px; font-weight: 600; font-size: 1.06rem; }
+  .lines b { font-weight: 600; }
+  .band { margin-top: 18px; }
+  .band__track { position: relative; height: 6px; border-radius: 6px; background: #e8e1d2; }
+  .band__fill { position: absolute; inset: 0; border-radius: 6px; background: linear-gradient(90deg, #cfe7cf, #8fd197); }
+  .band__pin {
+    position: absolute; top: 50%; left: 0; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%;
+    background: var(--green-deep); box-shadow: 0 0 0 4px #fbf8f1;
+    transform: translateX(calc(var(--band, 0) * 1px));
+  }
+  .band__ends { display: flex; justify-content: space-between; margin-top: 8px; font-size: .8125rem; color: var(--ink-soft); }
+  .warranty { margin-top: 16px; font-size: .8125rem; background: #edf6ec; color: #22502b; padding: 10px 12px; border-radius: 8px; }
+  .stamp {
+    position: absolute; right: -16px; top: -24px; background: color-mix(in srgb, #fbf8f1 70%, transparent);
+    font-family: var(--sc-font-display); font-style: italic; font-weight: 700; font-size: 1.7rem;
+    color: var(--green-deep); border: 2.5px solid var(--green-deep); border-radius: 8px; padding: 2px 14px 4px;
+    transform: rotate(-9deg); 
+  }
+
+  /* --------------------------------------------- ch III: tracking */
+  .track { margin-top: clamp(48px, 8vh, 80px); }
+  .track__eta { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  .track__eta strong { font-family: var(--sc-font-display); font-size: clamp(3rem, 6vw, 5rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+  .track__eta span { color: var(--cream-soft); }
+  .stages { position: relative; margin-top: 34px; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .stages::before, .stages::after {
+    content: ""; position: absolute; left: 6px; right: calc(25% - 6px); top: 6px; height: 2px; background: #2d3f33;
+  }
+  .stages::after { background: var(--green-hi); right: auto; width: calc((75% - 12px) * var(--trk, 0)); }
+  .stage { position: relative; padding-top: 28px; font-size: .9375rem; color: var(--cream-soft); transition: color .4s; }
+  .stage::before { content: ""; position: absolute; left: 0; top: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--forest-2); border: 2px solid #3a5040; transition: background .4s, border-color .4s; z-index: 1; }
+  .stage.on { color: var(--cream); }
+  .stage.on::before { background: var(--green-hi); border-color: var(--green-hi); }
+  .stage b { display: block; font-weight: 600; color: inherit; }
+  @media (max-width: 640px) { .stage { font-size: .8125rem; } }
+
+  /* --------------------------------------------- ch IV: small stuff */
+  .tasks { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 4px 0; font-family: var(--sc-font-display); font-size: clamp(1.4rem, 2.6vw, 2.2rem); line-height: 1.35; letter-spacing: -0.012em; }
+  .task { color: var(--ink); opacity: .42; text-align: left; transition: opacity .25s, color .25s; }
+  .task:hover { opacity: .8; }
+  .task[aria-pressed="true"] { opacity: 1; color: var(--green-deep); font-style: italic; }
+  .tasks { column-gap: .72em; }
+  .smallq { margin-top: 36px; display: flex; flex-wrap: wrap; gap: 14px 40px; align-items: baseline; padding-top: 22px; border-top: 1px solid #d9d1c1; }
+  .smallq__price { font-family: var(--sc-font-display); font-weight: 600; font-size: 2.2rem; letter-spacing: -0.02em; }
+  .smallq__what { font-weight: 600; }
+
+  /* --------------------------------------------- ch V: pros, drenched */
+  .pros-head { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: clamp(30px, 6vw, 100px); align-items: end; }
+  @media (max-width: 900px) { .pros-head { grid-template-columns: 1fr; } }
+  .ledger { margin-top: clamp(56px, 9vh, 96px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1.5px solid var(--drench-ink); }
+  .ledger > div { padding: 26px 32px 30px 0; border-bottom: 1px solid color-mix(in srgb, var(--drench-ink) 30%, transparent); }
+  .ledger > div:nth-child(2n) { padding-left: 32px; border-left: 1px solid color-mix(in srgb, var(--drench-ink) 30%, transparent); }
+  .ledger h3 { font-family: var(--sc-font-display); font-weight: 600; font-size: 1.5rem; letter-spacing: -0.01em; }
+  .ledger p { margin-top: 8px; max-width: 30em; color: #12301a; }
+  @media (max-width: 720px) {
+    .ledger { grid-template-columns: 1fr; }
+    .ledger > div:nth-child(2n) { padding-left: 0; border-left: 0; }
+  }
+  .standard { margin-top: clamp(56px, 9vh, 96px); display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(30px, 6vw, 100px); }
+  @media (max-width: 900px) { .standard { grid-template-columns: 1fr; } }
+  .standard ul { list-style: none; margin: 0; padding: 0; }
+  .standard li { padding: 14px 0; border-bottom: 1px solid color-mix(in srgb, var(--drench-ink) 25%, transparent); font-size: 1.06rem; }
+  .standard li:first-child { padding-top: 0; }
+  .pill-link {
+    display: inline-flex; align-items: center; gap: 10px; margin-top: 36px;
+    background: var(--drench-ink); color: var(--cream); text-decoration: none; font-weight: 600;
+    padding: 15px 24px; border-radius: 999px;
+    box-shadow: 0 10px 24px -14px rgba(0,0,0,.6);
+    transition: transform .25s var(--ease-out), box-shadow .25s;
+  }
+  .pill-link:hover { transform: translateY(-2px); box-shadow: 0 16px 30px -16px rgba(0,0,0,.65); }
+  .pill-link svg { width: 16px; height: 16px; }
+
+  /* --------------------------------------------- ch VI: the garden, pinned */
+  .garden-act { padding: 0; }
+  .garden-act [data-sc-stage] {
+    height: 100svh; display: grid; align-content: center;
+    padding: 0 var(--gut) 0 calc(var(--rail) + var(--gut));
+    --w: clamp(0, (var(--sc-p, 0) - .26) * 5, 1);
+    --r: clamp(0, (var(--sc-p, 0) - .6) * 5, 1);
+    --wilt: calc(var(--w) * (1 - var(--r)));
+  }
+  .garden-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: clamp(30px, 6vw, 90px); align-items: end; max-width: 1180px; }
+  @media (max-width: 900px) { .garden-top { grid-template-columns: 1fr; } .garden-top .lede { display: none; } }
+  .shelf { position: relative; margin-top: clamp(20px, 4vh, 44px); max-width: 1180px; }
+  .shelf__plants { display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; gap: clamp(8px, 2vw, 28px); }
+  .shelf__board { height: 10px; margin-top: -2px; border-radius: 3px; background: linear-gradient(#3b2f22, #2a2118); box-shadow: 0 14px 22px -12px rgba(0,0,0,.8); }
+  .plant { text-align: center; }
+  .plant svg { width: 100%; max-width: 150px; height: auto; overflow: visible; }
+  .plant .pot { fill: #c9b79a; }
+  .plant .pot-rim { fill: #b9a585; }
+  .plant .stem { fill: none; stroke: #4fa45c; stroke-width: 2.4; stroke-linecap: round; }
+  .plant .lf { fill: #4fbf61; transform-box: fill-box; }
+  .plant .lf.l { transform-origin: 100% 100%; }
+  .plant .lf.r { transform-origin: 0% 100%; }
+  .plant .lf.alt { fill: #3a9a4b; }
+  .plant figcaption { margin-top: 12px; font-size: .875rem; color: var(--cream-soft); }
+  .plant--sick .stem { stroke: color-mix(in srgb, #4fa45c calc((1 - var(--wilt)) * 100%), var(--ochre)); }
+  .plant--sick .lf { fill: color-mix(in srgb, #4fbf61 calc((1 - var(--wilt)) * 100%), var(--ochre)); }
+  .plant--sick .lf.l { transform: rotate(calc(var(--wilt) * -38deg)) translateY(calc(var(--wilt) * 6px)); }
+  .plant--sick .lf.r { transform: rotate(calc(var(--wilt) * 38deg)) translateY(calc(var(--wilt) * 6px)); }
+  .plant--sick .stemg { transform-box: fill-box; transform-origin: 50% 100%; transform: rotate(calc(var(--wilt) * 9deg)); }
+  .note {
+    position: relative; margin: 0 0 18px 13%; width: min(340px, 80vw);
+    background: #f7f2e7; color: var(--ink); border-radius: 12px; padding: 14px 16px;
+    font-size: .875rem; line-height: 1.45;
+    box-shadow: 0 18px 36px -18px rgba(0,0,0,.75);
+  }
+  .note strong { display: block; font-size: .9375rem; }
+  .note .tended { color: var(--green-deep); font-weight: 600; margin-top: 6px; display: block; }
+  .note::after { content: ""; position: absolute; left: 34px; bottom: -7px; width: 14px; height: 14px; background: #f7f2e7; transform: rotate(45deg); border-radius: 2px; }
+  @media (max-width: 900px) { .note { margin-left: 4%; } }
+  .roadmap { margin-top: clamp(28px, 5vh, 52px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 3vw, 44px); max-width: 1180px; }
+  .roadmap div { border-top: 1px solid #2d3f33; padding-top: 14px; }
+  .roadmap b { font-family: var(--sc-font-display); font-weight: 600; font-size: 1.12rem; display: block; }
+  .roadmap span { display: block; margin-top: 4px; font-size: .875rem; color: var(--cream-soft); }
+  .roadmap .when { font-size: .75rem; letter-spacing: .02em; color: var(--green-hi); margin: 0 0 6px; }
+  .roadmap .soon { color: var(--ochre); }
+  @media (max-width: 640px) { .roadmap { grid-template-columns: 1fr; gap: 10px; } .roadmap span:not(.when) { display: none; } }
+
+  /* --------------------------------------------- colophon */
+  .colophon { padding-bottom: 48px; }
+  .colophon .wrap { max-width: 980px; }
+  .sign { font-family: var(--sc-font-display); font-style: italic; font-weight: 500; font-size: clamp(2.2rem, 4.6vw, 4rem); line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; }
+  .runon { margin-top: 30px; font-size: clamp(1.1rem, 1.5vw, 1.32rem); line-height: 1.75; max-width: 40em; }
+  .runon form { display: inline; }
+  .runon input {
+    font: inherit; color: var(--ink); background: transparent; border: 0;
+    border-bottom: 1.5px solid var(--ink); padding: 0 2px 2px; width: min(15em, 100%);
+    outline: 0; transition: border-color .2s;
+  }
+  .runon input:focus { border-bottom-color: var(--green-deep); }
+  .runon input::placeholder { color: #8c8778; }
+  .runon button {
+    font-weight: 600; color: var(--paper); background: var(--ink); border-radius: 999px;
+    padding: 6px 16px 7px; margin-left: 6px; vertical-align: 1px;
+    transition: background .2s;
+  }
+  .runon button:hover { background: var(--green-deep); }
+  .runon .ok { color: var(--green-deep); font-weight: 600; }
+  .runon .err { color: #a3361f; font-weight: 600; }
+  .foot { margin-top: clamp(80px, 14vh, 140px); padding-top: 22px; border-top: 1px solid #d6cdbb; display: grid; grid-template-columns: 1fr auto; gap: 20px 40px; font-size: .8125rem; color: var(--ink-soft); }
+  .foot nav { display: flex; gap: 18px; flex-wrap: wrap; }
+  .foot nav a { text-decoration: none; }
+  .foot nav a:hover { text-decoration: underline; }
+  @media (max-width: 720px) { .foot { grid-template-columns: 1fr; } }
+  .concept { margin-top: 10px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================== RAIL -->
+<aside class="rail" id="rail" data-ground="dark" aria-label="Chapter and sample job">
+  <a class="brand" href="#top" aria-label="Strech, back to top">
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5cc96d"/><stop offset="1" stop-color="#2f8f40"/></linearGradient></defs>
+      <rect width="40" height="40" rx="9" fill="url(#lg)"/>
+      <path d="M26.5 8.5H17l-5.2 6.4h9.6l-5.9 6.6h9.7l-6.9 9.8 12.4-11.6h-9.6l5.4-11.2z" fill="#fff"/>
+      <path d="M21.4 14.9l-5.9 6.6h4.2l5.6-6.6z" fill="#cdeccf"/>
+    </svg>
+    <span>Strech</span>
+  </a>
+  <div class="folio">
+    <p class="folio__title" id="folioTitle">The dispatch</p>
+    <div class="ticket" aria-live="polite">
+      <div class="ticket__head"><span>Sample job</span><span>Van #204</span></div>
+      <p class="ticket__job" id="ticketJob">Dishwasher · won’t drain</p>
+      <ol class="ticket__steps" id="ticketSteps">
+        <li>Requested</li>
+        <li>Matched with Sofia</li>
+        <li>Quoted $240</li>
+        <li>Approved</li>
+        <li>On the way</li>
+        <li>Done</li>
+        <li>Paid</li>
+      </ol>
+      <p class="ticket__amt" id="ticketAmt">$180–$260</p>
+    </div>
+  </div>
+  <a class="rail__cta" href="#join">Join the waitlist
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+  </a>
+</aside>
+
+<div class="vine-wrap" id="vineWrap" data-ground="dark" aria-hidden="true">
+  <svg class="vine" id="vine" viewBox="0 0 40 1000" preserveAspectRatio="none">
+    <path class="ghost" d="M20 0 C 32 80, 8 160, 20 250 S 32 420, 20 500 S 8 660, 20 750 S 32 920, 20 1000"/>
+    <path class="stem" id="stem" d="M20 0 C 32 80, 8 160, 20 250 S 32 420, 20 500 S 8 660, 20 750 S 32 920, 20 1000"/>
+  </svg>
+</div>
+
+<div class="mbar" aria-hidden="true">
+  <div class="mbar__status"><span id="mbarText">Sample job · Dishwasher</span></div>
+  <a href="#join" tabindex="-1">Join the waitlist</a>
+</div>
+
+<main id="top">
+
+<!-- ======================================================= TITLE PAGE -->
+<section class="chapter forest title" data-chapter="The dispatch" data-ground="dark" data-step="0" id="dispatch">
+  <div class="masthead">
+    <a class="brand" href="#top" aria-label="Strech">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="9" fill="#3daa4f"/><path d="M26.5 8.5H17l-5.2 6.4h9.6l-5.9 6.6h9.7l-6.9 9.8 12.4-11.6h-9.6l5.4-11.2z" fill="#fff"/></svg>
+      <span>Strech</span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="#homeowners">For homeowners</a>
+      <a href="#pros">For pros</a>
+      <a href="#next">What’s next</a>
+      <a href="#join">Join the waitlist</a>
+    </nav>
+  </div>
+
+  <div class="dispatch" id="dispatchBox" data-state="idle">
+    <h1 class="display d-xl">
+      <span class="line">My <button class="appl" id="appl" type="button" aria-label="Change appliance"><span class="appl__word" id="applWord">dishwasher</span><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg></button></span>
+      <span class="line" id="faultLine">won’t drain.</span>
+      <span class="line tapline">
+        <button class="tap" id="tap" type="button"><span class="tap__ring" aria-hidden="true"></span>Tap.</button>
+        <span class="matching" aria-hidden="true">Matching<i></i></span>
+        <span class="result" id="result" aria-hidden="true"><em id="proName">Sofia</em> is on her way.</span>
+      </span>
+    </h1>
+
+    <p class="sub">A price range up front, a fixed quote before any work, and live tracking until it’s running again.</p>
+
+    <dl class="slip" id="slip" aria-live="polite">
+      <div>
+        <dt>Your pro</dt>
+        <dd class="pro"><b id="proInit">SM</b><span><span id="proFull">Sofia M.</span> <small>· 4.9 · appliance tech</small></span></dd>
+      </div>
+      <div>
+        <dt>Arriving</dt>
+        <dd><span id="eta">9:42</span> <small class="live">· <span id="mins">12</span> min</small></dd>
+      </div>
+      <div>
+        <dt>Estimate</dt>
+        <dd id="est">$180–$260 <small>a range, never a point</small></dd>
+      </div>
+    </dl>
+    <p class="again" id="again"><span>Sample job. Strech opens city by city.</span></p>
+  </div>
+
+  <svg class="street" id="street" viewBox="0 0 980 360" aria-hidden="true">
+    <path class="road" d="M20 300 C 180 300, 210 180, 360 190 S 560 300, 700 230 S 860 90, 940 110"/>
+    <path class="route" id="route" d="M20 300 C 180 300, 210 180, 360 190 S 560 300, 700 230 S 860 90, 940 110"/>
+    <g id="home" transform="translate(940 110)">
+      <path class="home" d="M-14 6 L0 -9 L14 6 V20 H-14 Z"/>
+      <text x="-30" y="42">your place</text>
+    </g>
+    <circle class="vanhalo" id="vanHalo" r="14" cx="20" cy="300"/>
+    <circle class="van" id="van" r="5.5" cx="20" cy="300"/>
+  </svg>
+</section>
+
+<!-- ============================================ I · YOUR WORDS ARE ENOUGH -->
+<section class="chapter paper" data-chapter="Your words are enough" data-ground="paper" data-step="1" id="homeowners" data-sc-act="flow">
+  <div class="wrap spread">
+    <div class="copy" data-sc-in>
+      <h2 class="display d-lg">Your words are enough.</h2>
+      <p class="lede soft">“Won’t drain” is a perfectly good diagnosis to start with. Strech reads it, picks the right kind of visit, and shows you an honest range before you commit to anything.</p>
+      <ul class="marks">
+        <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>A price range up front, never a mystery callout fee.</span></li>
+        <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Vetted pros matched by appliance class and distance.</span></li>
+        <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Real arrival windows, not “sometime Thursday.”</span></li>
+      </ul>
+    </div>
+
+    <figure style="margin:0" data-sc-in>
+      <div class="describe">
+        <label for="fault">What’s going on?</label>
+        <div class="field"><input id="fault" type="text" autocomplete="off" placeholder="My dishwasher won’t drain" value=""></div>
+        <div class="chips" role="group" aria-label="Common faults">
+          <button class="chip" type="button" aria-pressed="false" data-fault="Dishwasher won’t drain">Won’t drain</button>
+          <button class="chip" type="button" aria-pressed="false" data-fault="Dishwasher is noisy">Noisy</button>
+          <button class="chip" type="button" aria-pressed="false" data-fault="Dishwasher leaks">Leaks</button>
+        </div>
+        <div class="readout pending" id="readout" aria-live="polite">
+          <p class="readout__label" id="rLabel">Your range appears here</p>
+          <p class="readout__value" id="rValue">$ ··· – ···</p>
+          <p class="readout__note" id="rNote">No payment at booking. You approve the final price after diagnosis.</p>
+        </div>
+      </div>
+      <figcaption class="figcap">Try it: type the fault the way you’d say it. Sample range from Strech’s booking flow.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================================ II · THE QUOTE IS THE INVOICE -->
+<section class="quote-act night" data-chapter="The quote is the invoice" data-ground="dark" data-step="3" id="quote" data-sc-act="pin" data-sc-span="2.4">
+  <div data-sc-stage>
+    <div class="quote-grid">
+      <div class="copy">
+        <h2 class="display d-lg">The quote is the invoice. <span class="it" style="color:var(--green-hi)">Full stop.</span></h2>
+        <p class="lede soft" style="margin-top:24px">After diagnosis, your pro writes one fixed, itemized quote inside the range you booked against, with the diagnostic visit credited back. Work starts on your approval, and the invoice can’t drift from the number you approved.</p>
+      </div>
+      <div class="receipt" id="receipt">
+        <div class="receipt__top"><h3>Your quote</h3><span>Fixed price · inside your range</span></div>
+        <p class="receipt__intro">Sofia checked your dishwasher. The care it needs costs $240. Shall she go ahead?</p>
+        <ul class="lines">
+          <li data-sc-cue="0.08"><span>Drain pump replacement</span><b>$95.00</b></li>
+          <li data-sc-cue="0.18"><span>Labor, 1.5 hr</span><b>$145.00</b></li>
+          <li data-sc-cue="0.28"><span>Diagnostic visit</span><b>$89.00</b></li>
+          <li class="credit" data-sc-cue="0.38"><span>Diagnostic credit</span><b>−$89.00</b></li>
+          <li class="total" data-sc-cue="0.48"><span>Total</span><b>$240.00</b></li>
+        </ul>
+        <div class="band" data-sc-cue="0.52">
+          <div class="band__track" id="bandTrack"><div class="band__fill"></div><div class="band__pin" id="bandPin"></div></div>
+          <div class="band__ends"><span>$180 booked low</span><span>$260 booked high</span></div>
+        </div>
+        <p class="warranty" data-sc-cue="0.6">90-day workmanship warranty. Decline anytime before work begins: nothing else happens until you approve.</p>
+        <div class="stamp" data-sc-cue="0.7" aria-hidden="true">Approved</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ III · KNOW WHERE THE HELP IS -->
+<section class="chapter forest2" data-chapter="Know where the help is" data-ground="dark" data-step="4" id="tracking" data-sc-act="flow">
+  <div class="wrap">
+    <div class="spread">
+      <h2 class="display d-lg" data-sc-in>Know where the help is.</h2>
+      <p class="lede soft" data-sc-in style="align-self:end">From the moment you’re matched, the visit grows along a vine: matched, on the way, on site, done. You’ll know when the van turns onto your street, and the app tells you honestly when tracking pauses.</p>
+    </div>
+    <div class="track" id="track">
+      <div class="track__eta"><strong id="trackMins">12 min</strong><span id="trackLine">Sofia M. · appliance tech · van #204 · arriving 9:42</span></div>
+      <div class="stages" id="stages">
+        <div class="stage"><b>Matched</b>Sofia accepts</div>
+        <div class="stage"><b>On the way</b>Live countdown</div>
+        <div class="stage"><b>On site</b>Diagnosis</div>
+        <div class="stage"><b>Done</b>Pay once</div>
+      </div>
+    </div>
+    <ul class="marks" style="margin-top:56px; max-width:34em">
+      <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Arrival time and a live countdown, not a four-hour window.</span></li>
+      <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Who’s coming: name, trade, and van number.</span></li>
+      <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c0-6 4-10 12-12-1 8-5 12-12 12zM3 15l6-6"/></svg><span>Every stage change lands as a gentle notification.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================ IV · NO JOB TOO SMALL -->
+<section class="chapter paper" data-chapter="No job too small" data-ground="paper" data-step="5" id="small" data-sc-act="flow">
+  <div class="wrap">
+    <div data-sc-reveal="up" data-sc-reveal-at="0.05 0.32">
+      <h2 class="display d-lg">No job too small <span class="it">to tend.</span></h2>
+    </div>
+    <p class="lede soft" style="margin-top:24px" data-sc-in>Not everything is a breakdown. Sometimes you just want the bulbs swapped, the shelf finally hung, the tub re-caulked. Strech dispatches handymen for the little tasks too: same honest range, one flat visit, tracked like any other.</p>
+    <div class="tasks" role="group" aria-label="Small tasks, pick one" id="tasks">
+      <button class="task" type="button" aria-pressed="true">Swap the light bulbs</button>
+      <button class="task" type="button" aria-pressed="false">Change the fridge filter</button>
+      <button class="task" type="button" aria-pressed="false">Re-caulk the tub</button>
+      <button class="task" type="button" aria-pressed="false">Hang shelves &amp; frames</button>
+      <button class="task" type="button" aria-pressed="false">Quiet a squeaky hinge</button>
+      <button class="task" type="button" aria-pressed="false">Clean the dryer vent</button>
+      <button class="task" type="button" aria-pressed="false">Patch a wall ding</button>
+      <button class="task" type="button" aria-pressed="false">Install a smart thermostat</button>
+    </div>
+    <div class="smallq" aria-live="polite">
+      <span class="smallq__price">$45–$75</span>
+      <span><span class="smallq__what" id="smallWhat">Swap the light bulbs</span><br><span class="soft small">Handyman match · one visit, flat and final</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ V · FOR PROS -->
+<section class="chapter drench" data-chapter="For pros" data-ground="drench" data-step="6" id="pros" data-sc-act="flow">
+  <div class="wrap">
+    <div class="pros-head">
+      <h2 class="display d-lg" data-sc-in>Bring your van. <span class="it">We’ll bring the route.</span></h2>
+      <p class="lede soft" data-sc-in>Pro onboarding opens city by city alongside homeowner launch. Get in line and we’ll hold your area.</p>
+    </div>
+    <div class="ledger" data-sc-stagger="90">
+      <div data-sc-in><h3>Jobs find you</h3><p>Matched by appliance class, radius, and your calendar, not auctioned to whoever answers fastest. When you get a job, you were the right pro for it.</p></div>
+      <div data-sc-in><h3>Your price band</h3><p>You set the range for every job class you take. Homeowners book against your numbers, so the price conversation is over before the doorbell.</p></div>
+      <div data-sc-in><h3>Diagnose, then quote</h3><p>Write the fixed quote in the app: parts, labor, diagnostic credit. Work starts the moment the homeowner approves, and never before.</p></div>
+      <div data-sc-in><h3>Paid without chasing</h3><p>The invoice is the approved quote, settled in-app when the job completes. No net-30, no awkward doorstep card reader, no chasing.</p></div>
+    </div>
+    <div class="standard">
+      <div>
+        <h3 class="display d-md">Good work, made visible.</h3>
+        <a class="pill-link" href="#join" data-pro>Join the pro waitlist
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      </div>
+      <div>
+        <p style="font-size:1.06rem; max-width:34em; margin-bottom:22px">Homeowners see your name, rating, and arrival before you knock, and every completed repair carries your 90-day workmanship warranty. The platform’s job is making sure careful work is what gets rewarded.</p>
+        <ul>
+          <li>Certification checked per appliance class, once, not per job.</li>
+          <li>Ratings weigh warranty outcomes, not just star taps.</li>
+          <li>Your calendar is the boss: pause matching anytime.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ VI · THE WHOLE GARDEN -->
+<section class="garden-act night" data-chapter="Then the whole garden" data-ground="dark" data-step="7" id="next" data-sc-act="pin" data-sc-span="2.6">
+  <div data-sc-stage>
+    <div class="garden-top">
+      <h2 class="display d-lg">First the repair. <span class="it" style="color:var(--green-hi)">Then the whole garden.</span></h2>
+      <p class="lede soft" style="font-size:1.02rem">Coming next: with your consent, Strech listens to how your appliances run and turns it into health you can read at a glance. Every machine a plant on a shelf.</p>
+    </div>
+
+    <div class="shelf">
+      <div class="note" data-sc-cue="0.4" id="note">
+        <strong>Washer · drain pump wearing</strong>
+        Flagged weeks early. A pro offered while the job is still small, with a range and a calendar slot.
+        <span class="tended" data-sc-cue="0.62">Tended. Planned work, not an emergency.</span>
+      </div>
+      <div class="shelf__plants">
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 58 86, 62 64, 60 30"/><path class="lf l" d="M59 74 C 44 72, 32 62, 28 50 C 42 50, 54 58, 59 74Z"/><path class="lf r alt" d="M61 60 C 76 58, 88 48, 92 36 C 78 36, 66 44, 61 60Z"/><path class="lf l alt" d="M59 46 C 48 42, 42 32, 42 22 C 52 26, 58 34, 59 46Z"/><path class="lf r" d="M61 92 C 76 92, 86 84, 90 74 C 77 72, 66 80, 61 92Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Dishwasher</figcaption></figure>
+        <figure class="plant plant--sick" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 62 90, 56 66, 60 26"/><path class="lf l" d="M59 82 C 42 80, 30 70, 26 56 C 42 56, 54 66, 59 82Z"/><path class="lf r" d="M61 66 C 78 64, 90 52, 94 38 C 78 38, 66 50, 61 66Z"/><path class="lf l alt" d="M59 50 C 46 46, 40 34, 40 22 C 52 26, 58 38, 59 50Z"/><path class="lf r alt" d="M61 98 C 76 98, 86 90, 90 80 C 77 78, 66 86, 61 98Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Washer</figcaption></figure>
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 60 84, 58 60, 61 34"/><path class="lf l alt" d="M59 78 C 46 76, 36 68, 32 56 C 46 56, 55 66, 59 78Z"/><path class="lf r" d="M61 70 C 74 68, 84 58, 88 46 C 75 46, 66 56, 61 70Z"/><path class="lf l" d="M60 52 C 48 48, 42 38, 42 28 C 53 32, 59 40, 60 52Z"/><path class="lf r alt" d="M61 46 C 70 42, 76 34, 78 24 C 69 26, 63 34, 61 46Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Fridge</figcaption></figure>
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 58 92, 63 70, 59 40"/><path class="lf l" d="M59 86 C 44 86, 34 78, 30 66 C 44 64, 55 74, 59 86Z"/><path class="lf r alt" d="M60 72 C 74 70, 86 60, 90 48 C 76 48, 65 58, 60 72Z"/><path class="lf l alt" d="M59 58 C 47 54, 40 44, 40 34 C 51 38, 58 46, 59 58Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Oven</figcaption></figure>
+        <figure class="plant" style="margin:0"><svg viewBox="0 0 120 150" aria-hidden="true"><g class="stemg"><path class="stem" d="M60 112 C 61 88, 57 62, 60 32"/><path class="lf r" d="M61 84 C 76 84, 88 74, 92 62 C 77 62, 66 70, 61 84Z"/><path class="lf l alt" d="M59 70 C 44 68, 34 58, 30 46 C 44 46, 54 54, 59 70Z"/><path class="lf r alt" d="M61 52 C 72 48, 80 38, 82 28 C 71 30, 63 40, 61 52Z"/><path class="lf l" d="M59 98 C 47 98, 38 92, 34 84 C 45 82, 54 88, 59 98Z"/></g><path class="pot-rim" d="M34 110h52v8H34z"/><path class="pot" d="M37 118h46l-6 30H43z"/></svg><figcaption>Dryer</figcaption></figure>
+      </div>
+      <div class="shelf__board"></div>
+    </div>
+
+    <div class="roadmap">
+      <div data-sc-cue="0.06"><p class="when">Now · in the ground</p><b>Repair distribution</b><span>Matching, fixed quotes, live tracking, and the money moment.</span></div>
+      <div data-sc-cue="0.3"><p class="when soon">Next · coming soon</p><b>Home tracking</b><span>Appliance health at a glance, phrased in plain words.</span></div>
+      <div data-sc-cue="0.56"><p class="when soon">Later · coming soon</p><b>Care before the breakdown</b><span>Early warnings that arrive as options, never alarms.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ COLOPHON -->
+<section class="chapter paper colophon" data-chapter="Your turn" data-ground="paper" data-step="8" id="join">
+  <div class="wrap">
+    <p class="sign">“Giving control back to the homeowner.”</p>
+    <div class="runon">
+      <form id="wl" novalidate>
+        Strech opens city by city. Leave an email and we’ll hold your place:
+        <label class="vh" for="email">Email address</label>
+        <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@home.com" required><button type="submit">Join the waitlist</button>
+        <span id="wlMsg" aria-live="polite"></span>
+      </form>
+      Pros, <a href="#join" id="proJoin">join the pro waitlist</a> and we’ll hold your area.
+    </div>
+
+    <footer class="foot">
+      <div>
+        <p>© 2026 Strech. Strech is in active development and training; some AI-powered features are still being built.</p>
+        <p style="margin-top:6px">hello@strech.ai · support@strech.ai · 240 905-5348 · 6107 Rosemont Circle, North Bethesda, Maryland</p>
+        <p class="concept">Concept redesign prepared for the Strech team. Sample job data is illustrative.</p>
+      </div>
+      <nav aria-label="Legal">
+        <a href="#join">Privacy Policy</a><a href="#join">SMS Consent</a><a href="#join">Terms of Service</a><a href="#join">Cookies Policy</a>
+      </nav>
+    </footer>
+  </div>
+</section>
+
+</main>
+
+<script src="scrollcraft.js"></script>
+<script>
+(function () {
+  ScrollCraft.mount(document.body);
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ------------------------------------------------ the dispatch sentence */
+  var APPL = [
+    { a: 'dishwasher', f: 'won’t drain.',     pro: 'Sofia',  full: 'Sofia M.',  init: 'SM', her: 'her', est: '$180–$260 <small>a range, never a point</small>' },
+    { a: 'washer',     f: 'won’t spin.',      pro: 'Rosa',   full: 'Rosa D.',   init: 'RD', her: 'her', est: 'Range first <small>shown before you book</small>' },
+    { a: 'fridge',     f: 'isn’t cooling.',   pro: 'Marcus', full: 'Marcus T.', init: 'MT', her: 'his', est: 'Range first <small>shown before you book</small>' },
+    { a: 'oven',       f: 'won’t heat.',      pro: 'Priya',  full: 'Priya K.',  init: 'PK', her: 'her', est: 'Range first <small>shown before you book</small>' },
+    { a: 'dryer',      f: 'runs cold.',       pro: 'Dev',    full: 'Dev A.',    init: 'DA', her: 'his', est: 'Range first <small>shown before you book</small>' }
+  ];
+  var ai = 0, box = $('dispatchBox'), timers = [], countdown;
+
+  function clearT() { timers.forEach(clearTimeout); timers = []; clearInterval(countdown); }
+  function setAppliance(i) {
+    ai = i; var d = APPL[i], w = $('applWord');
+    w.textContent = d.a; w.classList.remove('swap'); void w.offsetWidth; w.classList.add('swap');
+    $('faultLine').textContent = d.f;
+    $('ticketJob').textContent = d.a.charAt(0).toUpperCase() + d.a.slice(1) + ' · ' + d.f.replace('.', '');
+  }
+  function reset() {
+    clearT(); box.dataset.state = 'idle'; resetRoute();
+    $('again').innerHTML = '<span>Sample job. Strech opens city by city.</span>';
+    setStep(0);
+  }
+  $('appl').addEventListener('click', function () {
+    var was = box.dataset.state; reset(); setAppliance((ai + 1) % APPL.length);
+    if (was === 'done') $('tap').focus();
+  });
+  $('tap').addEventListener('click', function () {
+    var d = APPL[ai]; clearT();
+    $('proName').textContent = d.pro;
+    $('result').innerHTML = '<em>' + d.pro + '</em> is on ' + d.her + ' way.';
+    $('proFull').textContent = d.full; $('proInit').textContent = d.init; $('est').innerHTML = d.est;
+    $('mins').textContent = '12'; $('eta').textContent = '9:42';
+    box.dataset.state = 'matching';
+    timers.push(setTimeout(function () {
+      box.dataset.state = 'done';
+      $('result').removeAttribute('aria-hidden');
+      setStep(1); driveRoute();
+      $('again').innerHTML = '<span>Sample job.</span><button type="button" id="againBtn">Try another appliance</button><a href="#homeowners">See how it works</a>';
+      $('againBtn').addEventListener('click', function () { reset(); setAppliance((ai + 1) % APPL.length); $('tap').focus(); });
+    }, reduce ? 50 : 900));
+  });
+
+  /* the route draws, the van travels, the minutes fall */
+  var route = $('route'), van = $('van'), halo = $('vanHalo'), L = route.getTotalLength();
+  function resetRoute() {
+    route.style.transition = 'none'; route.style.strokeDasharray = L; route.style.strokeDashoffset = L;
+    var p0 = route.getPointAtLength(0); van.setAttribute('cx', p0.x); van.setAttribute('cy', p0.y); halo.setAttribute('cx', p0.x); halo.setAttribute('cy', p0.y);
+  }
+  function driveRoute() {
+    var dur = reduce ? 0 : 1700, t0 = performance.now(), m = 12;
+    (function frame(now) {
+      var t = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - t, 3);
+      route.style.strokeDashoffset = L * (1 - e);
+      var p = route.getPointAtLength(L * e * 0.86);
+      van.setAttribute('cx', p.x); van.setAttribute('cy', p.y); halo.setAttribute('cx', p.x); halo.setAttribute('cy', p.y);
+      if (t < 1 && box.dataset.state === 'done') requestAnimationFrame(frame);
+    })(t0);
+    countdown = setInterval(function () { if (m > 9) { m--; $('mins').textContent = m; } else clearInterval(countdown); }, 2600);
+  }
+  resetRoute();
+
+  /* ------------------------------------------------ describe the fault */
+  var fault = $('fault'), chips = document.querySelectorAll('.chip');
+  var KEYS = [['dishwasher', 'Dishwasher repair visit', '$180–$260'], ['washer', 'Washer repair visit', null], ['washing', 'Washer repair visit', null],
+              ['fridge', 'Refrigerator repair visit', null], ['refrigerator', 'Refrigerator repair visit', null], ['oven', 'Oven repair visit', null],
+              ['stove', 'Range repair visit', null], ['dryer', 'Dryer repair visit', null], ['microwave', 'Microwave repair visit', null]];
+  function read(v) {
+    var s = v.toLowerCase().trim(), r = $('readout');
+    if (!s) { r.classList.add('pending'); $('rLabel').textContent = 'Your range appears here'; $('rValue').textContent = '$ ··· – ···'; return; }
+    var hit = null; for (var i = 0; i < KEYS.length; i++) if (s.indexOf(KEYS[i][0]) > -1) { hit = KEYS[i]; break; }
+    r.classList.remove('pending');
+    if (!hit) { $('rLabel').textContent = 'Which appliance is it?'; $('rValue').textContent = 'Tell us the machine'; return; }
+    $('rLabel').textContent = hit[1] + ' · vetted pro, matched by appliance class';
+    $('rValue').textContent = hit[2] || 'Range shown in the app';
+  }
+  fault.addEventListener('input', function () { chips.forEach(function (c) { c.setAttribute('aria-pressed', c.dataset.fault === fault.value ? 'true' : 'false'); }); read(fault.value); });
+  chips.forEach(function (c) { c.addEventListener('click', function () { fault.value = c.dataset.fault; chips.forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); }); read(fault.value); }); });
+
+  /* ------------------------------------------------ small tasks */
+  document.querySelectorAll('.task').forEach(function (t, _, all) {
+    t.addEventListener('click', function () { all.forEach(function (x) { x.setAttribute('aria-pressed', x === t ? 'true' : 'false'); }); $('smallWhat').textContent = t.textContent; });
+  });
+
+  /* ------------------------------------------------ waitlist (demo only) */
+  var pro = false;
+  document.querySelectorAll('[data-pro], #proJoin').forEach(function (a) { a.addEventListener('click', function () { pro = true; setTimeout(function () { $('email').focus({ preventScroll: true }); }, 600); }); });
+  $('wl').addEventListener('submit', function (e) {
+    e.preventDefault(); var v = $('email').value.trim(), m = $('wlMsg');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { m.className = 'err'; m.textContent = ' Check the email address and try again.'; $('email').focus(); return; }
+    m.className = 'ok'; m.textContent = pro ? ' You’re on the pro list. We’ll hold your area. (Demo: nothing was sent.)' : ' You’re on the list. We’ll write when Strech opens near you. (Demo: nothing was sent.)';
+  });
+
+  /* ------------------------------------------------ folio, ticket, vine */
+  var chapters = Array.prototype.slice.call(document.querySelectorAll('[data-chapter]'));
+  var steps = Array.prototype.slice.call(document.querySelectorAll('#ticketSteps li'));
+  var amt = $('ticketAmt'), rail = $('rail'), vw = $('vineWrap'), stem = $('stem'), SL = stem.getTotalLength();
+  var AMT = ['$180–$260', '$180–$260', '$180–$260', '$240 approved', '$240 · 9:42', '$240 · done', 'Paid $240', 'Paid $240', 'Your turn'];
+  var MBAR = ['Sample job · tap the headline', 'Range $180–$260', 'Matched with Sofia', 'Quote $240 · approved', 'Sofia on the way · 9:42', 'Done · warranty 90 days', 'Paid $240 · in-app', 'Tended early', 'Your turn'];
+  // step index on ticket for each chapter step
+  var STEP = [0, 1, 1, 3, 4, 5, 6, 6, 6];
+  var manualStep = 0, cur = -1;
+  function setStep(n) { manualStep = n; paintTicket(Math.max(n, STEP[cur] || 0)); }
+  function paintTicket(k) {
+    steps.forEach(function (li, i) { li.className = i < k ? 'done' : (i === k ? 'now' : ''); });
+  }
+  stem.style.strokeDasharray = SL; stem.style.strokeDashoffset = SL;
+
+  // leaves at chapter marks
+  var svgNS = 'http://www.w3.org/2000/svg', vineSvg = $('vine'), leaves = [];
+  [0.12, 0.26, 0.4, 0.54, 0.68, 0.82].forEach(function (f, i) {
+    var p = stem.getPointAtLength(SL * f), leaf = document.createElementNS(svgNS, 'path');
+    var dir = i % 2 ? -1 : 1;
+    leaf.setAttribute('d', 'M' + p.x + ' ' + p.y + ' c ' + (6 * dir) + ' -10, ' + (16 * dir) + ' -10, ' + (18 * dir) + ' -2 c ' + (-6 * dir) + ' 6, ' + (-12 * dir) + ' 6, ' + (-18 * dir) + ' 2z');
+    leaf.setAttribute('class', 'leaf'); vineSvg.appendChild(leaf); leaves.push([f, leaf]);
+  });
+  var bp = stem.getPointAtLength(SL * 0.985), bud = document.createElementNS(svgNS, 'path');
+  bud.setAttribute('d', 'M' + bp.x + ' ' + bp.y + ' c -7 -4, -6 -16, 0 -20 c 6 4, 7 16, 0 20z'); bud.setAttribute('class', 'bud'); vineSvg.appendChild(bud);
+
+  var ticking = false;
+  function onScroll() {
+    ticking = false;
+    var y = window.scrollY, vh = innerHeight, max = document.documentElement.scrollHeight - vh;
+    var f = max > 0 ? Math.min(1, y / max) : 0;
+    stem.style.strokeDashoffset = SL * (1 - f);
+    leaves.forEach(function (l) { l[1].classList.toggle('on', f >= l[0]); });
+    bud.classList.toggle('on', f > 0.97);
+
+    // which chapter owns the folio line (40% down the viewport)
+    var line = vh * 0.4, idx = 0;
+    for (var i = 0; i < chapters.length; i++) if (chapters[i].getBoundingClientRect().top <= line) idx = i;
+    var ch = chapters[idx];
+    if (idx !== cur) {
+      cur = idx;
+      $('folioTitle').textContent = ch.dataset.chapter;
+      rail.dataset.ground = ch.dataset.ground; vw.dataset.ground = ch.dataset.ground;
+      var s = +ch.dataset.step;
+      paintTicket(Math.max(STEP[s], s === 0 ? manualStep : 0));
+      amt.textContent = AMT[s];
+      $('mbarText').textContent = MBAR[s];
+    }
+    // the rail's ground follows whatever sits under the rail itself (top 30%)
+    var under = 0; for (var j = 0; j < chapters.length; j++) if (chapters[j].getBoundingClientRect().top <= vh * 0.12) under = j;
+    rail.dataset.ground = chapters[under].dataset.ground;
+
+    // quote band pin
+    var q = $('quote'), qp = parseFloat(getComputedStyle(q).getPropertyValue('--sc-p')) || 0;
+    var track = $('bandTrack'), w = track.clientWidth, target = 0.75 * w, k = Math.min(1, Math.max(0, (qp - 0.52) / 0.16));
+    $('bandPin').style.setProperty('--band', (target * (1 - Math.pow(1 - k, 3))).toFixed(1));
+
+    // tracking: stages + minutes from the chapter's own progress
+    var t = $('tracking'), tp = parseFloat(getComputedStyle(t).getPropertyValue('--sc-p')) || 0;
+    var trk = Math.min(1, Math.max(0, (tp - 0.3) / 0.38));
+    $('stages').style.setProperty('--trk', trk.toFixed(3));
+    var on = trk < 0.01 ? 1 : Math.min(4, 1 + Math.floor(trk * 3 + 0.001));
+    document.querySelectorAll('.stage').forEach(function (s2, i2) { s2.classList.toggle('on', i2 < on); });
+    var mins = Math.round(12 * (1 - Math.min(1, trk * 1.5)));
+    $('trackMins').textContent = trk >= 0.99 ? 'Done' : (mins <= 0 ? 'On site' : mins + ' min');
+  }
+  addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
+  addEventListener('resize', onScroll);
+  onScroll();
+})();
+</script>
+</body>
+</html>

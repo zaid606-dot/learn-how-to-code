@@ -11,3 +11,7 @@ out/
 
 node_modules/
 .DS_Store
+
+# scroll-craft verification tooling
+scrollcraft/builds/*/package.json
+scrollcraft/builds/*/package-lock.json
